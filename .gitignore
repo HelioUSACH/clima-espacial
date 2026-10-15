@@ -1,0 +1,33 @@
+# --- Private planning record (OneDrive-only, never published) ---------------
+# This working tree doubles as the private planning folder (D-031/D-047).
+# Everything below stays local; the public record is docs/DECISIONS.md.
+/01-AUDIT.md
+/02-PORTAL-SURVEY.md
+/03-ARCHITECTURE-PROPOSAL.md
+/04-IMPLEMENTATION-PLAN.md
+/05-OPEN-QUESTIONS.md
+/06-MODEL-IDEAS.md
+/07-KICKOFF-BRIEF.md
+/DECISIONS.md
+/deploy/vm-preflight.sh
+/ref/
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+staticfiles/
+
+# --- Secrets and local data ---------------------------------------------------
+.env
+*.env.local
+media/
+*.sqlite3
+*.db
+
+# --- Node/vendored assets (vendored JS itself IS committed; this is dev cruft) -
+node_modules/

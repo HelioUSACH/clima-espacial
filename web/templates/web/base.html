@@ -1,0 +1,53 @@
+{% load i18n static %}<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ site_name }}{% endblock %} — {{ site_byline }}</title>
+  <link rel="stylesheet" href="{% static 'web/vendor/uplot/uPlot.min.css' %}">
+  <link rel="stylesheet" href="{% static 'web/css/base.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <a class="skip-link" href="#main">{% trans "Saltar al contenido" %}</a>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="wordmark" href="{% url 'web:home' %}">
+        <span class="wordmark__name">{{ site_name }}</span>
+        <span class="wordmark__byline">{{ site_byline }}</span>
+      </a>
+      <nav class="main-nav" aria-label="{% trans 'Navegación principal' %}">
+        <a href="{% url 'web:home' %}">{% trans "Inicio" %}</a>
+        <a href="{% url 'web:catalogue' %}">{% trans "Productos y modelos" %}</a>
+        <a href="{% url 'web:que_ofrecemos' %}">{% trans "Qué ofrecemos" %}</a>
+        <a href="{% url 'web:data_api' %}">{% trans "Datos y API" %}</a>
+        <a href="{% url 'web:status' %}">{% trans "Estado" %}</a>
+        <a href="{% url 'web:about' %}">{% trans "Acerca" %}</a>
+      </nav>
+      <div class="lang-switch">
+        <a href="/" {% if LANGUAGE_CODE == "es" %}aria-current="true"{% endif %}>ES</a>
+        <a href="/en/" {% if LANGUAGE_CODE == "en" %}aria-current="true"{% endif %}>EN</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      {{ site_name }} — {% trans "nodo USACH de la Plataforma Nacional de Meteorología Espacial" %}.
+      {% trans "Código Apache-2.0, datos CC BY 4.0." %}
+      <a href="{% url 'web:about' %}">{% trans "Más información" %}</a>.
+    </p>
+  </footer>
+
+  {% if goatcounter_site %}
+  <script data-goatcounter="https://{{ goatcounter_site }}.goatcounter.com/count" async src="https://{{ goatcounter_site }}.goatcounter.com/count.js"></script>
+  {% endif %}
+  <script src="{% static 'web/vendor/uplot/uPlot.iife.min.js' %}"></script>
+  <script defer src="{% static 'web/js/charts.js' %}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

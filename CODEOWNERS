@@ -1,0 +1,7 @@
+# core/, climaespacial/ (settings) and deploy/ define the product contract and
+# the production environment: changes there need the project owner's review.
+# TODO: replace with the real GitHub handle before enabling branch protection.
+/core/            @VictorPinto-USACH
+/climaespacial/   @VictorPinto-USACH
+/deploy/          @VictorPinto-USACH
+/docs/DECISIONS.md @VictorPinto-USACH

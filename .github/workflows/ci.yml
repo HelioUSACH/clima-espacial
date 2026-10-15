@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.12"
+  DATABASE_URL: "postgresql://swx:swx-ci@localhost:5432/swx"
+  # Not a real secret: long and random enough to pass security.W009 in CI only.
+  SECRET_KEY: "ci-only-0f3b8f1a7c2e4d9b6a5f8e1c3d7b9a2f4e6c8a1b3d5f7e9c0a2b4d6f8e1c3a5b7d9f"
+  ALLOWED_HOSTS: "localhost,127.0.0.1"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: swx
+          POSTGRES_PASSWORD: swx-ci
+          POSTGRES_DB: swx
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Validate product manifests
+        env:
+          DJANGO_SETTINGS_MODULE: climaespacial.settings.dev
+        run: python manage.py validate_manifests
+
+      - name: Check for missing migrations
+        env:
+          DJANGO_SETTINGS_MODULE: climaespacial.settings.dev
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Apply migrations
+        env:
+          DJANGO_SETTINGS_MODULE: climaespacial.settings.dev
+        run: python manage.py migrate --noinput
+
+      - name: Tests (pytest)
+        env:
+          DJANGO_SETTINGS_MODULE: climaespacial.settings.dev
+        run: pytest
+
+      - name: Deployment checks (settings.prod)
+        env:
+          DJANGO_SETTINGS_MODULE: climaespacial.settings.prod
+          SWX_AMBIENTE: produccion
+          SWX_HTTPS: "1"
+          ALLOWED_HOSTS: "helio.fisica.usach.cl"
+          CSRF_TRUSTED_ORIGINS: "https://helio.fisica.usach.cl"
+        run: python manage.py check --deploy --fail-level WARNING

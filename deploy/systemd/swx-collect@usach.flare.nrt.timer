@@ -1,0 +1,10 @@
+[Unit]
+Description=Clima Espacial USACH: collect usach.flare.nrt every 1min (polls flare-nrt's own /api/status, docs/models/INTEGRATION.md)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

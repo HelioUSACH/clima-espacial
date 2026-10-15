@@ -1,0 +1,14 @@
+# Copy of docs/ARCHITECTURE.md §4.1's example manifest. Rename this file to
+# match the product (e.g. noaa.rtsw.mag.yaml) and fill every field in.
+id: usach.MODULE_NAME.example      # namespace.domain.name
+version: 1                         # bump on schema change; old versions stay readable
+kind: timeseries                   # timeseries | event | image | bulletin | index | status
+title: {es: "Nombre en español", en: "Name in English"}
+maturity: experimental             # experimental | beta | operational
+cadence: 60s                       # how often the collector/service runs
+stale_after: 15m                   # a heartbeat older than this reads as "stale"
+producer: {type: collector}        # collector (scheduled) | service (long-running); add unit/repo once it has a systemd unit
+source: {provider: "Provider name", inputs: ["what it reads"], license: "CC-BY-4.0"}
+parameters:
+  - {name: example_value, units: "1"}
+exchange: {hapi: false, feed: false}

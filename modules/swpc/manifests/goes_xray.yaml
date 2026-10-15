@@ -1,0 +1,17 @@
+id: noaa.goes.xray
+version: 1
+kind: timeseries
+title: {es: "Flujo de rayos X (GOES)", en: "X-ray flux (GOES)"}
+maturity: operational
+cadence: 5m
+stale_after: 15m
+producer: {type: collector, unit: "swx-collect@noaa.goes.xray.timer"}
+source:
+  provider: "NOAA SWPC"
+  inputs: ["json/goes/primary/xrays-1-day.json"]
+  license: "Public domain (NOAA)"
+parameters:
+  - {name: flux, units: "W/m2"}
+  - {name: energy, enum: ["0.05-0.4nm", "0.1-0.8nm"]}
+  - {name: satellite, units: "1"}
+exchange: {hapi: true, feed: false}

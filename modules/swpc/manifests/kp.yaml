@@ -1,0 +1,17 @@
+id: noaa.kp
+version: 1
+kind: index
+title: {es: "Índice planetario Kp", en: "Planetary Kp index"}
+maturity: operational
+cadence: 15m
+stale_after: 6h
+producer: {type: collector, unit: "swx-collect@noaa.kp.timer"}
+source:
+  provider: "NOAA SWPC"
+  inputs: ["products/noaa-planetary-k-index.json"]
+  license: "Public domain (NOAA)"
+parameters:
+  - {name: kp, units: "1", range: [0, 9]}
+  - {name: a_running, units: "1"}
+  - {name: station_count, units: "1"}
+exchange: {hapi: true, feed: false}

@@ -1,0 +1,39 @@
+[project]
+name = "clima-espacial"
+version = "0.1.0"
+description = "Clima Espacial USACH — USACH node of the Plataforma Nacional de Meteorología Espacial"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "Django==5.2.18",
+    "psycopg[binary]==3.2.10",
+    "gunicorn==23.0.0",
+    "python-dotenv==1.2.4",
+    "PyYAML==6.0.3",
+    "jsonschema==4.26.0",
+    "httpx==0.28.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff==0.17.0",
+    "pytest==9.1.1",
+    "pytest-django==4.14.0",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "web", "api", "exchange", "alerts", "modules", "climaespacial", "swxkit"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "climaespacial.settings.dev"
+python_files = ["tests.py", "test_*.py"]
+addopts = "-ra"

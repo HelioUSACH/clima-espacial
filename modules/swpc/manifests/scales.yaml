@@ -1,0 +1,15 @@
+id: noaa.scales
+version: 1
+kind: event
+title: {es: "Escalas NOAA (R/S/G)", en: "NOAA scales (R/S/G)"}
+maturity: operational
+cadence: 15m
+stale_after: 1h
+producer: {type: collector, unit: "swx-collect@noaa.scales.timer"}
+source:
+  provider: "NOAA SWPC"
+  inputs: ["products/noaa-scales.json"]
+  license: "Public domain (NOAA)"
+parameters:
+  - {name: days, units: "1"}
+exchange: {hapi: false, feed: true}

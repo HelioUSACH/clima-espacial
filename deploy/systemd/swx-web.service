@@ -1,0 +1,25 @@
+[Unit]
+Description=Clima Espacial USACH (gunicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=notify
+User=swx
+Group=swx
+WorkingDirectory=/opt/swx
+EnvironmentFile=/etc/swx/swx.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/swx/venv/bin/gunicorn climaespacial.wsgi:application \
+    --bind 127.0.0.1:8100 --workers 3 --access-logfile - --error-logfile -
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

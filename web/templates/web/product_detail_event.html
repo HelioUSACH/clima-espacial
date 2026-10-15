@@ -1,0 +1,23 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<a href="{% url 'web:catalogue' %}">&larr; {% trans "Catálogo" %}</a>
+<h1>{{ title }}</h1>
+<p class="lede">
+  <span class="badge">{{ product.get_maturity_display }}</span>
+  <span class="status-badge">
+    <span class="status-badge__dot" style="background:{{ status.color }}"></span>
+    {{ status.label }}
+  </span>
+</p>
+<p>{% trans "Fuente:" %} {{ product.source_provider }}{% if product.source_license %} — {{ product.source_license }}{% endif %}</p>
+
+{% if latest_event %}
+<h2>{% trans "Último evento" %}</h2>
+<p>{% blocktrans with issued=latest_event.issued %}Emitido: {{ issued }}{% endblocktrans %}</p>
+<pre class="swx-chart-block">{{ latest_event.payload }}</pre>
+{% else %}
+<p>{% trans "Todavía no hay eventos recolectados en este ambiente." %}</p>
+{% endif %}
+{% endblock %}

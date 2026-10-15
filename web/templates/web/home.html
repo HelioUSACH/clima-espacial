@@ -1,0 +1,66 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Inicio" %}{% endblock %}
+{% block content %}
+
+<section aria-labelledby="scales-heading">
+  <h1 id="scales-heading">{% trans "Condiciones de clima espacial" %}</h1>
+  <p class="lede">
+    {% trans "Contexto en vivo: escalas NOAA, viento solar e IMF en L1, Kp, Dst, rayos X y protones. Esta página no reemplaza la Plataforma Nacional — para impactos por sector, SUVI, magnetómetros chilenos, SUPIM y D-RAP visítala directamente." %}
+  </p>
+
+  {% if scales_badges %}
+  <div class="scale-row">
+    {% for b in scales_badges %}
+    <div class="scale-badge">
+      <span class="scale-badge__letter">{{ b.title }}</span>
+      <span class="scale-badge__level" style="background:{{ b.color }}">{{ b.level }}</span>
+      <span class="scale-badge__text">{{ b.text }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="lede">{% trans "Las escalas NOAA aún no se han recolectado en este ambiente." %}</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="context-heading">
+  <h2 id="context-heading">{% trans "Franja de contexto" %}</h2>
+  <div class="swx-chart-grid">
+    {% for c in charts %}
+      {% include "web/_chart_block.html" with product=c.product title=c.title fields=c.fields fields_id=c.fields_id status=c.status %}
+    {% endfor %}
+  </div>
+</section>
+
+<section aria-labelledby="offer-heading">
+  <h2 id="offer-heading">{% trans "Lo que ofrece USACH" %}</h2>
+  <div class="offer-grid">
+    <div class="offer-card">
+      <span class="badge">{% trans "beta" %}</span>
+      <h3>{% trans "Detección de fulguraciones (NRT)" %}</h3>
+      {% if flare_card_ready %}
+        <p>{% trans "Modelo propio de HelioUSACH, probabilidad y estado en casi tiempo real." %}</p>
+      {% else %}
+        <p>{% trans "En preparación — este producto se activa sin bloquear el resto del portal (ver docs/models/INTEGRATION.md)." %}</p>
+      {% endif %}
+      <a href="{% url 'web:catalogue' %}">{% trans "Ver catálogo de productos y modelos →" %}</a>
+    </div>
+    <div class="offer-card">
+      <h3>{% trans "Productos y modelos" %}</h3>
+      <p>{% trans "Catálogo con madurez (experimental/beta/operacional) y hoja de ruta." %}</p>
+      <a href="{% url 'web:catalogue' %}">{% trans "Ir al catálogo →" %}</a>
+    </div>
+    <div class="offer-card">
+      <h3>{% trans "Qué ofrecemos" %}</h3>
+      <p>{% trans "Para operadores eléctricos, minería/GNSS, satélites y el servicio meteorológico." %}</p>
+      <a href="{% url 'web:que_ofrecemos' %}">{% trans "Ver más →" %}</a>
+    </div>
+    <div class="offer-card">
+      <h3>{% trans "Datos y API" %}</h3>
+      <p>{% trans "Licencia CC BY 4.0. Registro simple para descargas y HAPI (próximamente)." %}</p>
+      <a href="{% url 'web:data_api' %}">{% trans "Registrarse →" %}</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

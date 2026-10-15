@@ -1,0 +1,23 @@
+# Self-hosted, cookieless analytics (D-026, D-043). Bound to localhost only —
+# reach the admin UI over an SSH tunnel (ssh -L 8081:localhost:8081 helio),
+# never exposed publicly: no auth hardening has been done for a public listener.
+[Unit]
+Description=GoatCounter (cookieless analytics)
+After=network.target
+
+[Service]
+Type=simple
+User=swx
+Group=swx
+WorkingDirectory=/srv/swx/goatcounter
+ExecStart=/opt/goatcounter/goatcounter serve -listen 127.0.0.1:8081 -tls none -db sqlite+/srv/swx/goatcounter/db.sqlite3
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Qué ofrecemos" %}{% endblock %}
+{% block content %}
+<h1>{% trans "Qué ofrecemos" %}</h1>
+<p class="lede">{% trans "Productos pensados para quienes toman decisiones operativas, no solo para la comunidad científica." %}</p>
+
+<div class="offer-grid">
+  <div class="offer-card">
+    <h3>{% trans "Operadores eléctricos" %}</h3>
+    <p>{% trans "Contexto geomagnético (Kp, Dst) para evaluar riesgo de corrientes geomagnéticamente inducidas (GIC) en la red." %}</p>
+  </div>
+  <div class="offer-card">
+    <h3>{% trans "Minería y GNSS" %}</h3>
+    <p>{% trans "Condiciones ionosféricas/geomagnéticas relevantes para posicionamiento de precisión y operación autónoma." %}</p>
+  </div>
+  <div class="offer-card">
+    <h3>{% trans "Satélites" %}</h3>
+    <p>{% trans "Rayos X y protones GOES, escalas R/S como contexto rápido de riesgo para operaciones satelitales." %}</p>
+  </div>
+  <div class="offer-card">
+    <h3>{% trans "Servicio meteorológico (DMC)" %}</h3>
+    <p>{% trans "Productos abiertos (CC BY 4.0) y, próximamente, HAPI/feeds para integración M2M con la Plataforma Nacional." %}</p>
+  </div>
+</div>
+
+<h2>{% trans "Sobre nuestros modelos" %}</h2>
+<p>{% trans "Cada modelo publica una ficha con su desempeño frente a persistencia/climatología y su nivel de madurez — nunca se presenta como una alerta oficial mientras esté en etapa experimental o beta." %}</p>
+<a href="{% url 'web:catalogue' %}">{% trans "Ver catálogo de productos y modelos →" %}</a>
+{% endblock %}

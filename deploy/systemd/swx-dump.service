@@ -1,0 +1,8 @@
+[Unit]
+Description=Clima Espacial USACH: nightly backup (pg_dump + config bundle)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/swx/deploy/swx-dump.sh

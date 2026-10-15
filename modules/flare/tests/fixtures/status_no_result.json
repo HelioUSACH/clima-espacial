@@ -1,0 +1,22 @@
+{
+  "status": "running",
+  "last_update": null,
+  "seconds_since_update": null,
+  "live_status": "no_data",
+  "stale_after_sec": 600,
+  "flare_detected": false,
+  "probability": 0.0,
+  "threshold": 0.58,
+  "location": null,
+  "severity": null,
+  "ensemble_scores": null,
+  "ensemble_std": null,
+  "timestamp": null,
+  "latency_ms": null,
+  "frames_in_buffer": 0,
+  "frame_count": 0,
+  "buffer_len": 0,
+  "loop_errors": 0,
+  "loop_last_error": null,
+  "loop_last_error_ts": null
+}

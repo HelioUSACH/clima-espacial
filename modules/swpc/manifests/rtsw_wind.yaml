@@ -1,0 +1,17 @@
+id: noaa.rtsw.wind
+version: 1
+kind: timeseries
+title: {es: "Viento solar (L1)", en: "Solar wind (L1)"}
+maturity: operational
+cadence: 1m
+stale_after: 15m
+producer: {type: collector, unit: "swx-collect@noaa.rtsw.wind.timer"}
+source:
+  provider: "NOAA SWPC"
+  inputs: ["json/rtsw/rtsw_wind_1m.json"]
+  license: "Public domain (NOAA)"
+parameters:
+  - {name: proton_speed, units: "km/s"}
+  - {name: proton_density, units: "1/cm3"}
+  - {name: proton_temperature, units: K}
+exchange: {hapi: true, feed: false}

@@ -1,0 +1,15 @@
+id: noaa.dst
+version: 1
+kind: index
+title: {es: "Índice Dst (Kyoto)", en: "Dst index (Kyoto)"}
+maturity: operational
+cadence: 15m
+stale_after: 3h
+producer: {type: collector, unit: "swx-collect@noaa.dst.timer"}
+source:
+  provider: "NOAA SWPC (Kyoto WDC)"
+  inputs: ["products/kyoto-dst.json"]
+  license: "Public domain (NOAA/Kyoto WDC)"
+parameters:
+  - {name: dst, units: nT}
+exchange: {hapi: true, feed: false}

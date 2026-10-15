@@ -1,0 +1,22 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Datos y API" %}{% endblock %}
+{% block content %}
+<h1>{% trans "Datos y API" %}</h1>
+<p class="lede">
+  {% trans "Ver el portal es libre. Las descargas y la futura API (incl. HAPI) requieren un registro simple y gratuito, que entrega una llave de acceso. Esta página es el registro de interés para M1 — la emisión de llaves y el endpoint HAPI llegan en M2." %}
+</p>
+<p>{% trans "Licencia de los datos: CC BY 4.0 — ver cómo citar en cada producto del catálogo." %}</p>
+
+<form method="post" novalidate>
+  {% csrf_token %}
+  {% for field in form %}
+  <div class="form-field">
+    {{ field.label_tag }}
+    {{ field }}
+    {{ field.errors }}
+  </div>
+  {% endfor %}
+  <button type="submit" class="primary">{% trans "Enviar" %}</button>
+</form>
+{% endblock %}

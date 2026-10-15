@@ -1,0 +1,21 @@
+# Consumer-side manifest: the producer (flare-nrt) is a separate repository
+# and FastAPI service (docs/models/INTEGRATION.md). This module only polls
+# its already-running /api/status and republishes it as our own event — it
+# never imports or depends on that repo's code.
+id: usach.flare.nrt
+version: 1
+kind: event
+title: {es: "Detección de fulguraciones (NRT)", en: "Flare detection (NRT)"}
+maturity: beta
+cadence: 1m
+stale_after: 10m
+producer: {type: service, unit: "flare-loop.service", repo: "HelioUSACH/flare-nrt"}
+source:
+  provider: "HelioUSACH (USACH)"
+  inputs: ["SDO/AIA synoptic via JSOC (flare-nrt internal pipeline)"]
+  license: "CC-BY-4.0"
+parameters:
+  - {name: probability, units: "1", range: [0, 1]}
+  - {name: flare_detected, units: "1"}
+exchange: {hapi: false, feed: true}
+model_card: docs/products/usach.flare.nrt.md

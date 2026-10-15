@@ -1,0 +1,22 @@
+# Templated: swx-collect@<product_id>.service, e.g. swx-collect@noaa.rtsw.mag.service.
+# One oneshot run of `manage.py collect <product_id>` (core/management/commands/collect.py).
+# Triggered by the matching swx-collect@<product_id>.timer — see that file for the cadence.
+[Unit]
+Description=Clima Espacial USACH: collect %i
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=swx
+Group=swx
+WorkingDirectory=/opt/swx
+EnvironmentFile=/etc/swx/swx.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/swx/venv/bin/python manage.py collect %i
+TimeoutStartSec=60
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

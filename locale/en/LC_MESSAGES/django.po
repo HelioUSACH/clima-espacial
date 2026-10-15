@@ -1,0 +1,213 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: clima-espacial 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-14 23:18\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+
+msgid "Saltar al contenido"
+msgstr "Skip to content"
+
+msgid "Navegación principal"
+msgstr "Main navigation"
+
+msgid "Inicio"
+msgstr "Home"
+
+msgid "Productos y modelos"
+msgstr "Products and models"
+
+msgid "Qué ofrecemos"
+msgstr "What we offer"
+
+msgid "Datos y API"
+msgstr "Data and API"
+
+msgid "Estado"
+msgstr "Status"
+
+msgid "Acerca"
+msgstr "About"
+
+msgid "nodo USACH de la Plataforma Nacional de Meteorología Espacial"
+msgstr "USACH node of the National Space Weather Platform"
+
+msgid "Código Apache-2.0, datos CC BY 4.0."
+msgstr "Apache-2.0 code, CC BY 4.0 data."
+
+msgid "Más información"
+msgstr "More information"
+
+msgid "Condiciones de clima espacial"
+msgstr "Space weather conditions"
+
+msgid "Contexto en vivo: escalas NOAA, viento solar e IMF en L1, Kp, Dst, rayos X y protones. Esta página no reemplaza la Plataforma Nacional — para impactos por sector, SUVI, magnetómetros chilenos, SUPIM y D-RAP visítala directamente."
+msgstr "Live context: NOAA scales, L1 solar wind and IMF, Kp, Dst, X-rays and protons. This page does not replace the National Platform — for sector impacts, SUVI, Chilean magnetometers, SUPIM and D-RAP, visit it directly."
+
+msgid "Las escalas NOAA aún no se han recolectado en este ambiente."
+msgstr "NOAA scales haven't been collected in this environment yet."
+
+msgid "Franja de contexto"
+msgstr "Context strip"
+
+msgid "Lo que ofrece USACH"
+msgstr "What USACH offers"
+
+msgid "beta"
+msgstr "beta"
+
+msgid "Detección de fulguraciones (NRT)"
+msgstr "Flare detection (NRT)"
+
+msgid "Modelo propio de HelioUSACH, probabilidad y estado en casi tiempo real."
+msgstr "HelioUSACH's own model, near-real-time probability and state."
+
+msgid "En preparación — este producto se activa sin bloquear el resto del portal (ver docs/models/INTEGRATION.md)."
+msgstr "In preparation — this product turns on without blocking the rest of the portal (see docs/models/INTEGRATION.md)."
+
+msgid "Ver catálogo de productos y modelos →"
+msgstr "See the products and models catalogue →"
+
+msgid "Catálogo con madurez (experimental/beta/operacional) y hoja de ruta."
+msgstr "Catalogue with maturity (experimental/beta/operational) and roadmap."
+
+msgid "Ir al catálogo →"
+msgstr "Go to the catalogue →"
+
+msgid "Para operadores eléctricos, minería/GNSS, satélites y el servicio meteorológico."
+msgstr "For grid operators, mining/GNSS, satellites and the meteorological service."
+
+msgid "Ver más →"
+msgstr "See more →"
+
+msgid "Licencia CC BY 4.0. Registro simple para descargas y HAPI (próximamente)."
+msgstr "CC BY 4.0 licence. Simple registration for downloads and HAPI (coming soon)."
+
+msgid "Registrarse →"
+msgstr "Register →"
+
+msgid "Catálogo con madurez y estado. Los detalles de impactos por sector, SUVI, magnetómetros, SUPIM y D-RAP viven en la Plataforma Nacional."
+msgstr "Catalogue with maturity and status. Sector-impact details, SUVI, magnetometers, SUPIM and D-RAP live on the National Platform."
+
+msgid "Modelo propio de HelioUSACH."
+msgstr "HelioUSACH's own model."
+
+msgid "En preparación."
+msgstr "In preparation."
+
+msgid "Todavía no hay productos recolectados en este ambiente."
+msgstr "No products have been collected in this environment yet."
+
+msgid "Catálogo"
+msgstr "Catalogue"
+
+msgid "Fuente:"
+msgstr "Source:"
+
+msgid "Cargando…"
+msgstr "Loading…"
+
+msgid "Sin datos todavía."
+msgstr "No data yet."
+
+msgid "No se pudo cargar la serie."
+msgstr "Could not load the series."
+
+msgid "Rango"
+msgstr "Range"
+
+msgid "Disponible por HAPI una vez publicado el endpoint (M2)."
+msgstr "Available over HAPI once the endpoint ships (M2)."
+
+msgid "Último evento"
+msgstr "Latest event"
+
+msgid "Todavía no hay eventos recolectados en este ambiente."
+msgstr "No events have been collected in this environment yet."
+
+msgid "Estado de fuentes y productos"
+msgstr "Status of sources and products"
+
+msgid "Un producto 'desactualizado' o 'sin datos' no detiene el resto del portal — cada producto se degrada por separado."
+msgstr "A 'stale' or 'no data' product doesn't stop the rest of the portal — every product degrades on its own."
+
+msgid "Producto"
+msgstr "Product"
+
+msgid "Detalle"
+msgstr "Detail"
+
+msgid "Último dato"
+msgstr "Last data point"
+
+msgid "Productos pensados para quienes toman decisiones operativas, no solo para la comunidad científica."
+msgstr "Products built for operational decision-makers, not only the research community."
+
+msgid "Operadores eléctricos"
+msgstr "Grid operators"
+
+msgid "Contexto geomagnético (Kp, Dst) para evaluar riesgo de corrientes geomagnéticamente inducidas (GIC) en la red."
+msgstr "Geomagnetic context (Kp, Dst) to assess geomagnetically induced current (GIC) risk on the grid."
+
+msgid "Minería y GNSS"
+msgstr "Mining and GNSS"
+
+msgid "Condiciones ionosféricas/geomagnéticas relevantes para posicionamiento de precisión y operación autónoma."
+msgstr "Ionospheric/geomagnetic conditions relevant to precision positioning and autonomous operation."
+
+msgid "Satélites"
+msgstr "Satellites"
+
+msgid "Rayos X y protones GOES, escalas R/S como contexto rápido de riesgo para operaciones satelitales."
+msgstr "GOES X-rays and protons, R/S scales as a quick risk context for satellite operations."
+
+msgid "Servicio meteorológico (DMC)"
+msgstr "Meteorological service (DMC)"
+
+msgid "Productos abiertos (CC BY 4.0) y, próximamente, HAPI/feeds para integración M2M con la Plataforma Nacional."
+msgstr "Open products (CC BY 4.0) and, soon, HAPI/feeds for M2M integration with the National Platform."
+
+msgid "Sobre nuestros modelos"
+msgstr "About our models"
+
+msgid "Cada modelo publica una ficha con su desempeño frente a persistencia/climatología y su nivel de madurez — nunca se presenta como una alerta oficial mientras esté en etapa experimental o beta."
+msgstr "Every model publishes a card with its skill vs. persistence/climatology and its maturity level — never presented as an official warning while experimental or beta."
+
+msgid "Acerca de Clima Espacial USACH"
+msgstr "About Clima Espacial USACH"
+
+msgid "Clima Espacial USACH es el portal de clima espacial de HelioUSACH y el nodo USACH de la Plataforma Nacional de Meteorología Espacial. Muestra las condiciones que importan para Chile y publica los productos propios de HelioUSACH a la plataforma nacional a través de una interfaz versionada."
+msgstr "Clima Espacial USACH is HelioUSACH's space-weather portal and the USACH node of the National Space Weather Platform. It shows the conditions that matter for Chile and publishes HelioUSACH's own products to the national platform through a versioned interface."
+
+msgid "Para el detalle de impactos por sector, SUVI, la red de magnetómetros en Chile, SUPIM y D-RAP, visita la"
+msgstr "For sector-impact details, SUVI, the Chilean magnetometer network, SUPIM and D-RAP, visit the"
+
+msgid "Plataforma Nacional de Meteorología Espacial"
+msgstr "National Space Weather Platform"
+
+msgid "Código fuente Apache-2.0, datos CC BY 4.0."
+msgstr "Source code Apache-2.0, data CC BY 4.0."
+
+msgid "Ver el portal es libre. Las descargas y la futura API (incl. HAPI) requieren un registro simple y gratuito, que entrega una llave de acceso. Esta página es el registro de interés para M1 — la emisión de llaves y el endpoint HAPI llegan en M2."
+msgstr "Viewing the portal is free. Downloads and the future API (incl. HAPI) need a simple, free registration that issues an access key. This page is the interest form for M1 — key issuance and the HAPI endpoint arrive in M2."
+
+msgid "Licencia de los datos: CC BY 4.0 — ver cómo citar en cada producto del catálogo."
+msgstr "Data licence: CC BY 4.0 — see how to cite in each product's catalogue entry."
+
+msgid "Enviar"
+msgstr "Submit"
+
+msgid "¡Gracias!"
+msgstr "Thank you!"
+
+msgid "Registramos tu interés. Te avisaremos cuando la API y las descargas estén disponibles."
+msgstr "We've recorded your interest. We'll let you know when the API and downloads are available."
+
+msgid "Volver al inicio"
+msgstr "Back to the homepage"
+
+msgid "Emitido: %(issued)s"
+msgstr "Issued: %(issued)s"

@@ -1,0 +1,18 @@
+id: noaa.rtsw.mag
+version: 1
+kind: timeseries
+title: {es: "Campo magnético interplanetario (L1)", en: "Interplanetary magnetic field (L1)"}
+maturity: operational
+cadence: 1m
+stale_after: 15m
+producer: {type: collector, unit: "swx-collect@noaa.rtsw.mag.timer"}
+source:
+  provider: "NOAA SWPC"
+  inputs: ["json/rtsw/rtsw_mag_1m.json"]
+  license: "Public domain (NOAA)"
+parameters:
+  - {name: bt, units: nT}
+  - {name: bx_gsm, units: nT}
+  - {name: by_gsm, units: nT}
+  - {name: bz_gsm, units: nT}
+exchange: {hapi: true, feed: false}

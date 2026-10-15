@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/HelioUSACH/clima-espacial/core/manifests/schema.json",
+  "title": "Product manifest",
+  "description": "docs/ARCHITECTURE.md §4.1",
+  "type": "object",
+  "required": ["id", "version", "kind", "title", "maturity", "cadence", "stale_after", "producer", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9_]*)+$",
+      "description": "namespace.domain.name, e.g. usach.flare.nrt"
+    },
+    "version": {"type": "integer", "minimum": 1},
+    "kind": {"enum": ["timeseries", "event", "image", "bulletin", "index", "status"]},
+    "title": {
+      "type": "object",
+      "required": ["es", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "es": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    },
+    "maturity": {"enum": ["experimental", "beta", "operational"]},
+    "cadence": {"type": "string", "pattern": "^[0-9]+(s|m|h|d)$"},
+    "stale_after": {"type": "string", "pattern": "^[0-9]+(s|m|h|d)$"},
+    "producer": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"enum": ["collector", "service"]},
+        "unit": {"type": "string"},
+        "repo": {"type": "string"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["provider"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "inputs": {"type": "array", "items": {"type": "string"}},
+        "license": {"type": "string"}
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "units": {"type": "string"},
+          "range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+          "enum": {"type": "array"},
+          "shape": {"type": "array", "items": {"type": "integer"}}
+        }
+      }
+    },
+    "exchange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hapi": {"type": "boolean"},
+        "feed": {"type": "boolean"},
+        "push": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "model_card": {"type": "string"}
+  }
+}

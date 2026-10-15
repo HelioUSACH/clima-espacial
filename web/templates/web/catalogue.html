@@ -1,0 +1,32 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Productos y modelos" %}{% endblock %}
+{% block content %}
+<h1>{% trans "Productos y modelos" %}</h1>
+<p class="lede">{% trans "Catálogo con madurez y estado. Los detalles de impactos por sector, SUVI, magnetómetros, SUPIM y D-RAP viven en la Plataforma Nacional." %}</p>
+
+<div class="product-grid">
+  <div class="product-card">
+    <span class="badge">{% trans "beta" %}</span>
+    <h3>{% trans "Detección de fulguraciones (NRT)" %}</h3>
+    {% if flare_card_ready %}
+      <p>{% trans "Modelo propio de HelioUSACH." %}</p>
+    {% else %}
+      <p>{% trans "En preparación." %}</p>
+    {% endif %}
+  </div>
+  {% for row in rows %}
+  <div class="product-card">
+    <span class="badge">{{ row.product.get_maturity_display }}</span>
+    <h3><a href="{% url 'web:product_detail' row.product.id %}">{{ row.title }}</a></h3>
+    <span class="status-badge">
+      <span class="status-badge__dot" style="background:{{ row.status.color }}"></span>
+      {{ row.status.label }}
+    </span>
+    <span class="badge">{{ row.product.source_provider }}</span>
+  </div>
+  {% empty %}
+  <p>{% trans "Todavía no hay productos recolectados en este ambiente." %}</p>
+  {% endfor %}
+</div>
+{% endblock %}

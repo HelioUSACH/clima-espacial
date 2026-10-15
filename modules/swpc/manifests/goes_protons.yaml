@@ -1,0 +1,17 @@
+id: noaa.goes.protons
+version: 1
+kind: timeseries
+title: {es: "Flujo de protones (GOES)", en: "Proton flux (GOES)"}
+maturity: operational
+cadence: 5m
+stale_after: 15m
+producer: {type: collector, unit: "swx-collect@noaa.goes.protons.timer"}
+source:
+  provider: "NOAA SWPC"
+  inputs: ["json/goes/primary/integral-protons-1-day.json"]
+  license: "Public domain (NOAA)"
+parameters:
+  - {name: flux, units: "1/(cm2 s sr)"}
+  - {name: energy, enum: [">=1 MeV", ">=5 MeV", ">=10 MeV", ">=30 MeV", ">=50 MeV", ">=60 MeV", ">=100 MeV", ">=500 MeV"]}
+  - {name: satellite, units: "1"}
+exchange: {hapi: true, feed: false}

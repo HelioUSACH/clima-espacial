@@ -1,0 +1,35 @@
+{
+  "status": "running",
+  "last_update": "2026-10-15T01:59:21Z",
+  "seconds_since_update": 42.1,
+  "live_status": "live",
+  "stale_after_sec": 600,
+  "flare_detected": false,
+  "probability": 0.0912,
+  "threshold": 0.58,
+  "location": {
+    "area_px": 1628,
+    "area_arcsec2": 28580.0,
+    "compactness": 0.55,
+    "on_limb": false,
+    "method": "diff_multichannel_bbox",
+    "confidence": "high"
+  },
+  "severity": {
+    "score_at_minus10": 0.12,
+    "interpretation": "bajo",
+    "method": "early_detection_score",
+    "confidence": "exploratory_low",
+    "note": "indicador orientativo - acc=0.39 en test C25"
+  },
+  "ensemble_scores": [0.08, 0.09, 0.1, 0.09, 0.1],
+  "ensemble_std": 0.0075,
+  "timestamp": "2026-10-15T01:59:21Z",
+  "latency_ms": 812,
+  "frames_in_buffer": 120,
+  "frame_count": 48210,
+  "buffer_len": 120,
+  "loop_errors": 0,
+  "loop_last_error": null,
+  "loop_last_error_ts": null
+}

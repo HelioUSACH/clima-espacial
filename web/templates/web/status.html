@@ -1,0 +1,34 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Estado" %}{% endblock %}
+{% block content %}
+<h1>{% trans "Estado de fuentes y productos" %}</h1>
+<p class="lede">{% trans "Un producto 'desactualizado' o 'sin datos' no detiene el resto del portal — cada producto se degrada por separado." %}</p>
+<table class="status-table">
+  <thead>
+    <tr>
+      <th>{% trans "Producto" %}</th>
+      <th>{% trans "Estado" %}</th>
+      <th>{% trans "Último dato" %}</th>
+      <th>{% trans "Detalle" %}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td><a href="{% url 'web:product_detail' row.product.id %}">{{ row.title }}</a></td>
+      <td>
+        <span class="status-badge">
+          <span class="status-badge__dot" style="background:{{ row.status.color }}"></span>
+          {{ row.status.label }}
+        </span>
+      </td>
+      <td>{{ row.last_seen_at|default:"—" }}</td>
+      <td>{{ row.detail|default:"—" }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4">{% trans "Todavía no hay productos recolectados en este ambiente." %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
