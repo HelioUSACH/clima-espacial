@@ -53,6 +53,9 @@ model card (`docs/models/MODEL-CARD-TEMPLATE.md`).
 
 - [ ] `ruff check .` clean
 - [ ] `pytest` passes, including a fixture-backed test for any new adapter
+- [ ] `python manage.py check_templates` passes (no multi-line `{# #}`
+      comments — these are printed as literal page text instead of being
+      stripped; a real v0.1.1 production bug, see `docs/DECISIONS.md` D-052)
 - [ ] `python manage.py validate_manifests` passes
 - [ ] `python manage.py makemigrations --check` clean (no missing migrations)
 - [ ] New strings added to both locales (`es` primary, `en` secondary)

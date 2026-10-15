@@ -20,12 +20,17 @@ STATUS_COLORS = {
     "stale": "#fab219",
     "error": "#d03b3b",
     "no_data": "#898781",  # not a severity — "nothing published yet", kept neutral
+    "pending": "#898781",  # same neutral — "en preparación" isn't a severity either
 }
 STATUS_LABELS = {
     "ok": {"es": "al día", "en": "live"},
     "stale": {"es": "desactualizado", "en": "stale"},
     "error": {"es": "con errores", "en": "error"},
     "no_data": {"es": "sin datos", "en": "no data"},
+    # Q5 (10-STATUS-AND-NEXT.md): a producer that simply isn't installed yet
+    # (flare-nrt, D-036) is "en preparación", not "con errores" — error/
+    # no_data would wrongly read as *our* collector being broken.
+    "pending": {"es": "en preparación", "en": "in preparation"},
 }
 
 # NOAA scale level (0-5) -> status role, so G/S/R badges reuse the same
@@ -37,6 +42,28 @@ SCALE_COLORS = {
     "serious": "#ec835a",
     "error": STATUS_COLORS["error"],
 }
+
+# Q3 (10-STATUS-AND-NEXT.md): NOAA's own `noaa-scales.json` "Text" field is
+# always English ("none", "Minor", …) — translate the handful of known
+# values for the ES page; an unrecognised value (a future NOAA wording
+# change) falls back to the raw string rather than crashing or hiding it.
+NOAA_SCALE_TEXT_ES = {
+    "none": "ninguna",
+    "Minor": "menor",
+    "Moderate": "moderada",
+    "Strong": "fuerte",
+    "Severe": "severa",
+    "Extreme": "extrema",
+}
+
+
+def scale_text(raw_text, lang):
+    if not raw_text:
+        return "-"
+    if lang == "es":
+        return NOAA_SCALE_TEXT_ES.get(raw_text, raw_text)
+    return raw_text
+
 
 RANGE_CHOICES = [("1d", "1 día", 1), ("3d", "3 días", 3), ("7d", "7 días", 7)]
 DEFAULT_RANGE = "1d"

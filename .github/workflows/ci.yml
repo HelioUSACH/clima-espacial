@@ -43,6 +43,11 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      - name: Check templates (no multi-line {# #} comments)
+        env:
+          DJANGO_SETTINGS_MODULE: climaespacial.settings.dev
+        run: python manage.py check_templates
+
       - name: Validate product manifests
         env:
           DJANGO_SETTINGS_MODULE: climaespacial.settings.dev

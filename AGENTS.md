@@ -35,6 +35,13 @@ own docs. If it touches a model integration, read `docs/models/INTEGRATION.md`.
   payload's `source`/`active` fields.
 - **Bilingual:** Spanish primary, English secondary (Django i18n). Add
   strings to both `.po` files in the same change.
+- **Never write a `{# #}` comment that spans more than one line** in a
+  template — Django's `{# #}` only works on a single line; across a line
+  break it is printed as literal page text instead of being stripped (this
+  broke every chart on the real v0.1.1 deploy — the leaked text contained a
+  `<script>` tag that swallowed the real one). Use
+  `{% comment %}…{% endcomment %}` for a multi-line comment.
+  `manage.py check_templates` (CI) catches this.
 - **Licensing:** this repo is Apache-2.0, data products are CC BY 4.0 — never
   commit a dependency or vendored asset with an incompatible licence.
 - **No personal or internal data in this repo.** No real API keys, no server

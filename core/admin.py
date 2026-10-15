@@ -19,7 +19,10 @@ class ProductVersionAdmin(admin.ModelAdmin):
 
 @admin.register(Heartbeat)
 class HeartbeatAdmin(admin.ModelAdmin):
-    list_display = ("product", "status", "effective_status", "last_seen_at", "updated_at")
+    # Q3 (10-STATUS-AND-NEXT.md): `detail` is collector-authored, English,
+    # developer-facing text ("published 3 new point(s)…") — admin-only now,
+    # dropped from the public /estado/ page.
+    list_display = ("product", "status", "effective_status", "last_seen_at", "detail", "updated_at")
     list_filter = ("status",)
 
     @admin.display(description="effective status")

@@ -3,7 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ site_name }}{% endblock %} — {{ site_byline }}</title>
+  {% comment %}
+  Q4 (10-STATUS-AND-NEXT.md): every page overrides {% block title %} with
+  just its own name, so the suffix must be the portal's own name (D-033),
+  not the HelioUSACH byline -- "Inicio - Clima Espacial USACH", not
+  "Inicio - HelioUSACH".
+  {% endcomment %}
+  <title>{% block title %}{{ site_name }}{% endblock %} — {{ site_name }}</title>
   <link rel="stylesheet" href="{% static 'web/vendor/uplot/uPlot.min.css' %}">
   <link rel="stylesheet" href="{% static 'web/css/base.css' %}">
   {% block extra_head %}{% endblock %}
@@ -26,10 +32,12 @@
       </nav>
       <div class="lang-switch">
         {% get_current_language as CURRENT_LANG %}
-        {# Posts to Django's built-in set_language view rather than linking to a
-           hardcoded "/" or "/en/": those break under FORCE_SCRIPT_NAME once this
-           is deployed at /clima-espacial/ (found while rehearsing the prod
-           sub-path locally before the first real deploy). #}
+        {% comment %}
+        Posts to Django's built-in set_language view rather than linking to a
+        hardcoded "/" or "/en/": those break under FORCE_SCRIPT_NAME once this
+        is deployed at /clima-espacial/ (found while rehearsing the prod
+        sub-path locally before the first real deploy).
+        {% endcomment %}
         <form action="{% url 'set_language' %}" method="post" class="lang-switch__form">
           {% csrf_token %}
           <input type="hidden" name="next" value="{{ request.path }}">
@@ -58,11 +66,13 @@
     </p>
   </footer>
 
-  {# No analytics script tag (D-051/P3): GoatCounter is self-hosted and only
-     reachable on localhost (goatcounter.service), so a browser-loaded
-     <script src="https://…goatcounter.com/count.js"> would point at nothing.
-     Pageviews are recorded server-side instead, from nginx's own access log
-     — see deploy/systemd/goatcounter-import.service. #}
+  {% comment %}
+  No analytics script tag (D-051/P3): GoatCounter is self-hosted and only
+  reachable on localhost (goatcounter.service), so a browser-loaded script
+  pointing at a hosted goatcounter.com URL would load nothing. Pageviews are
+  recorded server-side instead, from nginx's own access log — see
+  deploy/systemd/goatcounter-import.service.
+  {% endcomment %}
   <script src="{% static 'web/vendor/uplot/uPlot.iife.min.js' %}"></script>
   <script defer src="{% static 'web/js/charts.js' %}"></script>
   {% block extra_scripts %}{% endblock %}

@@ -43,7 +43,12 @@ def _dom_id(product_id):
     return product_id.replace(".", "-")
 
 
-def _status_badge(effective_status, lang):
+def _status_badge(product_id, effective_status, lang):
+    # Q5: a producer that isn't installed yet (flare-nrt, D-036) reads as
+    # "en preparación", never "con errores" — that wording is reserved for
+    # *our* collectors actually failing.
+    if product_id == FLARE_PRODUCT_ID and effective_status in {"error", "no_data"}:
+        effective_status = "pending"
     return {
         "status": effective_status,
         "color": charts.STATUS_COLORS[effective_status],
@@ -76,7 +81,7 @@ def home(request):
                 "title": _fmt_title(product, lang),
                 "fields": _chart_fields(product_id, lang),
                 "fields_id": _dom_id(product_id) + "-fields",
-                "status": _status_badge(hb.effective_status() if hb else "no_data", lang),
+                "status": _status_badge(product_id, hb.effective_status() if hb else "no_data", lang),
             }
         )
 
@@ -110,7 +115,7 @@ def _scales_badges(event, lang):
                 "title": title[lang],
                 "level": level,
                 "color": charts.SCALE_COLORS[role],
-                "text": entry.get("Text") or "-",
+                "text": charts.scale_text(entry.get("Text"), lang),
             }
         )
     return badges
@@ -150,12 +155,20 @@ def _mode():
 
 def catalogue(request):
     lang = _lang(request)
-    products = Product.objects.select_related("heartbeat").order_by("module", "id")
+    # usach.flare.nrt gets its own hardcoded offer card above (same reason
+    # home() never puts it in context_product_ids) — once a real Product
+    # row exists for it (as soon as modules/flare's collector runs once),
+    # the generic grid below would otherwise show it a second time.
+    products = (
+        Product.objects.select_related("heartbeat")
+        .exclude(id=FLARE_PRODUCT_ID)
+        .order_by("module", "id")
+    )
     rows = [
         {
             "product": p,
             "title": _fmt_title(p, lang),
-            "status": _status_badge(p.heartbeat.effective_status() if hasattr(p, "heartbeat") else "no_data", lang),
+            "status": _status_badge(p.id, p.heartbeat.effective_status() if hasattr(p, "heartbeat") else "no_data", lang),
         }
         for p in products
     ]
@@ -169,7 +182,7 @@ def product_detail(request, product_id):
     context = {
         "product": product,
         "title": _fmt_title(product, lang),
-        "status": _status_badge(hb.effective_status() if hb else "no_data", lang),
+        "status": _status_badge(product_id, hb.effective_status() if hb else "no_data", lang),
         "ranges": charts.RANGE_CHOICES,
         "default_range": charts.DEFAULT_RANGE,
     }
@@ -239,9 +252,8 @@ def status(request):
         {
             "product": p,
             "title": _fmt_title(p, lang),
-            "status": _status_badge(p.heartbeat.effective_status() if hasattr(p, "heartbeat") else "no_data", lang),
+            "status": _status_badge(p.id, p.heartbeat.effective_status() if hasattr(p, "heartbeat") else "no_data", lang),
             "last_seen_at": p.heartbeat.last_seen_at if hasattr(p, "heartbeat") else None,
-            "detail": p.heartbeat.detail if hasattr(p, "heartbeat") else "",
         }
         for p in products
     ]

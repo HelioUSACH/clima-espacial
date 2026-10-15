@@ -3,6 +3,7 @@ UI, public API, outbound exchange — reads (docs/ARCHITECTURE.md §2.1)."""
 
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 
 class Product(models.Model):
@@ -22,10 +23,13 @@ class Product(models.Model):
         ("index", "index"),
         ("status", "status"),
     ]
+    # Q3 (10-STATUS-AND-NEXT.md): labels are translatable — the value stays
+    # English (matches the manifest's literal `maturity:` string), the label
+    # is what a visitor sees via get_maturity_display().
     MATURITY_CHOICES = [
-        ("experimental", "experimental"),
-        ("beta", "beta"),
-        ("operational", "operational"),
+        ("experimental", _("experimental")),
+        ("beta", _("beta")),
+        ("operational", _("operacional")),
     ]
     PRODUCER_TYPE_CHOICES = [("collector", "collector"), ("service", "service")]
 

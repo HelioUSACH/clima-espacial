@@ -10,7 +10,6 @@
       <th>{% trans "Producto" %}</th>
       <th>{% trans "Estado" %}</th>
       <th>{% trans "Último dato" %}</th>
-      <th>{% trans "Detalle" %}</th>
     </tr>
   </thead>
   <tbody>
@@ -24,10 +23,9 @@
         </span>
       </td>
       <td>{{ row.last_seen_at|default:"—" }}</td>
-      <td>{{ row.detail|default:"—" }}</td>
     </tr>
     {% empty %}
-    <tr><td colspan="4">{% trans "Todavía no hay productos recolectados en este ambiente." %}</td></tr>
+    <tr><td colspan="3">{% trans "Todavía no hay productos recolectados en este ambiente." %}</td></tr>
     {% endfor %}
   </tbody>
 </table>
