@@ -266,3 +266,24 @@ msgstr "Research / university"
 
 msgid "Otro"
 msgstr "Other"
+
+msgid "Hora"
+msgstr "Time"
+
+msgid "en aumento"
+msgstr "rising"
+
+msgid "en descenso"
+msgstr "falling"
+
+msgid "estable"
+msgstr "steady"
+
+msgid "Fuente activa:"
+msgstr "Active source:"
+
+msgid "Descargar datos (próximamente) →"
+msgstr "Download data (coming soon) →"
+
+msgid "sin datos"
+msgstr "no data"

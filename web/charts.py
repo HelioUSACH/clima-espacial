@@ -1,24 +1,28 @@
-"""Chart definitions + the validated placeholder palette (docs/DECISIONS.md
-D-050; see the `dataviz` design method). One axis per chart, ≤3 series so
-every chart clears the palette's all-pairs CVD/contrast floors, and each
-field is pinned to a fixed slot — color follows the field, never its
-position, so a future per-chart series toggle can't repaint survivors."""
+"""Chart/panel definitions + the validated placeholder palette
+(docs/DECISIONS.md D-050/D-053; see the `dataviz` design method). This is
+the single place where products map to panels (12-HANDOFF-2026-10-15.md §4)
+— `web/views.py` only resolves a panel's data, `web/static/web/js/charts.js`
+only draws what it's given.
+
+Series colors are CSS variable *names*, not resolved hex: a `<canvas>` 2D
+context can't resolve `var(--chart-s1)` the way the DOM can, so
+`web/static/web/js/charts.js` reads the real value via `getComputedStyle`
+at render time and again on `swx:themechange` (D-053 theme contract)."""
 
 from __future__ import annotations
 
-# Categorical slots 1-3 (of the 8-slot default palette) validate *every*
-# pairing, not just adjacent ones — the safe set for a line chart where all
-# series can be visible together. references/palette.md, dataviz skill.
-SLOT_COLORS = {
-    1: {"light": "#2a78d6", "dark": "#3987e5"},  # blue
-    2: {"light": "#eb6834", "dark": "#d95926"},  # orange
-    3: {"light": "#1baf7a", "dark": "#199e70"},  # aqua
-}
+from dataclasses import dataclass
+
+# Categorical slots 1-3 of the dataviz skill's validated 8-hue default order
+# (references/palette.md) validate *every* pairing, not just adjacent ones —
+# the safe set for a chart where all series can be visible together.
+SLOT_COLOR_VARS = {1: "--chart-s1", 2: "--chart-s2", 3: "--chart-s3"}
 
 # CSS custom properties, not literal hex (D-053, 12-HANDOFF §2 theme
 # contract): "every colour comes from CSS custom properties", so a status
 # badge repaints on the day/night toggle instead of staying stuck in one
-# theme's shade. Defined on :root / :root[data-theme='night'] in base.css.
+# theme's shade. These are plain DOM `style="background: ..."` values (not
+# canvas), so the literal `var(...)` string works as-is — see base.css.
 STATUS_COLORS = {
     "ok": "var(--status-ok)",
     "stale": "var(--status-stale)",
@@ -73,37 +77,145 @@ def scale_text(raw_text, lang):
     return raw_text
 
 
-RANGE_CHOICES = [("1d", "1 día", 1), ("3d", "3 días", 3), ("7d", "7 días", 7)]
-DEFAULT_RANGE = "1d"
+# (key, label_es, label_en, days) — bilingual, unlike the old ES-only
+# labels (12-HANDOFF item 4: they leaked onto EN pages untranslated).
+RANGE_CHOICES = [
+    ("6h", "6 h", "6 h", 0.25),
+    ("1d", "1 día", "1 day", 1),
+    ("3d", "3 días", "3 days", 3),
+    ("7d", "7 días", "7 days", 7),
+]
+RANGE_DAYS = {key: days for key, _es, _en, days in RANGE_CHOICES}
+DEFAULT_RANGE_HOME = "1d"
+DEFAULT_RANGE_PRODUCT = "3d"  # 12-HANDOFF §4: "default 3d on product pages, 1d on home"
 
-# product_id -> ordered [(field, label_es, label_en, unit, slot)], all fields
-# sharing one axis/unit per chart (never a second y-axis — dataviz skill).
-CHART_SPECS: dict[str, list[tuple[str, str, str, str, int]]] = {
-    "noaa.rtsw.mag": [
-        ("bt", "Bt", "Bt", "nT", 1),
-        ("bx_gsm", "Bx (GSM)", "Bx (GSM)", "nT", 2),
-        ("by_gsm", "By (GSM)", "By (GSM)", "nT", 3),
-    ],
-    "noaa.rtsw.wind": [
-        ("proton_speed", "Velocidad", "Speed", "km/s", 1),
-    ],
-    "noaa.kp": [("kp", "Kp", "Kp", "", 1)],
-    "noaa.dst": [("dst", "Dst", "Dst", "nT", 1)],
-    "noaa.goes.xray": [],  # multi-channel by `energy`, built specially — see product_series()
-    "noaa.goes.protons": [],  # idem
+
+@dataclass(frozen=True)
+class Series:
+    field: str
+    label_es: str
+    label_en: str
+    slot: int | None = None  # None for a bars panel colored by severity, not identity
+
+
+@dataclass(frozen=True)
+class Panel:
+    key: str
+    title_es: str
+    title_en: str
+    unit: str
+    kind: str = "line"  # "line" | "bars"
+    y: str = "linear"  # "linear" | "log"
+    series: tuple[Series, ...] = ()
+    zero_line: bool = False  # a solid line at y=0 (IMF Bz — mandatory, 12-HANDOFF §4)
+    ref_lines: tuple[tuple[float, str], ...] = ()  # (value, label) dashed threshold lines, e.g. Dst -50/-100
+    log_bands: tuple[tuple[float, str], ...] = ()  # (threshold, class letter) on a log axis, labelled on the right
+    show_source: bool = False  # annotate the active L1 spacecraft + mark where it changes
+    kp_bucket: bool = False  # bars colored by the Kp->G severity bucket, not a fixed slot
+
+
+# Energy-channel products (X-ray, protons) interleave one row per channel
+# per timestamp instead of one column per channel; `product_series_json`
+# pivots on the `energy` field for these — see web/views.py `_channel_columns`.
+ENERGY_CHANNEL_PRODUCTS = frozenset({"noaa.goes.xray", "noaa.goes.protons"})
+
+# product_id -> ordered panels (12-HANDOFF §4 layout + physics requirements).
+PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
+    "noaa.rtsw.mag": (
+        # Bz is mandatory (12-HANDOFF §4) — it was missing in v0.1 because of
+        # the old 3-series-per-chart slot budget; panelling (one pair per
+        # panel) replaces that rule instead of fighting it.
+        Panel(
+            key="bz", title_es="Bt / Bz (IMF)", title_en="Bt / Bz (IMF)", unit="nT",
+            series=(Series("bt", "Bt", "Bt", 1), Series("bz_gsm", "Bz (GSM)", "Bz (GSM)", 2)),
+            zero_line=True, show_source=True,
+        ),
+        Panel(
+            key="bxby", title_es="Bx / By (GSM)", title_en="Bx / By (GSM)", unit="nT",
+            series=(Series("bx_gsm", "Bx (GSM)", "Bx (GSM)", 1), Series("by_gsm", "By (GSM)", "By (GSM)", 2)),
+        ),
+    ),
+    "noaa.rtsw.wind": (
+        Panel(
+            key="speed", title_es="Velocidad del viento solar", title_en="Solar wind speed", unit="km/s",
+            series=(Series("proton_speed", "Velocidad", "Speed", 1),), show_source=True,
+        ),
+        Panel(
+            key="density", title_es="Densidad", title_en="Density", unit="p/cm³",
+            series=(Series("proton_density", "Densidad", "Density", 1),),
+        ),
+        Panel(
+            key="temperature", title_es="Temperatura", title_en="Temperature", unit="K", y="log",
+            series=(Series("proton_temperature", "Temperatura", "Temperature", 1),),
+        ),
+    ),
+    "noaa.kp": (
+        Panel(
+            key="kp", title_es="Índice Kp", title_en="Kp index", unit="",
+            kind="bars", series=(Series("kp", "Kp", "Kp"),),
+            ref_lines=((5, "G1"),), kp_bucket=True,
+        ),
+    ),
+    "noaa.dst": (
+        Panel(
+            key="dst", title_es="Dst", title_en="Dst", unit="nT",
+            series=(Series("dst", "Dst", "Dst", 1),), ref_lines=((-50, "-50 nT"), (-100, "-100 nT")),
+        ),
+    ),
+    "noaa.goes.xray": (
+        Panel(
+            key="xray", title_es="Rayos X (GOES)", title_en="X-rays (GOES)", unit="W/m²", y="log",
+            series=(
+                Series("0.1-0.8nm", "Largo (0.1-0.8 nm)", "Long (0.1-0.8 nm)", 1),
+                Series("0.05-0.4nm", "Corto (0.05-0.4 nm)", "Short (0.05-0.4 nm)", 2),
+            ),
+            log_bands=((1e-8, "A"), (1e-7, "B"), (1e-6, "C"), (1e-5, "M"), (1e-4, "X")),
+        ),
+    ),
+    "noaa.goes.protons": (
+        Panel(
+            key="protons", title_es="Protones (GOES)", title_en="Protons (GOES)", unit="pfu", y="log",
+            series=(
+                Series(">=10 MeV", "≥10 MeV", "≥10 MeV", 1),
+                Series(">=100 MeV", "≥100 MeV", "≥100 MeV", 2),
+                Series(">=1 MeV", "≥1 MeV", "≥1 MeV", 3),
+            ),
+            ref_lines=((10, "S1"),),  # S1 threshold, ≥10 MeV
+        ),
+    ),
 }
 
-# For the two GOES products, each row carries a channel-selecting `energy`
-# field instead of one column per channel; pick ≤3 channels (same
-# all-pairs-safe slot budget) rather than plotting all 2/8 of them at once.
-ENERGY_CHANNELS: dict[str, list[tuple[str, str, str, int]]] = {
-    "noaa.goes.xray": [
-        ("0.1-0.8nm", "Largo (0.1-0.8 nm)", "Long (0.1-0.8 nm)", 1),
-        ("0.05-0.4nm", "Corto (0.05-0.4 nm)", "Short (0.05-0.4 nm)", 2),
-    ],
-    "noaa.goes.protons": [
-        (">=10 MeV", "≥10 MeV", "≥10 MeV", 1),
-        (">=100 MeV", "≥100 MeV", "≥100 MeV", 2),
-        (">=1 MeV", "≥1 MeV", "≥1 MeV", 3),
-    ],
-}
+HOME_PRODUCT_ORDER = (
+    "noaa.rtsw.mag", "noaa.rtsw.wind", "noaa.kp", "noaa.dst", "noaa.goes.xray", "noaa.goes.protons",
+)
+
+# Kp -> G-scale severity bucket (NOAA: G1=Kp5, G2=Kp6, G3=Kp7, G4=Kp8,
+# G5=Kp9); folded onto the same 4-step status vocabulary as the rest of the
+# portal (ok/stale/serious/error) rather than inventing a 5th scale.
+KP_SEVERITY_THRESHOLDS = (4, 5, 7)  # < 4 -> ok, < 5 -> stale, < 7 -> serious, else error
+KP_SEVERITY_STATUSES = ("ok", "stale", "serious", "error")
+
+
+def kp_severity(value: float | None) -> str | None:
+    if value is None:
+        return None
+    for threshold, status in zip(KP_SEVERITY_THRESHOLDS, KP_SEVERITY_STATUSES, strict=False):
+        if value < threshold:
+            return status
+    return KP_SEVERITY_STATUSES[-1]
+
+
+def product_fields(product_id: str) -> list[str]:
+    return [s.field for panel in PRODUCT_PANELS.get(product_id, ()) for s in panel.series]
+
+
+def xray_class(flux: float | None) -> str | None:
+    """GOES long-channel flux (W/m²) -> the public class letter + multiplier,
+    e.g. "C1.2" — the same breakpoints NOAA's own scales.json uses for R."""
+    if not flux or flux <= 0:
+        return None
+    breakpoints = ((1e-4, "X"), (1e-5, "M"), (1e-6, "C"), (1e-7, "B"))
+    for threshold, letter in breakpoints:
+        if flux >= threshold:
+            return f"{letter}{flux / threshold:.1f}"
+    return f"A{flux / 1e-8:.1f}"

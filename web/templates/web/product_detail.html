@@ -13,24 +13,11 @@
 </p>
 <p>{% trans "Fuente:" %} {{ product.source_provider }}{% if product.source_license %} — {{ product.source_license }}{% endif %}</p>
 
-{{ fields|json_script:fields_id }}
-<div class="swx-chart-block">
-  <div class="range-toggle" role="group" aria-label="{% trans 'Rango' %}">
-    {% for key, label, days in ranges %}
-    <button type="button" data-chart-range="{{ key }}" aria-pressed="{% if key == default_range %}true{% else %}false{% endif %}">{{ label }}</button>
-    {% endfor %}
-  </div>
-  <div
-    class="swx-chart"
-    data-product="{{ product.id }}"
-    data-range="{{ default_range }}"
-    data-endpoint="{% url 'web:product_series_json' product.id %}"
-    data-fields-id="{{ fields_id }}"
-    data-no-data-message="{% trans 'Sin datos todavía.' %}"
-    data-error-message="{% trans 'No se pudo cargar la serie.' %}"
-  >{% trans "Cargando…" %}</div>
-</div>
+{% include "web/_panel_stack.html" %}
 
+<p class="lede">
+  <a href="{% url 'web:data_api' %}">{% trans "Descargar datos (próximamente) →" %}</a>
+</p>
 {% if product.exchange_hapi %}
 <p class="lede">{% trans "Disponible por HAPI una vez publicado el endpoint (M2)." %}</p>
 {% endif %}

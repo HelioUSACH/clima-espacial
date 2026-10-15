@@ -2,8 +2,9 @@ import datetime as dt
 
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
-from django.utils.translation import get_language
+from django.utils.translation import get_language, gettext
 from django.views.decorators.http import require_http_methods
 
 from core.models import Event, Heartbeat, Product, TimeSeriesPoint
@@ -11,10 +12,22 @@ from core.models import Event, Heartbeat, Product, TimeSeriesPoint
 from . import charts
 from .forms import RegistrationForm
 
-RANGE_DAYS = {"1d": 1, "3d": 3, "7d": 7}
-
 FLARE_PRODUCT_ID = "usach.flare.nrt"
 SCALES_PRODUCT_ID = "noaa.scales"
+
+# 12-HANDOFF §4: the home "now" row — each tile's (product_id, energy filter
+# for the two GOES products, which interleave channels on one row instead of
+# one column) and unit. Labels are a manual two-language dict (same
+# convention as STATUS_LABELS/scale titles above) since these are built
+# alongside a dynamically fetched value, not a static template string.
+NOW_ROW_LABELS = {
+    "bz": {"es": "Bz (IMF)", "en": "Bz (IMF)"},
+    "speed": {"es": "Velocidad del viento", "en": "Solar wind speed"},
+    "density": {"es": "Densidad", "en": "Density"},
+    "kp": {"es": "Kp", "en": "Kp"},
+    "xray": {"es": "Rayos X", "en": "X-rays"},
+    "protons": {"es": "Protones ≥10 MeV", "en": "≥10 MeV protons"},
+}
 
 
 def _flare_card_ready():
@@ -59,45 +72,119 @@ def _status_badge(product_id, effective_status, lang):
 
 def home(request):
     lang = _lang(request)
-    context_product_ids = [
-        "noaa.rtsw.mag",
-        "noaa.rtsw.wind",
-        "noaa.kp",
-        "noaa.dst",
-        "noaa.goes.xray",
-        "noaa.goes.protons",
-    ]
-    products = {p.id: p for p in Product.objects.filter(id__in=context_product_ids)}
-    heartbeats = {h.product_id: h for h in Heartbeat.objects.filter(product_id__in=context_product_ids)}
-
-    charts_ctx = []
-    for product_id in context_product_ids:
-        product = products.get(product_id)
-        if product is None:
-            continue  # collector hasn't run yet on a fresh install — degrade, don't break
-        hb = heartbeats.get(product_id)
-        charts_ctx.append(
-            {
-                "product": product,
-                "title": _fmt_title(product, lang),
-                "fields": _chart_fields(product_id, lang),
-                "fields_id": _dom_id(product_id) + "-fields",
-                "status": _status_badge(product_id, hb.effective_status() if hb else "no_data", lang),
-            }
-        )
 
     scales_event = Event.objects.filter(product_id="noaa.scales").order_by("-issued").first()
     scales_badges = _scales_badges(scales_event, lang) if scales_event else []
+
+    panels = [
+        _panel_json(product_id, panel, lang)
+        for product_id in charts.HOME_PRODUCT_ORDER
+        for panel in charts.PRODUCT_PANELS[product_id]
+    ]
 
     return render(
         request,
         "web/home.html",
         {
-            "charts": charts_ctx,
+            "now_row": _now_row(lang),
+            "panels": panels,
+            "chart_i18n": _chart_i18n(),
+            "stack_id": "home",
+            "panels_id": "home-panels",
+            "i18n_id": "home-i18n",
+            "ranges": charts.RANGE_CHOICES,
+            "default_range": charts.DEFAULT_RANGE_HOME,
             "scales_badges": scales_badges,
             "flare_card_ready": _flare_card_ready(),
         },
     )
+
+
+def _latest_row(product_id, energy=None):
+    qs = TimeSeriesPoint.objects.filter(product_id=product_id)
+    if energy is not None:
+        qs = qs.filter(payload__energy=energy)
+    return qs.order_by("-time_tag").first()
+
+
+def _stat_tile(key, lang, value, unit, last_seen_at):
+    # Pre-formatted here, not with the template's `floatformat` (which
+    # returns "" for a non-numeric value like the X-ray class string —
+    # found while checking this page against real seeded dev data, not
+    # just reasoned about), so every tile's `value` is already the exact
+    # display string, no further filtering needed in the template.
+    display = f"{value:.1f}" if isinstance(value, (int, float)) else value
+    return {"key": key, "label": NOW_ROW_LABELS[key][lang], "value": display, "unit": unit, "last_seen_at": last_seen_at}
+
+
+def _now_row(lang):
+    mag = _latest_row("noaa.rtsw.mag")
+    wind = _latest_row("noaa.rtsw.wind")
+    kp_row = _latest_row("noaa.kp")
+    xray_row = _latest_row("noaa.goes.xray", energy="0.1-0.8nm")
+    proton_row = _latest_row("noaa.goes.protons", energy=">=10 MeV")
+    return [
+        _stat_tile("bz", lang, mag.payload.get("bz_gsm") if mag else None, "nT", mag.time_tag if mag else None),
+        _stat_tile(
+            "speed", lang, wind.payload.get("proton_speed") if wind else None, "km/s", wind.time_tag if wind else None
+        ),
+        _stat_tile(
+            "density", lang, wind.payload.get("proton_density") if wind else None, "p/cm³", wind.time_tag if wind else None
+        ),
+        _stat_tile("kp", lang, kp_row.payload.get("kp") if kp_row else None, "", kp_row.time_tag if kp_row else None),
+        _stat_tile(
+            "xray",
+            lang,
+            charts.xray_class(xray_row.payload.get("flux")) if xray_row else None,
+            "",
+            xray_row.time_tag if xray_row else None,
+        ),
+        _stat_tile(
+            "protons", lang, proton_row.payload.get("flux") if proton_row else None, "pfu",
+            proton_row.time_tag if proton_row else None,
+        ),
+    ]
+
+
+def _panel_json(product_id, panel, lang):
+    series = []
+    for s in panel.series:
+        entry = {"field": s.field, "label": s.label_en if lang == "en" else s.label_es}
+        if s.slot is not None:
+            entry["color"] = charts.SLOT_COLOR_VARS[s.slot]
+        series.append(entry)
+    return {
+        "product_id": product_id,
+        "dom_id": _dom_id(product_id) + "-" + panel.key,
+        "endpoint": reverse("web:product_series_json", args=[product_id]),
+        "key": panel.key,
+        "title": panel.title_en if lang == "en" else panel.title_es,
+        "unit": panel.unit,
+        "kind": panel.kind,
+        "y": panel.y,
+        "series": series,
+        "zero_line": panel.zero_line,
+        "ref_lines": [{"value": v, "label": label} for v, label in panel.ref_lines],
+        "log_bands": [{"value": v, "label": label} for v, label in panel.log_bands],
+        "show_source": panel.show_source,
+        "kp_bucket": panel.kp_bucket,
+    }
+
+
+def _chart_i18n():
+    # One shared blob (web/templates/web/_panel_stack.html) instead of
+    # repeating these in every panel's own JSON. gettext() resolves against
+    # the request's actual active language, same msgids already in
+    # locale/en/LC_MESSAGES/django.po for the pre-panel-stack charts.
+    return {
+        "time_label": gettext("Hora"),
+        "no_data_message": gettext("Sin datos todavía."),
+        "error_message": gettext("No se pudo cargar la serie."),
+        "trend_up": gettext("en aumento"),
+        "trend_down": gettext("en descenso"),
+        "trend_flat": gettext("estable"),
+        "active_source": gettext("Fuente activa:"),
+    }
 
 
 def _scales_badges(event, lang):
@@ -120,38 +207,6 @@ def _scales_badges(event, lang):
             }
         )
     return badges
-
-
-def _chart_fields(product_id, lang):
-    spec = charts.CHART_SPECS.get(product_id)
-    if spec:
-        return [
-            {
-                "key": field,
-                "label": label_es if lang == "es" else label_en,
-                "unit": unit,
-                "color": charts.SLOT_COLORS[slot][_mode()],
-            }
-            for field, label_es, label_en, unit, slot in spec
-        ]
-    channels = charts.ENERGY_CHANNELS.get(product_id, [])
-    return [
-        {
-            "key": energy,
-            "label": label_es if lang == "es" else label_en,
-            "unit": "",
-            "color": charts.SLOT_COLORS[slot][_mode()],
-        }
-        for energy, label_es, label_en, slot in channels
-    ]
-
-
-def _mode():
-    # Server-rendered pages can't know the client's OS theme; ship the light
-    # tokens and let charts.js itself pick dark tokens client-side for the
-    # chart chrome. Line colors are close enough in both modes (palette.md)
-    # that using the light step server-side is an acceptable M1 simplification.
-    return "light"
 
 
 def catalogue(request):
@@ -185,7 +240,7 @@ def product_detail(request, product_id):
         "title": _fmt_title(product, lang),
         "status": _status_badge(product_id, hb.effective_status() if hb else "no_data", lang),
         "ranges": charts.RANGE_CHOICES,
-        "default_range": charts.DEFAULT_RANGE,
+        "default_range": charts.DEFAULT_RANGE_PRODUCT,
     }
     if product.kind == "event":
         event = Event.objects.filter(product=product).order_by("-issued").first()
@@ -200,42 +255,55 @@ def product_detail(request, product_id):
             context["scales_badges"] = _scales_badges(event, lang)
         return render(request, "web/product_detail_event.html", context)
 
-    context["fields"] = _chart_fields(product_id, lang)
-    context["fields_id"] = _dom_id(product_id) + "-fields"
+    stack_id = _dom_id(product_id)
+    context["panels"] = [_panel_json(product_id, panel, lang) for panel in charts.PRODUCT_PANELS.get(product_id, ())]
+    context["chart_i18n"] = _chart_i18n()
+    context["stack_id"] = stack_id
+    context["panels_id"] = stack_id + "-panels"
+    context["i18n_id"] = stack_id + "-i18n"
+    context["tall"] = True
     return render(request, "web/product_detail.html", context)
 
 
 def product_series_json(request, product_id):
     product = get_object_or_404(Product, id=product_id)
-    range_key = request.GET.get("range", charts.DEFAULT_RANGE)
-    days = RANGE_DAYS.get(range_key, RANGE_DAYS[charts.DEFAULT_RANGE])
+    range_key = request.GET.get("range", charts.DEFAULT_RANGE_PRODUCT)
+    days = charts.RANGE_DAYS.get(range_key, charts.RANGE_DAYS[charts.DEFAULT_RANGE_PRODUCT])
     since = timezone.now() - dt.timedelta(days=days)
 
     points = (
         TimeSeriesPoint.objects.filter(product=product, time_tag__gte=since)
         .order_by("time_tag")
-        .values("time_tag", "payload")
+        .values("time_tag", "source", "payload")
     )
 
-    spec = charts.CHART_SPECS.get(product_id)
-    if spec:
-        keys = [field for field, *_ in spec]
-        time_values, series = _columns(points, keys)
+    fields = charts.product_fields(product_id)
+    if product_id in charts.ENERGY_CHANNEL_PRODUCTS:
+        time_values, series, source_values = _channel_columns(points, fields)
     else:
-        channels = [c[0] for c in charts.ENERGY_CHANNELS.get(product_id, [])]
-        time_values, series = _channel_columns(points, channels)
+        time_values, series, source_values = _columns(points, fields)
 
-    return JsonResponse({"time": time_values, "series": series})
+    time_values, series, source_values = _insert_gap_markers(time_values, series, source_values)
+
+    payload = {"time": time_values, "series": series}
+    # Active-L1-source annotation (12-HANDOFF §4) — only worth sending for
+    # products that actually carry a spacecraft name per row (mag, wind);
+    # everything else leaves TimeSeriesPoint.source blank.
+    if any(source_values):
+        payload["source"] = source_values
+    return JsonResponse(payload)
 
 
 def _columns(points, keys):
     time_values = []
+    source_values = []
     series = {k: [] for k in keys}
     for row in points:
         time_values.append(int(row["time_tag"].timestamp()))
+        source_values.append(row["source"] or None)
         for k in keys:
             series[k].append(row["payload"].get(k))
-    return time_values, series
+    return time_values, series, source_values
 
 
 def _channel_columns(points, channels):
@@ -243,12 +311,50 @@ def _channel_columns(points, channels):
     # channel per timestamp; re-pivot into aligned columns on the shared
     # timestamp set so uPlot gets one x-array for every series.
     by_time = {}
+    source_by_time = {}
     for row in points:
         t = int(row["time_tag"].timestamp())
         by_time.setdefault(t, {})[row["payload"].get("energy")] = row["payload"].get("flux")
+        if row["source"]:
+            source_by_time[t] = row["source"]
     time_values = sorted(by_time)
     series = {c: [by_time[t].get(c) for t in time_values] for c in channels}
-    return time_values, series
+    source_values = [source_by_time.get(t) for t in time_values]
+    return time_values, series, source_values
+
+
+def _insert_gap_markers(time_values, series, source_values):
+    # 12-HANDOFF §4: "gaps stay gaps (no interpolation across missing
+    # data)". uPlot draws a straight segment between any two consecutive
+    # points regardless of their time distance, so a missing collector run
+    # would otherwise silently bridge the gap with a line. A single `null`
+    # row inserted where a sample is clearly overdue breaks the line there
+    # — uPlot skips both segments touching a null point.
+    #
+    # The threshold comes from the *observed* median spacing in this same
+    # result set, not the manifest's `cadence_seconds` (how often the
+    # collector polls) — those two differ for noaa.kp, whose collector
+    # polls every 15 min for data NOAA itself only updates every 3h,
+    # which made every single real point look like it followed a gap
+    # (confirmed against real seeded dev data, not just reasoned about).
+    if len(time_values) < 3:
+        return time_values, series, source_values
+    deltas = sorted(time_values[i + 1] - time_values[i] for i in range(len(time_values) - 1))
+    median_delta = deltas[len(deltas) // 2]
+    threshold = max(median_delta * 2.5, 120)
+    new_time, new_source = [], []
+    new_series = {k: [] for k in series}
+    for i, t in enumerate(time_values):
+        if new_time and t - new_time[-1] > threshold:
+            new_time.append(new_time[-1] + median_delta)
+            new_source.append(None)
+            for k in new_series:
+                new_series[k].append(None)
+        new_time.append(t)
+        new_source.append(source_values[i])
+        for k in new_series:
+            new_series[k].append(series[k][i])
+    return new_time, new_series, new_source
 
 
 def que_ofrecemos(request):

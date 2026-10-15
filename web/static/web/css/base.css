@@ -40,12 +40,16 @@
   --chart-band-3:    #ec835a;
   --chart-band-4:    #d03b3b;
   --chart-band-5:    #a12323;
+  /* Slots 1-6 of the dataviz skill's validated 8-hue default order
+   * (references/palette.md) — truncating a validated chain keeps every
+   * consecutive pair's CVD separation intact; slots 1-3 already match
+   * SLOT_COLORS in web/charts.py (D-050). */
   --chart-s1:        #2a78d6;
   --chart-s2:        #eb6834;
   --chart-s3:        #1baf7a;
-  --chart-s4:        #9354d6;
-  --chart-s5:        #c2316b;
-  --chart-s6:        #4a7a3c;
+  --chart-s4:        #eda100;
+  --chart-s5:        #e87ba4;
+  --chart-s6:        #008300;
 }
 
 /* Night: a deep-navy "operations" look, distinct from the group site's own
@@ -83,12 +87,12 @@
   --chart-band-3:    #e0794f;
   --chart-band-4:    #e2463f;
   --chart-band-5:    #b8322c;
-  --chart-s1:        #5bb0ff;
-  --chart-s2:        #ff9d5c;
-  --chart-s3:        #3fe0b0;
-  --chart-s4:        #b48cff;
-  --chart-s5:        #ff7fb0;
-  --chart-s6:        #8fd16a;
+  --chart-s1:        #3987e5;
+  --chart-s2:        #d95926;
+  --chart-s3:        #199e70;
+  --chart-s4:        #c98500;
+  --chart-s5:        #d55181;
+  --chart-s6:        #008300;
 }
 
 * { box-sizing: border-box; }
@@ -186,23 +190,50 @@ h2 { font-size: 1.2rem; margin: 2rem 0 .75rem; }
 }
 .scale-badge__text { font-size: .72rem; color: var(--text-secondary); }
 
-/* Chart cards */
-.swx-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
-.swx-chart-block {
+/* "Now" row (12-HANDOFF §4): compact stat tiles above the panel stack —
+ * dataviz skill stat-tile contract (label, value, no delta/trend here, the
+ * charts below carry that). */
+.now-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; margin: 1.25rem 0; }
+.stat-tile {
   background: var(--surface-card); border: 1px solid var(--border); border-radius: 8px;
-  padding: 1rem;
+  padding: .75rem .9rem; display: flex; flex-direction: column; gap: .2rem;
 }
-.swx-chart-block__head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
-.swx-chart-block h3 { margin: 0; font-size: .95rem; }
-.swx-chart-block a { font-size: .82rem; }
+.stat-tile__label { font-size: .75rem; color: var(--text-muted); }
+.stat-tile__value { font-size: 1.35rem; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.stat-tile__value small { font-size: .65em; font-weight: 400; color: var(--text-secondary); }
+.stat-tile__time { font-size: .72rem; color: var(--text-muted); }
+
+/* Range toggle (shared by the home and product-page panel stacks) */
 .range-toggle { display: flex; gap: .25rem; margin: .5rem 0; }
 .range-toggle button {
   font: inherit; font-size: .78rem; padding: .25em .7em; border-radius: 999px;
   border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer;
 }
 .range-toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
-.swx-chart { min-height: 220px; color: var(--text-muted); font-size: .85rem; }
-.swx-chart--empty { display: flex; align-items: center; justify-content: center; }
+
+/* Panel stack (12-HANDOFF §4): one extended, full-width panel per metric,
+ * sharing a time axis and a synced uPlot cursor (web/static/web/js/charts.js).
+ * --panel-chart-height drives both the uPlot height passed from JS and this
+ * CSS min-height, so the two never drift apart. */
+.swx-panel-stack {
+  --panel-chart-height: 190px;
+  display: flex; flex-direction: column; gap: 1rem; margin: 1rem 0 2rem;
+}
+.swx-panel-stack--tall { --panel-chart-height: 260px; }
+@media (min-width: 640px) {
+  .swx-panel-stack { --panel-chart-height: 220px; }
+  .swx-panel-stack--tall { --panel-chart-height: 340px; }
+}
+.swx-panel {
+  background: var(--surface-card); border: 1px solid var(--border); border-radius: 8px;
+  padding: .75rem 1rem 1rem;
+}
+.swx-panel__head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+.swx-panel__head h3 { margin: 0; font-size: .92rem; }
+.swx-panel__source { font-size: .72rem; color: var(--text-muted); }
+.swx-panel__chart { min-height: var(--panel-chart-height); }
+.swx-panel__chart--empty { min-height: 0; }
+.swx-panel__status { color: var(--text-muted); font-size: .85rem; text-align: center; padding: 2rem 0; margin: 0; }
 .u-legend { font-size: .78rem; color: var(--text-secondary); }
 
 /* Catalogue / status tables */

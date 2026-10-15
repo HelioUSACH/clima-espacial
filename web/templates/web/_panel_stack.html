@@ -1,0 +1,22 @@
+{% load i18n %}
+{{ panels|json_script:panels_id }}
+{{ chart_i18n|json_script:i18n_id }}
+
+<div class="range-toggle" data-range-row="{{ stack_id }}" role="group" aria-label="{% trans 'Rango' %}">
+  {% for key, label_es, label_en, days in ranges %}
+  <button type="button" data-chart-range="{{ key }}" aria-pressed="{% if key == default_range %}true{% else %}false{% endif %}">{% if current_language == "en" %}{{ label_en }}{% else %}{{ label_es }}{% endif %}</button>
+  {% endfor %}
+</div>
+
+<div class="swx-panel-stack{% if tall %} swx-panel-stack--tall{% endif %}" data-sync-key="{{ stack_id }}" data-range="{{ default_range }}" data-panels-id="{{ panels_id }}" data-i18n-id="{{ i18n_id }}">
+  {% for panel in panels %}
+  <section class="swx-panel">
+    <div class="swx-panel__head">
+      <h3 id="{{ panel.dom_id }}-title">{{ panel.title }}</h3>
+      <span class="swx-panel__source"></span>
+    </div>
+    <div class="swx-panel__chart" id="{{ panel.dom_id }}" role="img" aria-label="{{ panel.title }}"></div>
+    <p class="swx-panel__status" hidden></p>
+  </section>
+  {% endfor %}
+</div>

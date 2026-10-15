@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n humanize %}
 {% block title %}{% trans "Inicio" %}{% endblock %}
 {% block content %}
 
@@ -14,15 +14,21 @@
   {% else %}
   <p class="lede">{% trans "Las escalas NOAA aún no se han recolectado en este ambiente." %}</p>
   {% endif %}
+
+  <div class="now-row">
+    {% for tile in now_row %}
+    <div class="stat-tile">
+      <span class="stat-tile__label">{{ tile.label }}</span>
+      <span class="stat-tile__value">{% if tile.value %}{{ tile.value }}{% if tile.unit %} <small>{{ tile.unit }}</small>{% endif %}{% else %}—{% endif %}</span>
+      <span class="stat-tile__time">{% if tile.last_seen_at %}{{ tile.last_seen_at|naturaltime }}{% else %}{% trans "sin datos" %}{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
 </section>
 
 <section aria-labelledby="context-heading">
   <h2 id="context-heading">{% trans "Franja de contexto" %}</h2>
-  <div class="swx-chart-grid">
-    {% for c in charts %}
-      {% include "web/_chart_block.html" with product=c.product title=c.title fields=c.fields fields_id=c.fields_id status=c.status %}
-    {% endfor %}
-  </div>
+  {% include "web/_panel_stack.html" %}
 </section>
 
 <section aria-labelledby="offer-heading">
