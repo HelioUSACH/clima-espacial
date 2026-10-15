@@ -6,6 +6,11 @@ that can only read `/srv/swx/backups/` and nothing else on helio. Nightly
 content of that directory is produced by `swx-dump.service`/`.timer`
 (`deploy/swx-dump.sh`): a `pg_dump` + a config bundle, 14-day local retention.
 
+**Treat the backup host as sensitive.** The config bundle in every night's
+backup contains `/etc/swx/swx.env` — `SECRET_KEY` and the database
+credentials — not just public data. Back it up and restrict access to it
+the same way you would the VM itself.
+
 ## One-time setup
 
 **On the backup host** (as the user that will run the pull — a dedicated
@@ -24,25 +29,50 @@ Host swx-backup-pull
 **On helio** (Victor, sudo — this is the one piece of the backup path that
 touches the production VM, so it's a manual step, not a script):
 ```
-useradd --system --shell /usr/sbin/nologin --home-dir /srv/swx/backups swx-backup
-usermod -aG swx swx-backup   # swx-backup.sh already writes that directory group-readable? no — see below
-chmod 750 /srv/swx/backups   # readable by the swx-backup group only
-chgrp swx-backup /srv/swx/backups
-mkdir -p /home/swx-backup/.ssh
-gunzip -c /usr/share/doc/rsync/scripts/rrsync.gz > /usr/local/bin/rrsync
-chmod 755 /usr/local/bin/rrsync
+groupadd swx-backup
+useradd --shell /bin/sh --home-dir /home/swx-backup --create-home --gid swx-backup swx-backup
 ```
-Then add the backup host's **public** key to
-`/home/swx-backup/.ssh/authorized_keys`, forced to read-only `rrsync` scoped
-to the backup directory and nothing else:
-```
-command="/usr/local/bin/rrsync -ro /srv/swx/backups/",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA...the-backup-host's-public-key...
-```
+`/bin/sh`, not `nologin`: sshd runs a forced command by exec'ing the user's
+**login shell** with `-c '<command>'` — `nologin` ignores that and just
+refuses the whole session, so the forced command never runs at all
+(confirmed: with `nologin` the client gets "This account is currently not
+available." and nothing else; switching to `/bin/sh` is what makes the
+`command=` entry below actually execute). The restriction comes entirely
+from that forced command + `restrict`, never from the shell.
 
-**Verify** (from the backup host): `bash deploy/backup-pull.sh` — should copy
-the dump/config files and nothing else; `ssh swx-backup-pull` with no command
-should be refused (the forced command is the only thing that key can ever
-run).
+`swx-dump.sh` already writes `/srv/swx/backups` as `root:swx-backup 750`
+(files `640`) once this group exists — nothing else to `chmod`/`chgrp` here.
+
+Ubuntu 24.04's `rsync` package ships `rrsync` ready to use at
+`/usr/bin/rrsync` — nothing to extract or install. Add the backup host's
+**public** key to `/home/swx-backup/.ssh/authorized_keys` (create that
+directory `700`, the file `600`, owned by `swx-backup`), forced to
+read-only `rrsync` scoped to the backup directory and nothing else:
+```
+command="/usr/bin/rrsync -ro /srv/swx/backups/",restrict ssh-ed25519 AAAA...the-backup-host's-public-key...
+```
+`restrict` (OpenSSH ≥ 7.2) is the modern equivalent of listing
+`no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty` by hand.
+
+## Verify
+
+From the backup host:
+```
+bash deploy/backup-pull.sh
+```
+should copy the dump/config files and nothing else. Two checks worth doing
+once, by hand, before trusting the schedule (both confirmed against a real
+`rrsync` while building this):
+- `rsync -az swx-backup-pull:../../etc/passwd /tmp/x` must be **refused**
+  ("do not use `..` in arg") — confirms the key can't escape the backup
+  directory.
+- `rsync` **to** the remote (anything that would write) must be refused
+  ("sending to read-only server is not allowed") — confirms `-ro` holds.
+
+If a pull ever fails with `change_dir ".../srv/swx/backups/srv/swx/backups"
+failed`, the client asked for the path a second time — `rrsync` already
+anchors at `/srv/swx/backups/`, so the client must use a bare `host:` (see
+`backup-pull.sh`), not `host:/srv/swx/backups/`.
 
 ## Schedule
 

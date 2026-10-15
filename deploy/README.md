@@ -25,6 +25,7 @@ by Victor; nothing here is run by an AI session, AGENTS.md).
 | `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest |
 | `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle (local; pulled off-machine, see below) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |
+| `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051) |
 | `swx-dump.sh` | the nightly backup script itself |
 | `backup-pull.sh`, `README-backup.md` | runs on the **off-machine** backup host, not on helio (D-039) |
 

@@ -8,12 +8,22 @@
 </p>
 <p>{% trans "Licencia de los datos: CC BY 4.0 — ver cómo citar en cada producto del catálogo." %}</p>
 
+<h2>{% trans "Aviso de privacidad" %}</h2>
+<p class="lede">
+  {% trans "Qué recopilamos: nombre, correo, institución, sector y el uso previsto que describas. Por qué: para habilitar el acceso a datos/API y para reportar uso agregado por sector al proyecto FONDEF/FIU. Quién lo ve: el equipo del proyecto; nunca se vende ni se comparte con terceros. Cuánto se conserva: mientras el registro esté activo. Cómo pedir la eliminación de tus datos: escríbenos." %}
+  <a href="mailto:{{ site_contact_email }}">{{ site_contact_email }}</a>.
+</p>
+
 <form method="post" novalidate>
   {% csrf_token %}
   {% for field in form %}
-  <div class="form-field">
-    {{ field.label_tag }}
-    {{ field }}
+  <div class="form-field{% if field.name == 'consent_given' %} form-field--checkbox{% endif %}">
+    {% if field.name == 'consent_given' %}
+      <label>{{ field }} {{ field.label }}</label>
+    {% else %}
+      {{ field.label_tag }}
+      {{ field }}
+    {% endif %}
     {{ field.errors }}
   </div>
   {% endfor %}

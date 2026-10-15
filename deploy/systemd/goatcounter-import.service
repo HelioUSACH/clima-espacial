@@ -1,0 +1,31 @@
+# Analytics with no browser JavaScript (D-026/D-043, revised D-051/P3): a
+# self-hosted goatcounter.com script tag would point at nothing (GoatCounter
+# listens on localhost only). Instead this service continuously imports
+# pageviews from nginx's own access log via GoatCounter's API, restricted to
+# /clima-espacial/ paths — verified end to end (import -> hit_counts) before
+# writing this unit.
+[Unit]
+Description=Clima Espacial USACH: import pageviews from nginx's access log into GoatCounter
+After=network.target goatcounter.service
+Wants=goatcounter.service
+
+[Service]
+Type=simple
+User=swx
+# swx is in the `adm` group (provision.sh) so it can read nginx's log
+# without running as root.
+EnvironmentFile=/etc/swx/goatcounter-import.env
+ExecStart=/opt/goatcounter/goatcounter import -site http://127.0.0.1:8081 \
+    -format combined -exclude static -exclude redirect \
+    -exclude "!path:glob:/clima-espacial/**" \
+    -follow /var/log/nginx/access.log
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

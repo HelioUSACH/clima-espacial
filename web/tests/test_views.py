@@ -77,9 +77,31 @@ def test_data_api_registration_round_trip(client):
             "institution": "USACH",
             "sector": "research",
             "intended_use": "Testing",
+            "consent_given": "on",
         },
     )
     assert response.status_code == 302
     from web.models import RegistrationRequest
 
-    assert RegistrationRequest.objects.filter(email="test@example.org").exists()
+    registration = RegistrationRequest.objects.get(email="test@example.org")
+    assert registration.consent_given is True
+
+
+@pytest.mark.django_db
+def test_data_api_registration_requires_consent(client):
+    # D-051/P6: a registration that stores personal data must not be
+    # possible without ticking the consent checkbox.
+    response = client.post(
+        reverse("web:data_api"),
+        {
+            "name": "Test User",
+            "email": "no-consent@example.org",
+            "institution": "USACH",
+            "sector": "research",
+            "intended_use": "Testing",
+        },
+    )
+    assert response.status_code == 200  # re-renders the form with an error, no redirect
+    from web.models import RegistrationRequest
+
+    assert not RegistrationRequest.objects.filter(email="no-consent@example.org").exists()

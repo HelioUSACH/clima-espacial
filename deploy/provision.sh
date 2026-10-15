@@ -63,7 +63,6 @@ SWX_HTTPS=1
 SWX_SCRIPT_NAME=/clima-espacial
 STATIC_ROOT=/var/www/clima-espacial/static
 SWX_DATA_DIR=/srv/swx/data
-GOATCOUNTER_SITE=
 FIN
     chown root:swx "$ARCHIVO_ENV"
     chmod 640 "$ARCHIVO_ENV"
@@ -72,7 +71,7 @@ else
     echo "   $ARCHIVO_ENV already present, left as is"
 fi
 
-echo "==> 7/7 GoatCounter binary (D-043)"
+echo "==> 7/7 GoatCounter binary (D-043/D-051 — no browser JS: imported from nginx's own access log, never a hosted goatcounter.com script tag)"
 if [[ ! -x /opt/goatcounter/goatcounter ]]; then
     install -d -o root -g root -m 755 /opt/goatcounter
     curl -sL "$GOATCOUNTER_URL" | gunzip > /opt/goatcounter/goatcounter
@@ -80,24 +79,54 @@ if [[ ! -x /opt/goatcounter/goatcounter ]]; then
 else
     echo "   already installed, left as is"
 fi
-install -o root -g root -m 644 "$(dirname "${BASH_SOURCE[0]}")/systemd/goatcounter.service" /etc/systemd/system/
+# adm: the group that owns nginx's logs on Debian/Ubuntu — the log-import
+# service (below) reads /var/log/nginx/access.log as this user, never root.
+usermod -aG adm swx
+SYSTEMD_SRC="$(dirname "${BASH_SOURCE[0]}")/systemd"
+install -o root -g root -m 644 \
+    "$SYSTEMD_SRC/goatcounter.service" \
+    "$SYSTEMD_SRC/goatcounter-import.service" \
+    /etc/systemd/system/
 systemctl daemon-reload
 
-echo
-echo "===================== MANUAL STEPS ====================="
-echo "1. nginx (only remaining manual step — this script never touches the"
-echo "   live group-site vhost): install the snippet, then add ONE line"
-echo "   inside the existing TLS server{} block for helio.fisica.usach.cl:"
-echo
-echo "     install -o root -g root -m 644 $(dirname "${BASH_SOURCE[0]}")/nginx-clima-espacial.conf /etc/nginx/snippets/clima-espacial.conf"
-echo "     # then edit /etc/nginx/sites-available/helio and add:"
-echo "     #     include snippets/clima-espacial.conf;"
-echo "     nginx -t && systemctl reload nginx"
-echo
-echo "2. First deploy: bash deploy.sh <tag>  (e.g. v0.1.0)"
-echo
-echo "3. GoatCounter: create the first site/user, then start the service:"
-echo "     runuser -u swx -- /opt/goatcounter/goatcounter create -domain localhost:8081 -email you@usach.cl"
-echo "     systemctl enable --now goatcounter"
-echo "   then set GOATCOUNTER_SITE in $ARCHIVO_ENV and restart swx-web."
-echo "=========================================================="
+cat <<'INSTRUCTIONS'
+
+===================== MANUAL STEPS =====================
+1. nginx (only remaining manual step -- this script never touches the
+   live group-site vhost): install the snippet, then add ONE line inside
+   the existing TLS server{} block for helio.fisica.usach.cl:
+
+     install -o root -g root -m 644 deploy/nginx-clima-espacial.conf \
+         /etc/nginx/snippets/clima-espacial.conf
+     # then edit /etc/nginx/sites-available/helio and add:
+     #     include snippets/clima-espacial.conf;
+     nginx -t && systemctl reload nginx
+
+2. First deploy: bash deploy.sh <tag>  (e.g. v0.1.0)
+
+3. GoatCounter (D-051 -- verified against the real v2.7.0 CLI; -vhost needs
+   2+ domain labels, it does not need to actually resolve anywhere since
+   this is a single-site self-hosted instance reached only over an SSH
+   tunnel):
+
+     runuser -u swx -- /opt/goatcounter/goatcounter db create site \
+         -db sqlite+/srv/swx/goatcounter/db.sqlite3 -createdb \
+         -vhost stats.clima-espacial.internal -user.email you@usach.cl
+     systemctl enable --now goatcounter
+
+   Then an API key for the log-import service (user 1 is the one just
+   created above -- check with
+   "goatcounter db show user -db sqlite+/srv/swx/goatcounter/db.sqlite3 -find you@usach.cl"
+   if in doubt):
+
+     runuser -u swx -- /opt/goatcounter/goatcounter db create apitoken \
+         -db sqlite+/srv/swx/goatcounter/db.sqlite3 -user 1 -name import -perm count
+
+   Put the token this prints into /etc/swx/goatcounter-import.env as:
+     GOATCOUNTER_API_KEY=<token>
+   Then:
+     chown root:swx /etc/swx/goatcounter-import.env
+     chmod 640 /etc/swx/goatcounter-import.env
+     systemctl enable --now goatcounter-import
+==========================================================
+INSTRUCTIONS

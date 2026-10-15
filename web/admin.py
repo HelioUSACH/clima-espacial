@@ -5,6 +5,6 @@ from .models import RegistrationRequest
 
 @admin.register(RegistrationRequest)
 class RegistrationRequestAdmin(admin.ModelAdmin):
-    list_display = ("name", "institution", "sector", "email", "created_at")
-    list_filter = ("sector",)
+    list_display = ("name", "institution", "sector", "email", "consent_given", "created_at")
+    list_filter = ("sector", "consent_given")
     readonly_fields = ("created_at",)

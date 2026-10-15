@@ -66,6 +66,29 @@ CI (`.github/workflows/ci.yml`) runs lint, tests, manifest validation,
 
 ## Branching
 
-`main` is protected. Work on a feature branch, open a PR, wait for CI and the
-required review. Deploys are a tagged release pulled onto the server by a
-human running `deploy/deploy.sh` — never a direct push to the server.
+`main` is meant to stay protected (GitHub branch protection isn't actually
+configured yet — until it is, treat this as a convention, not an enforced
+rule). Work on a feature branch, open a PR, wait for CI and the required
+review. Deploys are a tagged release pulled onto the server by a human
+running `deploy/deploy.sh` — never a direct push to the server.
+
+## For the maintainer: keep `.git` outside OneDrive
+
+This repository's working tree lives inside a OneDrive-synced folder that
+also doubles as the private planning record (`.gitignore` keeps the two from
+mixing — see `docs/DECISIONS.md` D-047). That's fine for the working tree,
+but **the `.git` directory itself should not live there**: the Department's
+own platform repo lost its history twice this way (OneDrive syncing mid-write
+corrupts git's object store). Move it out once, from WSL:
+
+```
+mkdir -p ~/repos
+git init --separate-git-dir ~/repos/clima-espacial.git
+```
+
+(the parent directory must already exist — `git init` won't create it) run
+from the repo root — this relocates `.git` to a plain Linux path while
+the working tree (and its sync with the private planning files) stays
+exactly where it is. Never run `git clean -x` (or `-f` without checking
+`git status` first) in this folder: an untracked file here might be a
+private planning document, not build cruft.

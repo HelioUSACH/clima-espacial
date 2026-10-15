@@ -49,8 +49,12 @@ if SWX_SCRIPT_NAME:
 
 SWX_DATA_DIR = Path(os.environ.get("SWX_DATA_DIR") or BASE_DIR / "data")
 
-# Cookieless analytics (D-043/D-026): empty disables the tracking snippet.
-GOATCOUNTER_SITE = os.environ.get("GOATCOUNTER_SITE", "")
+# D-051/P6: shown on the data/API registration form's privacy notice. No
+# real address is known yet (not something to guess at for a form that
+# collects personal data) — set SWX_CONTACT_EMAIL before taking real
+# registrations.
+SITE_CONTACT_EMAIL = os.environ.get("SWX_CONTACT_EMAIL", "[pendiente — ver docs/DECISIONS.md D-051]")
+
 
 # --- Django --------------------------------------------------------------------
 

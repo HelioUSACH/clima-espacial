@@ -211,3 +211,14 @@ msgstr "Back to the homepage"
 
 msgid "Emitido: %(issued)s"
 msgstr "Issued: %(issued)s"
+msgid "Aviso de privacidad"
+msgstr "Privacy notice"
+
+msgid "Qué recopilamos: nombre, correo, institución, sector y el uso previsto que describas. Por qué: para habilitar el acceso a datos/API y para reportar uso agregado por sector al proyecto FONDEF/FIU. Quién lo ve: el equipo del proyecto; nunca se vende ni se comparte con terceros. Cuánto se conserva: mientras el registro esté activo. Cómo pedir la eliminación de tus datos: escríbenos."
+msgstr "What we collect: name, email, institution, sector, and the intended use you describe. Why: to enable data/API access and to report aggregate usage by sector to the FONDEF/FIU project. Who sees it: the project team; it is never sold or shared with third parties. How long we keep it: while the registration stays active. How to request deletion of your data: write to us."
+
+msgid "He leído el aviso de privacidad y acepto que mis datos se usen para este fin."
+msgstr "I have read the privacy notice and agree to my data being used for this purpose."
+
+msgid "Debes aceptar el aviso de privacidad para continuar."
+msgstr "You must accept the privacy notice to continue."

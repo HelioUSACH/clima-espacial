@@ -28,8 +28,12 @@ git clone --quiet --depth 1 --branch "$TAG" "$REPO_URL" "$WORK/src"
 
 echo "==> Installing code (root-owned, read-only to the service user)"
 install -d -o root -g root -m 755 "$DESTINO"
+# --exclude='venv/': otherwise --delete wipes it every deploy (it never
+# exists in the freshly-cloned source) — full downtime + reinstall on every
+# release, confirmed by reproducing it locally with plain rsync before
+# writing this exclude.
 rsync -rlt --delete --chown=root:root --chmod=D755,F644 \
-    --exclude='.git/' \
+    --exclude='.git/' --exclude='venv/' \
     "$WORK/src/" "$DESTINO/"
 
 echo "==> venv + dependencies"

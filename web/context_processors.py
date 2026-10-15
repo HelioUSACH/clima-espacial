@@ -11,5 +11,5 @@ def site(request):
     return {
         "site_name": SITE_NAME,
         "site_byline": SITE_BYLINE,
-        "goatcounter_site": settings.GOATCOUNTER_SITE,
+        "site_contact_email": settings.SITE_CONTACT_EMAIL,
     }

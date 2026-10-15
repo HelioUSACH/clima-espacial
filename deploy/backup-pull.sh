@@ -9,7 +9,12 @@ REMOTE="${SWX_BACKUP_REMOTE:-swx-backup-pull}"   # ~/.ssh/config Host alias
 DEST="${SWX_BACKUP_DEST:-$HOME/backups/clima-espacial-usach}"
 
 mkdir -p "$DEST"
-# The remote command is fixed by the forced `rrsync -ro` entry in helio's
-# authorized_keys (README-backup.md) — this path argument is only a label.
-rsync -az --delete "$REMOTE:/srv/swx/backups/" "$DEST/"
+# `rrsync -ro /srv/swx/backups/` (the forced command in helio's
+# authorized_keys, README-backup.md) already restricts and anchors the
+# remote path — rrsync treats whatever path the client sends as *relative
+# to that restricted root*, so a bare "host:" (no path at all) is required.
+# Repeating the path here (e.g. "$REMOTE:/srv/swx/backups/") makes rrsync
+# concatenate the two and fail with "change_dir .../srv/swx/backups/srv/swx/backups
+# failed: No such file or directory" — confirmed against a real rrsync.
+rsync -az --delete "$REMOTE:" "$DEST/"
 echo "Pulled backups into $DEST"

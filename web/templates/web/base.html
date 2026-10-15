@@ -58,9 +58,11 @@
     </p>
   </footer>
 
-  {% if goatcounter_site %}
-  <script data-goatcounter="https://{{ goatcounter_site }}.goatcounter.com/count" async src="https://{{ goatcounter_site }}.goatcounter.com/count.js"></script>
-  {% endif %}
+  {# No analytics script tag (D-051/P3): GoatCounter is self-hosted and only
+     reachable on localhost (goatcounter.service), so a browser-loaded
+     <script src="https://…goatcounter.com/count.js"> would point at nothing.
+     Pageviews are recorded server-side instead, from nginx's own access log
+     — see deploy/systemd/goatcounter-import.service. #}
   <script src="{% static 'web/vendor/uplot/uPlot.iife.min.js' %}"></script>
   <script defer src="{% static 'web/js/charts.js' %}"></script>
   {% block extra_scripts %}{% endblock %}
