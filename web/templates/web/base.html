@@ -25,8 +25,23 @@
         <a href="{% url 'web:about' %}">{% trans "Acerca" %}</a>
       </nav>
       <div class="lang-switch">
-        <a href="/" {% if LANGUAGE_CODE == "es" %}aria-current="true"{% endif %}>ES</a>
-        <a href="/en/" {% if LANGUAGE_CODE == "en" %}aria-current="true"{% endif %}>EN</a>
+        {% get_current_language as CURRENT_LANG %}
+        {# Posts to Django's built-in set_language view rather than linking to a
+           hardcoded "/" or "/en/": those break under FORCE_SCRIPT_NAME once this
+           is deployed at /clima-espacial/ (found while rehearsing the prod
+           sub-path locally before the first real deploy). #}
+        <form action="{% url 'set_language' %}" method="post" class="lang-switch__form">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.path }}">
+          <input type="hidden" name="language" value="es">
+          <button type="submit" {% if CURRENT_LANG == "es" %}aria-current="true"{% endif %}>ES</button>
+        </form>
+        <form action="{% url 'set_language' %}" method="post" class="lang-switch__form">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.path }}">
+          <input type="hidden" name="language" value="en">
+          <button type="submit" {% if CURRENT_LANG == "en" %}aria-current="true"{% endif %}>EN</button>
+        </form>
       </div>
     </div>
   </header>
