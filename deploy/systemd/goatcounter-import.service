@@ -4,6 +4,17 @@
 # pageviews from nginx's own access log via GoatCounter's API, restricted to
 # /clima-espacial/ paths — verified end to end (import -> hit_counts) before
 # writing this unit.
+#
+# D-053/12-HANDOFF item 5: GoatCounter looks sites up by Host header
+# (site.ByHost), so `-site http://127.0.0.1:8081` fails with
+# "site.ByHost ... no rows in result set" even though the server itself is
+# reachable there — confirmed against the real v2.7.0 binary. `-site` must
+# be the vhost name the site was created with (provision.sh step 7's
+# `-vhost stats.clima-espacial.internal`), which provision.sh now also adds
+# to /etc/hosts so it resolves on the server itself. The three extra
+# -exclude globs stop the charts' own data requests, the admin and the
+# language switch from being counted as page views (11-MANUAL-STEPS.md
+# Part 1 — found running this for real).
 [Unit]
 Description=Clima Espacial USACH: import pageviews from nginx's access log into GoatCounter
 After=network.target goatcounter.service
@@ -15,9 +26,12 @@ User=swx
 # swx is in the `adm` group (provision.sh) so it can read nginx's log
 # without running as root.
 EnvironmentFile=/etc/swx/goatcounter-import.env
-ExecStart=/opt/goatcounter/goatcounter import -site http://127.0.0.1:8081 \
+ExecStart=/opt/goatcounter/goatcounter import -site http://stats.clima-espacial.internal:8081 \
     -format combined -exclude static -exclude redirect \
     -exclude "!path:glob:/clima-espacial/**" \
+    -exclude "path:glob:**serie.json*" \
+    -exclude "path:glob:/clima-espacial/gestion/**" \
+    -exclude "path:glob:/clima-espacial/i18n/**" \
     -follow /var/log/nginx/access.log
 Restart=on-failure
 RestartSec=10

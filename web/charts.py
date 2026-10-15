@@ -15,12 +15,16 @@ SLOT_COLORS = {
     3: {"light": "#1baf7a", "dark": "#199e70"},  # aqua
 }
 
+# CSS custom properties, not literal hex (D-053, 12-HANDOFF §2 theme
+# contract): "every colour comes from CSS custom properties", so a status
+# badge repaints on the day/night toggle instead of staying stuck in one
+# theme's shade. Defined on :root / :root[data-theme='night'] in base.css.
 STATUS_COLORS = {
-    "ok": "#0ca30c",
-    "stale": "#fab219",
-    "error": "#d03b3b",
-    "no_data": "#898781",  # not a severity — "nothing published yet", kept neutral
-    "pending": "#898781",  # same neutral — "en preparación" isn't a severity either
+    "ok": "var(--status-ok)",
+    "stale": "var(--status-stale)",
+    "error": "var(--status-error)",
+    "no_data": "var(--status-nodata)",  # not a severity — "nothing published yet", kept neutral
+    "pending": "var(--status-nodata)",  # same neutral — "en preparación" isn't a severity either
 }
 STATUS_LABELS = {
     "ok": {"es": "al día", "en": "live"},
@@ -39,7 +43,7 @@ SCALE_STATUS = {0: "ok", 1: "stale", 2: "stale", 3: "serious", 4: "serious", 5: 
 SCALE_COLORS = {
     "ok": STATUS_COLORS["ok"],
     "stale": STATUS_COLORS["stale"],
-    "serious": "#ec835a",
+    "serious": "var(--status-serious)",
     "error": STATUS_COLORS["error"],
 }
 
@@ -48,7 +52,6 @@ SCALE_COLORS = {
 # values for the ES page; an unrecognised value (a future NOAA wording
 # change) falls back to the raw string rather than crashing or hiding it.
 NOAA_SCALE_TEXT_ES = {
-    "none": "ninguna",
     "Minor": "menor",
     "Moderate": "moderada",
     "Strong": "fuerte",
@@ -56,10 +59,15 @@ NOAA_SCALE_TEXT_ES = {
     "Extreme": "extrema",
 }
 
+# 12-HANDOFF item 4: "none"/"ninguna" under a scale badge read as a missing
+# label, not "no alert" — a short explicit state reads better than NOAA's
+# own bare "none".
+NO_ALERT_TEXT = {"es": "sin alerta", "en": "no alert"}
+
 
 def scale_text(raw_text, lang):
-    if not raw_text:
-        return "-"
+    if not raw_text or raw_text == "none":
+        return NO_ALERT_TEXT[lang]
     if lang == "es":
         return NOAA_SCALE_TEXT_ES.get(raw_text, raw_text)
     return raw_text

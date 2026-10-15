@@ -1,0 +1,9 @@
+<div class="scale-row">
+  {% for b in scales_badges %}
+  <div class="scale-badge">
+    <span class="scale-badge__letter">{{ b.title }}</span>
+    <span class="scale-badge__level" style="background:{{ b.color }}">{{ b.level }}</span>
+    <span class="scale-badge__text">{{ b.text }}</span>
+  </div>
+  {% endfor %}
+</div>

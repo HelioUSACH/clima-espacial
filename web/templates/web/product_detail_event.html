@@ -16,7 +16,9 @@
 {% if latest_event %}
 <h2>{% trans "Último evento" %}</h2>
 <p>{% blocktrans with issued=latest_event.issued %}Emitido: {{ issued }}{% endblocktrans %}</p>
-<pre class="swx-chart-block">{{ latest_event.payload }}</pre>
+{% if scales_badges %}
+{% include "web/_scale_badges.html" %}
+{% endif %}
 {% else %}
 <p>{% trans "Todavía no hay eventos recolectados en este ambiente." %}</p>
 {% endif %}

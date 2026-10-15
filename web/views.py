@@ -14,6 +14,7 @@ from .forms import RegistrationForm
 RANGE_DAYS = {"1d": 1, "3d": 3, "7d": 7}
 
 FLARE_PRODUCT_ID = "usach.flare.nrt"
+SCALES_PRODUCT_ID = "noaa.scales"
 
 
 def _flare_card_ready():
@@ -187,7 +188,16 @@ def product_detail(request, product_id):
         "default_range": charts.DEFAULT_RANGE,
     }
     if product.kind == "event":
-        context["latest_event"] = Event.objects.filter(product=product).order_by("-issued").first()
+        event = Event.objects.filter(product=product).order_by("-issued").first()
+        context["latest_event"] = event
+        # 12-HANDOFF item 4: this used to dump the raw event payload dict
+        # (internal field names, English NOAA text) straight onto a public
+        # page. noaa.scales reuses the same translated badge rendering as
+        # the home page instead; any other kind=event product (e.g. the
+        # flare detector) just gets the "emitted at" line above — never the
+        # raw payload — until it has its own designed view.
+        if event and product_id == SCALES_PRODUCT_ID:
+            context["scales_badges"] = _scales_badges(event, lang)
         return render(request, "web/product_detail_event.html", context)
 
     context["fields"] = _chart_fields(product_id, lang)

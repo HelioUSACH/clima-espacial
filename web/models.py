@@ -9,27 +9,32 @@ submitted; `consent_given` records that the checkbox was ticked (an audit
 trail, not just a UI gate)."""
 
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 
 class RegistrationRequest(models.Model):
+    # 12-HANDOFF item 4: these were plain Spanish strings, so the EN page
+    # (/clima-espacial/en/datos-api/) showed Spanish field labels and sector
+    # choices regardless of language — gettext_lazy() defers translation to
+    # render time, same as every other user-facing string (D-008).
     SECTOR_CHOICES = [
-        ("power", "Operador eléctrico / power grid"),
-        ("mining_gnss", "Minería / GNSS"),
-        ("satellites", "Satélites"),
-        ("meteorological", "Servicio meteorológico / DMC"),
-        ("research", "Investigación / universidad"),
-        ("other", "Otro"),
+        ("power", _("Operador eléctrico / power grid")),
+        ("mining_gnss", _("Minería / GNSS")),
+        ("satellites", _("Satélites")),
+        ("meteorological", _("Servicio meteorológico / DMC")),
+        ("research", _("Investigación / universidad")),
+        ("other", _("Otro")),
     ]
 
-    name = models.CharField("Nombre", max_length=200)
-    email = models.EmailField("Correo")
-    institution = models.CharField("Institución", max_length=200)
-    sector = models.CharField("Sector", max_length=32, choices=SECTOR_CHOICES)
-    intended_use = models.TextField("Uso previsto", blank=True, default="")
+    name = models.CharField(_("Nombre"), max_length=200)
+    email = models.EmailField(_("Correo"))
+    institution = models.CharField(_("Institución"), max_length=200)
+    sector = models.CharField(_("Sector"), max_length=32, choices=SECTOR_CHOICES)
+    intended_use = models.TextField(_("Uso previsto"), blank=True, default="")
     consent_given = models.BooleanField(
-        "Consentimiento",
+        _("Consentimiento"),
         default=False,
-        help_text="El usuario aceptó el aviso de privacidad al enviar el formulario.",
+        help_text=_("El usuario aceptó el aviso de privacidad al enviar el formulario."),
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

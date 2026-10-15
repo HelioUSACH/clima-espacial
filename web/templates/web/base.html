@@ -4,12 +4,30 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {% comment %}
+  Theme contract (12-HANDOFF-2026-10-15.md §2, D-053): set data-theme before
+  first paint so there is no flash. Default is "day" even under OS dark mode
+  -- matching the group site's own inline script -- because the stored value
+  is shared via the SAME localStorage key across helio.fisica.usach.cl, so a
+  choice made on one site must carry over to the other exactly, including
+  its default.
+  {% endcomment %}
+  <script>
+    (function () {
+      var theme = "day";
+      try { theme = localStorage.getItem("theme") || "day"; } catch (e) {}
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  {% comment %}
   Q4 (10-STATUS-AND-NEXT.md): every page overrides {% block title %} with
   just its own name, so the suffix must be the portal's own name (D-033),
   not the HelioUSACH byline -- "Inicio - Clima Espacial USACH", not
   "Inicio - HelioUSACH".
   {% endcomment %}
   <title>{% block title %}{{ site_name }}{% endblock %} — {{ site_name }}</title>
+  <link rel="alternate" hreflang="es" href="{{ alt_url_es_abs }}">
+  <link rel="alternate" hreflang="en" href="{{ alt_url_en_abs }}">
+  <link rel="alternate" hreflang="x-default" href="{{ alt_url_es_abs }}">
   <link rel="stylesheet" href="{% static 'web/vendor/uplot/uPlot.min.css' %}">
   <link rel="stylesheet" href="{% static 'web/css/base.css' %}">
   {% block extra_head %}{% endblock %}
@@ -18,11 +36,13 @@
   <a class="skip-link" href="#main">{% trans "Saltar al contenido" %}</a>
   <header class="site-header">
     <div class="site-header__inner">
-      <a class="wordmark" href="{% url 'web:home' %}">
-        <span class="wordmark__name">{{ site_name }}</span>
-        <span class="wordmark__byline">{{ site_byline }}</span>
-      </a>
-      <nav class="main-nav" aria-label="{% trans 'Navegación principal' %}">
+      <div class="brand-group">
+        <a class="back-link" href="{{ group_site_home }}">&larr; HelioUSACH</a>
+        <a class="wordmark" href="{% url 'web:home' %}">
+          <span class="wordmark__name">{{ site_name }}</span>
+        </a>
+      </div>
+      <nav class="main-nav" id="main-nav" aria-label="{% trans 'Navegación principal' %}">
         <a href="{% url 'web:home' %}">{% trans "Inicio" %}</a>
         <a href="{% url 'web:catalogue' %}">{% trans "Productos y modelos" %}</a>
         <a href="{% url 'web:que_ofrecemos' %}">{% trans "Qué ofrecemos" %}</a>
@@ -30,26 +50,28 @@
         <a href="{% url 'web:status' %}">{% trans "Estado" %}</a>
         <a href="{% url 'web:about' %}">{% trans "Acerca" %}</a>
       </nav>
-      <div class="lang-switch">
-        {% get_current_language as CURRENT_LANG %}
-        {% comment %}
-        Posts to Django's built-in set_language view rather than linking to a
-        hardcoded "/" or "/en/": those break under FORCE_SCRIPT_NAME once this
-        is deployed at /clima-espacial/ (found while rehearsing the prod
-        sub-path locally before the first real deploy).
-        {% endcomment %}
-        <form action="{% url 'set_language' %}" method="post" class="lang-switch__form">
-          {% csrf_token %}
-          <input type="hidden" name="next" value="{{ request.path }}">
-          <input type="hidden" name="language" value="es">
-          <button type="submit" {% if CURRENT_LANG == "es" %}aria-current="true"{% endif %}>ES</button>
-        </form>
-        <form action="{% url 'set_language' %}" method="post" class="lang-switch__form">
-          {% csrf_token %}
-          <input type="hidden" name="next" value="{{ request.path }}">
-          <input type="hidden" name="language" value="en">
-          <button type="submit" {% if CURRENT_LANG == "en" %}aria-current="true"{% endif %}>EN</button>
-        </form>
+      <div class="header-tools">
+        <div class="lang-switch">
+          {% comment %}
+          Plain links to the counterpart URL (12-HANDOFF item 2, D-053):
+          posting to Django's set_language view with `next=request.path`
+          (the OLD approach) silently failed under FORCE_SCRIPT_NAME --
+          set_language resolves `next` against unprefixed urlpatterns, so a
+          script-prefixed path never matches and the redirect lands back on
+          the same page/language. alt_url_es/alt_url_en are computed from
+          request.path_info server-side (web/context_processors.py) and
+          already carry the script prefix back via reverse().
+          {% endcomment %}
+          <a href="{{ alt_url_es }}" hreflang="es" lang="es" {% if current_language == "es" %}aria-current="true"{% endif %}>ES</a>
+          <a href="{{ alt_url_en }}" hreflang="en" lang="en" {% if current_language == "en" %}aria-current="true"{% endif %}>EN</a>
+        </div>
+        <button id="theme-toggle" class="icon-btn theme-toggle" type="button" aria-pressed="false" aria-label="{% trans 'Cambiar tema' %}">
+          <svg class="icon-day" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="icon-night" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+        </button>
+        <button id="menu-toggle" class="icon-btn menu-toggle" type="button" aria-label="{% trans 'Abrir menú' %}" aria-controls="main-nav" aria-expanded="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
       </div>
     </div>
   </header>
@@ -75,6 +97,7 @@
   {% endcomment %}
   <script src="{% static 'web/vendor/uplot/uPlot.iife.min.js' %}"></script>
   <script defer src="{% static 'web/js/charts.js' %}"></script>
+  <script defer src="{% static 'web/js/theme.js' %}"></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

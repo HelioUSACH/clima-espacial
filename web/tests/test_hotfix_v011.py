@@ -213,6 +213,29 @@ def test_status_page_never_shows_raw_collector_detail_text(client_localhost, one
 
 
 @pytest.mark.django_db
+def test_scales_product_detail_shows_badges_not_raw_payload(client_localhost, monkeypatch):
+    # 12-HANDOFF item 4: this page used to dump the raw event payload dict
+    # (internal keys like "DateStamp"/"MinorProb") straight onto a public
+    # page via {{ latest_event.payload }} -- same class of leak as the
+    # Heartbeat.detail bug this file already regression-tests above.
+    monkeypatch.setattr(swxkit, "get_manifest", _manifest_for)
+    swxkit.publish_event(
+        "noaa.scales",
+        {"days": {"0": {"DateStamp": "2026-10-15", "TimeStamp": "00:00:00",
+                         "R": {"Scale": "2", "Text": "Moderate", "MinorProb": "40"},
+                         "S": {"Scale": "0", "Text": "none"},
+                         "G": {"Scale": "0", "Text": "none"}}}},
+        valid_from="2026-10-15T00:00:00Z",
+        issued="2026-10-15T00:00:00Z",
+    )
+    body = client_localhost.get(reverse("web:product_detail", args=["noaa.scales"])).content.decode()
+    assert "DateStamp" not in body
+    assert "MinorProb" not in body
+    assert "scale-badge" in body
+    assert "moderada" in body  # translated R-scale text, not raw "Moderate"
+
+
+@pytest.mark.django_db
 def test_scale_badge_text_is_translated(client_localhost, monkeypatch):
     monkeypatch.setattr(swxkit, "get_manifest", _manifest_for)
     swxkit.publish_event(
@@ -225,5 +248,9 @@ def test_scale_badge_text_is_translated(client_localhost, monkeypatch):
         issued="2026-10-15T00:00:00Z",
     )
     body = client_localhost.get(reverse("web:home")).content.decode()
-    assert "ninguna" in body
+    # D-053/12-HANDOFF item 4: NOAA's bare "none" reads as a missing label,
+    # not "no alert" — shown as a short explicit state instead of a literal
+    # translation of "none".
+    assert "sin alerta" in body
+    assert "ninguna" not in body
     assert ">none<" not in body

@@ -1,6 +1,15 @@
 /* Design tokens (dataviz skill palette.md — brand-neutral placeholder,
  * identity v1 is M2 polish, docs/DECISIONS.md D-050). System sans only:
- * no vendored webfont to keep M1 scope honest. */
+ * no vendored webfont to keep M1 scope honest.
+ *
+ * Theme (D-053, 12-HANDOFF-2026-10-15.md §2): `data-theme="day"|"night"` on
+ * <html>, set pre-paint by base.html's inline script from
+ * localStorage['theme'] (same key/values as the group site, so a choice
+ * carries over at helio.fisica.usach.cl), default "day". Day is the bare
+ * :root default; night overrides under `[data-theme='night']` -- no
+ * `prefers-color-scheme` fallback on purpose, the default must stay "day"
+ * even under OS dark mode until the visitor explicitly toggles, matching
+ * the group site's own mechanism exactly. */
 :root {
   color-scheme: light;
   --surface-page:   #f9f9f7;
@@ -16,21 +25,70 @@
   --status-stale:    #fab219;
   --status-serious:  #ec835a;
   --status-error:    #d03b3b;
-  --status-no_data:  #898781;
+  --status-nodata:   #898781;
+
+  /* Chart contract (12-HANDOFF §2): instance 1 defines these names/values,
+   * instance 2's charts only read them and redraw on `swx:themechange`. */
+  --chart-bg:        transparent;
+  --chart-text:      var(--text-secondary);
+  --chart-axis:      var(--axis);
+  --chart-grid:      var(--grid);
+  --chart-crosshair: var(--text-muted);
+  --chart-ref:       #b8b6ac;
+  --chart-band-1:    #0ca30c;
+  --chart-band-2:    #fab219;
+  --chart-band-3:    #ec835a;
+  --chart-band-4:    #d03b3b;
+  --chart-band-5:    #a12323;
+  --chart-s1:        #2a78d6;
+  --chart-s2:        #eb6834;
+  --chart-s3:        #1baf7a;
+  --chart-s4:        #9354d6;
+  --chart-s5:        #c2316b;
+  --chart-s6:        #4a7a3c;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --surface-page:   #0d0d0d;
-    --surface-card:   #1a1a19;
-    --text-primary:   #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted:     #898781;
-    --grid:           #2c2c2a;
-    --axis:           #383835;
-    --border:         rgba(255, 255, 255, 0.10);
-    --accent:         #3987e5;
-  }
+
+/* Night: a deep-navy "operations" look, distinct from the group site's own
+ * night theme (D-007/D-035 — related lineage, never confusable) and from
+ * the plain dark-neutral palette this replaces. Checked for WCAG AA body
+ * text contrast (>=4.5:1) against both surfaces. */
+:root[data-theme='night'] {
+  color-scheme: dark;
+  --surface-page:   #0a0e18;
+  --surface-card:   #111a2b;
+  --text-primary:   #eef2fa;
+  --text-secondary: #aab6cc;
+  --text-muted:     #7986a3;
+  --grid:           #1c2740;
+  --axis:           #2a3750;
+  --border:         rgba(170, 182, 204, 0.16);
+  --accent:         #5bb0ff;
+  /* Kept close in luminance to their day counterparts above, not just
+   * recolored for mood — the badge markup overlays white digits/dots on
+   * these fills (status-badge__dot, scale-badge__level), so a brighter
+   * pick here would quietly fail the same AA check the day values pass. */
+  --status-ok:       #1fae55;
+  --status-stale:    #e0a83c;
+  --status-serious:  #e0794f;
+  --status-error:    #e2463f;
+  --status-nodata:   #8a93ab;
+
+  --chart-text:      var(--text-secondary);
+  --chart-axis:      var(--axis);
+  --chart-grid:      var(--grid);
+  --chart-crosshair: #c6cfe2;
+  --chart-ref:       #3c4a6b;
+  --chart-band-1:    #1fae55;
+  --chart-band-2:    #e0a83c;
+  --chart-band-3:    #e0794f;
+  --chart-band-4:    #e2463f;
+  --chart-band-5:    #b8322c;
+  --chart-s1:        #5bb0ff;
+  --chart-s2:        #ff9d5c;
+  --chart-s3:        #3fe0b0;
+  --chart-s4:        #b48cff;
+  --chart-s5:        #ff7fb0;
+  --chart-s6:        #8fd16a;
 }
 
 * { box-sizing: border-box; }
@@ -47,27 +105,49 @@ a { color: var(--accent); }
 .skip-link:focus { left: 0; background: var(--surface-card); padding: .5em 1em; z-index: 10; }
 
 .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-card);
+  background: color-mix(in srgb, var(--surface-card) 92%, transparent);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
 }
 .site-header__inner {
-  max-width: 1100px; margin: 0 auto; padding: .75rem 1rem;
-  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+  max-width: 1100px; margin: 0 auto; padding: 0 1rem;
+  min-height: 60px;
+  display: flex; align-items: center; gap: 1.25rem;
 }
-.wordmark { display: flex; flex-direction: column; text-decoration: none; line-height: 1.1; }
-.wordmark__name { font-weight: 700; font-size: 1.1rem; color: var(--text-primary); }
-.wordmark__byline { font-size: .75rem; color: var(--text-muted); }
-.main-nav { display: flex; gap: 1rem; flex-wrap: wrap; margin-left: auto; }
-.main-nav a { text-decoration: none; color: var(--text-secondary); font-size: .92rem; }
+.brand-group { display: flex; flex-direction: column; gap: .1rem; line-height: 1.1; }
+.back-link {
+  font-size: .72rem; color: var(--text-muted); text-decoration: none;
+  white-space: nowrap;
+}
+.back-link:hover { color: var(--accent); }
+.wordmark { text-decoration: none; }
+.wordmark__name { font-weight: 700; font-size: 1.1rem; color: var(--text-primary); white-space: nowrap; }
+.main-nav { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-left: auto; }
+.main-nav a { text-decoration: none; color: var(--text-secondary); font-size: .92rem; white-space: nowrap; }
 .main-nav a:hover { color: var(--accent); }
-.lang-switch { display: flex; gap: .5rem; }
-.lang-switch__form { display: inline; margin: 0; }
-.lang-switch button {
+.header-tools { display: flex; align-items: center; gap: .6rem; flex: none; }
+.lang-switch { display: flex; gap: .6rem; }
+.lang-switch a {
   font: inherit; font-size: .92rem; color: var(--text-secondary);
-  background: none; border: none; padding: 0; cursor: pointer;
+  text-decoration: none;
 }
-.lang-switch button:hover { color: var(--accent); }
-.lang-switch button[aria-current] { color: var(--text-primary); font-weight: 700; }
+.lang-switch a:hover { color: var(--accent); }
+.lang-switch a[aria-current] { color: var(--text-primary); font-weight: 700; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: none;
+  border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+}
+.icon-btn:hover { color: var(--accent); }
+.theme-toggle .icon-night { display: none; }
+:root[data-theme='night'] .theme-toggle .icon-day { display: none; }
+:root[data-theme='night'] .theme-toggle .icon-night { display: inline; }
+.menu-toggle { display: none; }
 
 main { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
 
@@ -158,3 +238,29 @@ button.primary {
 .offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
 .offer-card { background: var(--surface-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
 .offer-card h3 { margin-top: 0; }
+
+/* Responsive header (12-HANDOFF item 3): nav + language + theme toggle fit
+ * one row down to 900px; below that a hamburger collapses the nav links
+ * into a full-width dropdown panel, same shape as the group site's header
+ * (Web/helio-usach src/styles/global.css), so the header never wraps into
+ * three lines on a phone. */
+@media (max-width: 1040px) {
+  .main-nav { gap: .8rem; }
+}
+@media (max-width: 900px) {
+  .menu-toggle { display: inline-flex; }
+  .site-header__inner { position: relative; flex-wrap: wrap; min-height: 56px; }
+  .main-nav {
+    display: none;
+    position: absolute; top: 100%; left: 0; right: 0;
+    flex-direction: column; align-items: stretch; gap: 0;
+    background: var(--surface-card); border-bottom: 1px solid var(--border);
+    padding: .5rem 1rem 1rem;
+    margin-left: 0;
+  }
+  .main-nav a { display: block; padding: .75rem 0; border-bottom: 1px solid var(--border); }
+  .site-header[data-open='true'] .main-nav { display: flex; }
+}
+@media (max-width: 480px) {
+  .back-link { display: none; }
+}

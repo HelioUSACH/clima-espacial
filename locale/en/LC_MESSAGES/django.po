@@ -224,3 +224,45 @@ msgid "Debes aceptar el aviso de privacidad para continuar."
 msgstr "You must accept the privacy notice to continue."
 msgid "operacional"
 msgstr "operational"
+
+msgid "Cambiar tema"
+msgstr "Switch theme"
+
+msgid "Abrir menú"
+msgstr "Open menu"
+
+msgid "Nombre"
+msgstr "Name"
+
+msgid "Correo"
+msgstr "Email"
+
+msgid "Institución"
+msgstr "Institution"
+
+msgid "Sector"
+msgstr "Sector"
+
+msgid "Uso previsto"
+msgstr "Intended use"
+
+msgid "Consentimiento"
+msgstr "Consent"
+
+msgid "El usuario aceptó el aviso de privacidad al enviar el formulario."
+msgstr "The user accepted the privacy notice when submitting the form."
+
+msgid "Operador eléctrico / power grid"
+msgstr "Power grid operator"
+
+msgid "Minería / GNSS"
+msgstr "Mining / GNSS"
+
+msgid "Servicio meteorológico / DMC"
+msgstr "Meteorological service / DMC"
+
+msgid "Investigación / universidad"
+msgstr "Research / university"
+
+msgid "Otro"
+msgstr "Other"

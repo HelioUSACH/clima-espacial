@@ -79,6 +79,12 @@ if [[ ! -x /opt/goatcounter/goatcounter ]]; then
 else
     echo "   already installed, left as is"
 fi
+# D-053/12-HANDOFF item 5: GoatCounter looks sites up by Host header, so
+# both the import service (on this machine) and the admin dashboard (over
+# the SSH tunnel, from Victor's own PC) need this name to resolve to the
+# instance's own loopback address — confirmed required, not optional,
+# 11-MANUAL-STEPS.md Part 1.
+grep -q 'stats.clima-espacial.internal' /etc/hosts || echo '127.0.0.1 stats.clima-espacial.internal' >> /etc/hosts
 # adm: the group that owns nginx's logs on Debian/Ubuntu — the log-import
 # service (below) reads /var/log/nginx/access.log as this user, never root.
 usermod -aG adm swx
@@ -104,29 +110,39 @@ cat <<'INSTRUCTIONS'
 
 2. First deploy: bash deploy.sh <tag>  (e.g. v0.1.0)
 
-3. GoatCounter (D-051 -- verified against the real v2.7.0 CLI; -vhost needs
-   2+ domain labels, it does not need to actually resolve anywhere since
-   this is a single-site self-hosted instance reached only over an SSH
-   tunnel):
+3. GoatCounter (D-051, corrected by D-053/12-HANDOFF item 5 -- running this
+   for real found GoatCounter looks sites up by Host header, so -vhost DOES
+   need to resolve, even for a single-site self-hosted instance reached
+   only over an SSH tunnel. This script already added
+   "127.0.0.1 stats.clima-espacial.internal" to /etc/hosts for you):
 
      runuser -u swx -- /opt/goatcounter/goatcounter db create site \
          -db sqlite+/srv/swx/goatcounter/db.sqlite3 -createdb \
          -vhost stats.clima-espacial.internal -user.email you@usach.cl
      systemctl enable --now goatcounter
 
-   Then an API key for the log-import service (user 1 is the one just
-   created above -- check with
-   "goatcounter db show user -db sqlite+/srv/swx/goatcounter/db.sqlite3 -find you@usach.cl"
-   if in doubt):
+   Then an API key for the log-import service. "-user 1"/"-user <email>"
+   on "db create apitoken" was unreliable against the real v2.7.0 CLI
+   (prints nothing, or "site.ByHost ... no rows" -- confirmed
+   11-MANUAL-STEPS.md Part 1); check the database directly first:
 
      runuser -u swx -- /opt/goatcounter/goatcounter db create apitoken \
          -db sqlite+/srv/swx/goatcounter/db.sqlite3 -user 1 -name import -perm count
+     # if that prints no token: open the tunnel below, log in, click your
+     # email (top right) -> API -> New API token, name "import", tick
+     # "Record pageviews", save, copy it.
 
-   Put the token this prints into /etc/swx/goatcounter-import.env as:
+   Put the token into /etc/swx/goatcounter-import.env as:
      GOATCOUNTER_API_KEY=<token>
    Then:
      chown root:swx /etc/swx/goatcounter-import.env
      chmod 640 /etc/swx/goatcounter-import.env
      systemctl enable --now goatcounter-import
+
+   To see the dashboard from your own PC: open a tunnel
+   (ssh -L 8081:localhost:8081 helio), add
+   "127.0.0.1 stats.clima-espacial.internal" to YOUR OWN PC's hosts file
+   too, then browse http://stats.clima-espacial.internal:8081 -- not
+   localhost:8081, same Host-header lookup as above.
 ==========================================================
 INSTRUCTIONS
