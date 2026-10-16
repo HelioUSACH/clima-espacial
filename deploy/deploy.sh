@@ -62,7 +62,30 @@ echo "==> Smoke test (straight to gunicorn, pretending to be nginx)"
 # Unprefixed path: nginx's proxy_pass strips "/clima-espacial" before this
 # point (see deploy/nginx-clima-espacial.conf), so hitting gunicorn directly
 # must use the same unprefixed path Django's urlpatterns actually match.
-curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 1 \
+GUNICORN=http://127.0.0.1:8100
+fetch() {
+    curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 1 \
+        -H "Host: ${ALLOWED_HOSTS%%,*}" -H "X-Forwarded-Proto: https" "$GUNICORN$1"
+}
+fetch /estado/ > /dev/null
+HOME_HTML="$(fetch /)"
+
+# D-055: the page must reference hashed static files, and the exact file it
+# names must exist in STATIC_ROOT — otherwise collectstatic/the manifest
+# went wrong and every visitor would get an unstyled page with no charts.
+ASSET="$(grep -o 'static/web/js/charts\.[0-9a-f]\{12\}\.js' <<< "$HOME_HTML" | head -n 1 || true)"
+[[ -n $ASSET ]] || { echo "Smoke test: / does not reference a hashed charts.js (manifest storage off?)." >&2; exit 1; }
+[[ -f "$STATIC_ROOT/${ASSET#static/}" ]] || { echo "Smoke test: $ASSET is referenced but missing from $STATIC_ROOT." >&2; exit 1; }
+
+# One bucketed series through the real view (D-056). A brand-new server
+# whose collectors haven't run yet has no products: warn, don't fail.
+SERIE_STATUS="$(curl --silent --output "$WORK/serie.json" --write-out '%{http_code}' \
     -H "Host: ${ALLOWED_HOSTS%%,*}" -H "X-Forwarded-Proto: https" \
-    "http://127.0.0.1:8100/estado/" > /dev/null
-echo "Deployed $TAG."
+    "$GUNICORN/productos/noaa.rtsw.mag/serie.json?range=1d")"
+case "$SERIE_STATUS" in
+    200) venv/bin/python -c 'import json, sys; d = json.load(open(sys.argv[1])); assert d["bucket_seconds"] == 120' \
+            "$WORK/serie.json" || { echo "Smoke test: serie.json is not the bucketed contract." >&2; exit 1; } ;;
+    404) echo "Smoke test: noaa.rtsw.mag has no data yet (first deploy?) — serie.json not checked." ;;
+    *) echo "Smoke test: serie.json returned HTTP $SERIE_STATUS." >&2; exit 1 ;;
+esac
+echo "Deployed $TAG. Now hard-refresh / and one product page in both themes (CONTRIBUTING.md)."

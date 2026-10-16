@@ -50,8 +50,8 @@ msgstr "Live context: NOAA scales, L1 solar wind and IMF, Kp, Dst, X-rays and pr
 msgid "Las escalas NOAA aún no se han recolectado en este ambiente."
 msgstr "NOAA scales haven't been collected in this environment yet."
 
-msgid "Franja de contexto"
-msgstr "Context strip"
+msgid "Condiciones en L1 y en la Tierra"
+msgstr "Conditions at L1 and Earth"
 
 msgid "Lo que ofrece USACH"
 msgstr "What USACH offers"
@@ -65,8 +65,8 @@ msgstr "Flare detection (NRT)"
 msgid "Modelo propio de HelioUSACH, probabilidad y estado en casi tiempo real."
 msgstr "HelioUSACH's own model, near-real-time probability and state."
 
-msgid "En preparación — este producto se activa sin bloquear el resto del portal (ver docs/models/INTEGRATION.md)."
-msgstr "In preparation — this product turns on without blocking the rest of the portal (see docs/models/INTEGRATION.md)."
+msgid "En preparación: el detector propio de HelioUSACH se publicará aquí en cuanto esté en operación."
+msgstr "In preparation: HelioUSACH's own detector will be published here as soon as it is running."
 
 msgid "Ver catálogo de productos y modelos →"
 msgstr "See the products and models catalogue →"
@@ -118,9 +118,6 @@ msgstr "Could not load the series."
 
 msgid "Rango"
 msgstr "Range"
-
-msgid "Disponible por HAPI una vez publicado el endpoint (M2)."
-msgstr "Available over HAPI once the endpoint ships (M2)."
 
 msgid "Último evento"
 msgstr "Latest event"
@@ -191,8 +188,8 @@ msgstr "National Space Weather Platform"
 msgid "Código fuente Apache-2.0, datos CC BY 4.0."
 msgstr "Source code Apache-2.0, data CC BY 4.0."
 
-msgid "Ver el portal es libre. Las descargas y la futura API (incl. HAPI) requieren un registro simple y gratuito, que entrega una llave de acceso. Esta página es el registro de interés para M1 — la emisión de llaves y el endpoint HAPI llegan en M2."
-msgstr "Viewing the portal is free. Downloads and the future API (incl. HAPI) need a simple, free registration that issues an access key. This page is the interest form for M1 — key issuance and the HAPI endpoint arrive in M2."
+msgid "Ver el portal es libre. Las descargas y la futura API (incl. HAPI) requieren un registro simple y gratuito, que entrega una llave de acceso. Por ahora, este formulario registra tu interés; te avisaremos cuando las llaves de acceso y el endpoint HAPI estén disponibles."
+msgstr "Viewing the portal is free. Downloads and the future API (incl. HAPI) need a simple, free registration that issues an access key. For now, this form records your interest; we'll let you know when access keys and the HAPI endpoint are available."
 
 msgid "Licencia de los datos: CC BY 4.0 — ver cómo citar en cada producto del catálogo."
 msgstr "Data licence: CC BY 4.0 — see how to cite in each product's catalogue entry."
@@ -282,8 +279,55 @@ msgstr "steady"
 msgid "Fuente activa:"
 msgstr "Active source:"
 
-msgid "Descargar datos (próximamente) →"
-msgstr "Download data (coming soon) →"
+msgid "Descarga de datos: próximamente."
+msgstr "Data download: coming soon."
 
 msgid "sin datos"
 msgstr "no data"
+
+# v0.1.3 (D-055..D-058): chart time axis, range buttons, licence text
+msgid "UT"
+msgstr "UT"
+
+#, python-format
+msgid "Datos disponibles desde %(since)s"
+msgstr "Data available since %(since)s"
+
+msgid "Dominio público (NOAA)"
+msgstr "Public domain (NOAA)"
+
+msgid "Jan"
+msgstr "Jan"
+
+msgid "Feb"
+msgstr "Feb"
+
+msgid "Mar"
+msgstr "Mar"
+
+msgid "Apr"
+msgstr "Apr"
+
+msgid "May"
+msgstr "May"
+
+msgid "Jun"
+msgstr "Jun"
+
+msgid "Jul"
+msgstr "Jul"
+
+msgid "Aug"
+msgstr "Aug"
+
+msgid "Sep"
+msgstr "Sep"
+
+msgid "Oct"
+msgstr "Oct"
+
+msgid "Nov"
+msgstr "Nov"
+
+msgid "Dec"
+msgstr "Dec"

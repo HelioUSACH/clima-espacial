@@ -12,7 +12,38 @@ by Victor; nothing here is run by an AI session, AGENTS.md).
    (`deploy.sh`) — clones that tag straight from GitHub (never from a local
    working copy), installs it to `/opt/swx`, migrates, collects static
    files, installs/starts the systemd units, smoke-tests.
-4. Re-deploying a later tag is the same `deploy.sh <tag>` command.
+4. Re-deploying a later tag is the same `deploy.sh <tag>` command. When a
+   release changes `nginx-clima-espacial.conf`, also re-install the snippet
+   and reload nginx (`CONTRIBUTING.md` → Releasing).
+
+## Caching and compression (D-055, D-057)
+
+- `/clima-espacial/static/`: hashed filenames from `collectstatic`
+  (`ManifestStaticFilesStorage`), served `expires max` +
+  `Cache-Control: public, immutable` — a file's URL changes whenever its
+  content does, so browsers never mix an old `charts.js` with new HTML.
+- HTML pages: `Cache-Control: no-cache` (always revalidated).
+- `serie.json`: Django's own `Cache-Control: public, max-age=60`, and a
+  60-s server-side cache per (product, range).
+- gzip for JSON/JS/CSS/SVG (HTML is gzipped by nginx already). The `gzip*`
+  lines sit in the helio `server{}` context, so they apply to the group
+  site's responses too — compression only, nothing else changes there.
+- nginx gotcha worth knowing: a `location` that has its own `add_header`
+  stops inheriting **every** `add_header` set at the `server{}` level. If the
+  helio vhost sets security headers with `add_header` at server level, they
+  no longer reach `/clima-espacial/` responses (Django sends its own HSTS,
+  nosniff, Referrer-Policy and X-Frame-Options, so nothing is lost today).
+
+## Proposal, not applied: gunicorn threads instead of processes
+
+`swx-web.service` runs 3 sync workers. Measured locally on v0.1.3 with the
+same seeded data, after the same warm-up requests: **3 sync workers =
+192 MB RSS (4 processes); `--workers 2 --threads 4 --worker-class gthread`
+= 133 MB (3 processes)**, about 60 MB less, and 8 concurrent requests
+instead of 3. The app is I/O-bound (PostgreSQL), so threads are a good fit.
+Worth doing before the models arrive on the same VM; change `ExecStart` in
+`systemd/swx-web.service` in its own PR and watch `systemctl status swx-web`
+for a day.
 
 ## Files
 

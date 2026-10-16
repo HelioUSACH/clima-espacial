@@ -3,8 +3,8 @@
 {{ chart_i18n|json_script:i18n_id }}
 
 <div class="range-toggle" data-range-row="{{ stack_id }}" role="group" aria-label="{% trans 'Rango' %}">
-  {% for key, label_es, label_en, days in ranges %}
-  <button type="button" data-chart-range="{{ key }}" aria-pressed="{% if key == default_range %}true{% else %}false{% endif %}">{% if current_language == "en" %}{{ label_en }}{% else %}{{ label_es }}{% endif %}</button>
+  {% for r in ranges %}
+  <button type="button" data-chart-range="{{ r.key }}" aria-pressed="{% if r.key == default_range %}true{% else %}false{% endif %}"{% if not r.enabled %} aria-disabled="true" title="{{ r.title }}"{% endif %}>{{ r.label }}</button>
   {% endfor %}
 </div>
 

@@ -140,7 +140,8 @@ indexes on the time-series table (D-032); no TimescaleDB for now.
 nginx
  ├─ helio.fisica.usach.cl          → /var/www/helio (group site, unchanged)
  └─ /clima-espacial/               → gunicorn (FORCE_SCRIPT_NAME=/clima-espacial) 127.0.0.1:8100
-      ├─ /clima-espacial/static/    → collected static files served by nginx
+      ├─ /clima-espacial/static/    → hashed static files served by nginx, cached immutable (D-055)
+      ├─ /clima-espacial/…/serie.json → gunicorn; bucketed in SQL, cached 60 s (D-056/D-057)
       └─ (internal) flare FastAPI   127.0.0.1:5050, not exposed; portal reads its JSON
 
 /opt/swx/            code (root-owned, read-only to the service user)

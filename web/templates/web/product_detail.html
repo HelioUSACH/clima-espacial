@@ -11,14 +11,9 @@
     {{ status.label }}
   </span>
 </p>
-<p>{% trans "Fuente:" %} {{ product.source_provider }}{% if product.source_license %} — {{ product.source_license }}{% endif %}</p>
+<p>{% trans "Fuente:" %} {{ product.source_provider }}{% if source_license %} — {{ source_license }}{% endif %}</p>
 
 {% include "web/_panel_stack.html" %}
 
-<p class="lede">
-  <a href="{% url 'web:data_api' %}">{% trans "Descargar datos (próximamente) →" %}</a>
-</p>
-{% if product.exchange_hapi %}
-<p class="lede">{% trans "Disponible por HAPI una vez publicado el endpoint (M2)." %}</p>
-{% endif %}
+<p class="lede">{% trans "Descarga de datos: próximamente." %}</p>
 {% endblock %}
