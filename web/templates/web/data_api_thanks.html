@@ -2,7 +2,9 @@
 {% load i18n %}
 {% block title %}{% trans "Gracias" %}{% endblock %}
 {% block content %}
+<div class="wrap page">
 <h1>{% trans "¡Gracias!" %}</h1>
 <p class="lede">{% trans "Registramos tu interés. Te avisaremos cuando la API y las descargas estén disponibles." %}</p>
 <a href="{% url 'web:home' %}">{% trans "Volver al inicio" %}</a>
+</div>
 {% endblock %}

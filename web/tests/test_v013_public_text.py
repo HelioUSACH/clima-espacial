@@ -52,23 +52,29 @@ def test_no_developer_text_on_public_pages(client, mag_product, url_name, lang):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("lang, heading", [("es", "Condiciones en L1 y en la Tierra"), ("en", "Conditions at L1 and Earth")])
+@pytest.mark.parametrize("lang, heading", [("es", "Viento solar en L1"), ("en", "Solar wind in L1")])
 def test_home_context_heading(client, lang, heading):
-    assert f'<h2 id="context-heading">{heading}</h2>' in _get(client, "web:home", lang)
+    # 18-HANDOFF-v0.2.0.md §2: home's only chart section now, heading taken
+    # straight from the approved mockup (supersedes 13-AUDIT §3's heading).
+    assert f'<h2 id="l1-h">{heading}</h2>' in _get(client, "web:home", lang)
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "lang, licence, download",
-    [("es", "Dominio público (NOAA)", "Descarga de datos: próximamente."),
-     ("en", "Public domain (NOAA)", "Data download: coming soon.")],
+    "lang, licence, csv_text",
+    [("es", "Dominio público (NOAA)", "CSV · próximamente"), ("en", "Public domain (NOAA)", "CSV · coming soon")],
 )
-def test_product_page_licence_and_download_text(client, mag_product, lang, licence, download):
+def test_product_page_licence_and_csv_stub_text(client, mag_product, lang, licence, csv_text):
+    # 18-HANDOFF-v0.2.0.md §2: the licence moved into "Ficha del producto"
+    # (facts, from the manifest); "Descargar datos" became a disabled
+    # "CSV · próximamente" button in the chart card's own toolbar.
     html = _get(client, "web:product_detail", lang, "noaa.rtsw.mag")
-    assert f"NOAA SWPC — {licence}" in html
-    assert f'<p class="lede">{download}</p>' in html  # plain text, not a link
+    assert f"<dd>{licence}</dd>" in html
+    assert re.search(r"<button[^>]*\bdisabled\b[^>]*>" + re.escape(csv_text) + r"</button>", html)
     if lang == "es":
         assert "Public domain" not in html
+    else:
+        assert "próximamente" not in html
 
 
 @pytest.mark.django_db
@@ -82,13 +88,34 @@ def test_chart_i18n_carries_ut_label_and_language(client):
         assert client.get(reverse("web:home")).context["chart_i18n"]["lang"] == "es"
 
 
+XRAY_MANIFEST = {
+    "id": "noaa.goes.xray", "version": 1, "kind": "timeseries",
+    "title": {"es": "Flujo de rayos X (GOES)", "en": "X-ray flux (GOES)"},
+    "maturity": "operational", "cadence": "5m", "stale_after": "15m",
+    "producer": {"type": "collector"}, "source": {"provider": "NOAA SWPC", "license": "Public domain (NOAA)"},
+    "parameters": [{"name": "flux", "units": "W/m2"}],
+    "exchange": {"hapi": True, "feed": False},
+    "_module": "swpc", "_path": "modules/swpc/manifests/goes_xray.yaml",
+}
+
+
 @pytest.mark.django_db
-def test_xray_panel_has_fixed_axis_and_envelope_flags(client):
-    panels = {p["key"]: p for p in client.get(reverse("web:home")).context["panels"]}
+def test_xray_panel_has_fixed_axis_and_envelope_flags(client, monkeypatch):
+    # The X-ray panel lives on its own product page now (18-HANDOFF §2:
+    # removed from home), so the fixed-axis/class-band checks move there.
+    monkeypatch.setattr(swxkit, "get_manifest", lambda pid: dict(XRAY_MANIFEST))
+    swxkit.publish_timeseries(
+        "noaa.goes.xray",
+        [{"time_tag": timezone.now() - dt.timedelta(minutes=5), "flux": 1e-7, "energy": "0.1-0.8nm"}],
+    )
+    panels = {p["key"]: p for p in client.get(reverse("web:product_detail", args=["noaa.goes.xray"])).context["panels"]}
     assert panels["xray"]["y_range"] == [1e-9, 1e-2]
     assert [b["label"] for b in panels["xray"]["log_bands"]] == ["A", "B", "C", "M", "X"]
-    # The min-max band is for the solar-wind fields only.
-    assert {k for k, p in panels.items() if p["envelope"]} == {"bz", "bxby", "speed", "density", "temperature"}
+
+    home_panels = {p["key"]: p for p in client.get(reverse("web:home")).context["panels"]}
+    # The min-max band is for the solar-wind fields only, all of which
+    # still live on home.
+    assert {k for k, p in home_panels.items() if p["envelope"]} == {"bz", "bxby", "speed", "density", "temperature"}
 
 
 def test_production_settings_use_hashed_static_files():
@@ -114,5 +141,7 @@ def test_collectstatic_with_manifest_storage_hashes_every_page_asset(tmp_path, c
     assets = re.findall(r'(?:src|href)="/?static/([^"]+)"', html)
     assert len(assets) >= 5
     for asset in assets:
-        assert re.search(r"\.[0-9a-f]{12}\.(js|css)$", asset), asset
+        # Identity v1 (18-HANDOFF §2) added self-hosted font preloads --
+        # ManifestStaticFilesStorage hashes those too, not just js/css.
+        assert re.search(r"\.[0-9a-f]{12}\.(js|css|woff2)$", asset), asset
         assert (tmp_path / asset).exists(), asset

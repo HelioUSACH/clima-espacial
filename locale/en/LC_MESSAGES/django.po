@@ -329,5 +329,131 @@ msgstr "Oct"
 msgid "Nov"
 msgstr "Nov"
 
+msgid "CSV · próximamente"
+msgstr "CSV · coming soon"
+
+msgid "Clima Espacial"
+msgstr "Clima Espacial"
+
+msgid "Clima espacial para la infraestructura de Chile"
+msgstr "Space weather for Chile's infrastructure"
+
+msgid "Código Apache-2.0 · datos CC BY 4.0"
+msgstr "Apache-2.0 code · CC BY 4.0 data"
+
+msgid "En la red chilena"
+msgstr "In the Chilean network"
+
+msgid "En vivo"
+msgstr "Live"
+
+msgid "Escalas NOAA y efectos posibles por sector en Chile."
+msgstr "NOAA scales and possible effects by sector in Chile."
+
+msgid "Estado de los datos"
+msgstr "Data status"
+
+msgid "Este portal"
+msgstr "This portal"
+
+msgid "Ficha del producto"
+msgstr "Product fact sheet"
+
+msgid "Flujo de rayos X con clases A–X y protones con umbral S1."
+msgstr "X-ray flux with A–X classes and protons with the S1 threshold."
+
+msgid "Kp, Dst e impactos"
+msgstr "Kp, Dst and impacts"
+
+msgid "Magnetómetros chilenos"
+msgstr "Chilean magnetometers"
+
+msgid "Modelos del Laboratorio de Clima Espacial."
+msgstr "Models from the Space Weather Laboratory."
+
+msgid "Modelos propios, datos abiertos y una API para operadores eléctricos, minería, servicios GNSS y satelitales. Desarrollado por el grupo HelioUSACH del Departamento de Física de la Universidad de Santiago de Chile."
+msgstr "Our own models, open data and an API for grid operators, mining, GNSS services and satellite operations. Built by the HelioUSACH group at the Physics Department of the University of Santiago de Chile."
+
+msgid "Más condiciones"
+msgstr "More conditions"
+
+msgid "Nodo USACH de la Plataforma Nacional de Meteorología Espacial. Información de referencia; no reemplaza avisos oficiales."
+msgstr "USACH node of the National Space Weather Platform. Reference information; it does not replace official warnings."
+
+msgid "Nodo USACH · Plataforma Nacional de Meteorología Espacial"
+msgstr "USACH node · National Space Weather Platform"
+
+msgid "Plataforma Nacional"
+msgstr "National Platform"
+
+msgid "Portal"
+msgstr "Portal"
+
+msgid "Pronósticos Dst y AU/AL"
+msgstr "Dst and AU/AL forecasts"
+
+msgid "Qué muestra"
+msgstr "What this shows"
+
+msgid "Rayos X y protones (GOES)"
+msgstr "X-rays and protons (GOES)"
+
+msgid "Red chilena"
+msgstr "Chilean network"
+
+msgid "Red de estaciones con datos descargables."
+msgstr "A network of stations with downloadable data."
+
+msgid "Restablecer zoom"
+msgstr "Reset zoom"
+
+msgid "Universidad de Chile"
+msgstr "University of Chile"
+
+msgid "Ver productos y modelos"
+msgstr "See products and models"
+
+msgid "Viento solar en L1"
+msgstr "Solar wind in L1"
+
+msgid "Datos abiertos y API"
+msgstr "Open data and API"
+
+msgid "Detección automática de fulguraciones solares en tiempo casi real a partir del flujo de rayos X de GOES."
+msgstr "Automatic near-real-time solar flare detection from GOES X-ray flux."
+
+msgid "Línea discontinua: cambio de nave activa"
+msgstr "Dashed line: change of active spacecraft"
+
+msgid "Nave activa"
+msgstr "Active spacecraft"
+
+msgid "Pronóstico de variaciones rápidas del campo geomagnético, el insumo de las corrientes inducidas en redes eléctricas."
+msgstr "Forecast of rapid geomagnetic field variations, the input to grid-induced currents."
+
+msgid "Series curadas con licencia CC BY 4.0, descargas y acceso HAPI con registro gratuito."
+msgstr "Curated series under CC BY 4.0, downloads and HAPI access with free registration."
+
+msgid "dB/dt global"
+msgstr "Global dB/dt"
+
+msgid "en desarrollo"
+msgstr "in development"
+
+msgid "min"
+msgstr "min"
+
+msgid "promedios de"
+msgstr "averages of"
+
+msgid "próximamente"
+msgstr "coming soon"
+
+msgid "s"
+msgstr "s"
+
+msgid "sin alertas NOAA"
+msgstr "no NOAA alerts"
+
 msgid "Dec"
 msgstr "Dec"

@@ -15,3 +15,11 @@ parameters:
   - {name: a_running, units: "1"}
   - {name: station_count, units: "1"}
 exchange: {hapi: true, feed: false}
+description:
+  es: "El índice planetario Kp resume la actividad geomagnética global en una escala de 0 a 9, a partir de una red de magnetómetros terrestres. Kp ≥ 5 corresponde a una tormenta geomagnética (escala G de la NOAA); valores más altos indican una tormenta más fuerte."
+  en: "The planetary Kp index summarises global geomagnetic activity on a 0–9 scale, from a worldwide network of ground magnetometers. Kp ≥ 5 is a geomagnetic storm (NOAA's G scale); higher values mean a stronger storm."
+facts:
+  source: {es: "NOAA SWPC / GFZ Potsdam", en: "NOAA SWPC / GFZ Potsdam"}
+  cadence: {es: "3 horas", en: "3 hours"}
+  license: {es: "Dominio público (NOAA)", en: "Public domain (NOAA)"}
+  used_by: {es: "Escala G y franja de estado del portal", en: "The portal's G scale and status strip"}

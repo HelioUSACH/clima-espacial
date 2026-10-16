@@ -1,88 +1,66 @@
-/* Stacked, synced-crosshair chart panels (12-HANDOFF-2026-10-15.md §4).
- * Wires vendored uPlot (web/static/web/vendor/uplot/) to the
- * `/productos/<id>/serie.json` endpoint. No build step, no CDN (D-002):
- * plain ES2017, loaded with <script defer>.
+/* One ECharts instance per panel stack, N touching grids, a synced
+ * axisPointer and inside dataZoom across all of them (18-HANDOFF-v0.2.0.md
+ * §1; reference implementation: ref/mockup-v0.2/echarts-stack-prototype.html
+ * section A). Wires vendored ECharts (web/static/web/vendor/echarts/) to
+ * the bucketed `/productos/<id>/serie.json` endpoint (D-056/D-057). No
+ * build step, no CDN (D-002): plain ES2017, loaded with <script defer>.
  *
- * serie.json is bucketed server-side (D-056): each field arrives as a mean
- * (the line) plus a per-bucket min/max, drawn as a faint band on the
- * solar-wind panels. A `null` bucket is a real gap and breaks the line.
+ * A stack's panels can span more than one product (home: noaa.rtsw.mag +
+ * noaa.rtsw.wind in one 5-grid instance) — `load()` below still fetches
+ * each distinct product once and keys the result by product_id, same as
+ * v0.1.3's per-panel-chart version did.
  *
- * Series colors are CSS variable *names* (e.g. "--chart-s1"), not hex: a
- * <canvas> context can't resolve var(...) the way the DOM can. Every color
- * is resolved ONCE per render into a plain palette object (and again on
- * `swx:themechange`, D-053), never inside a draw hook: getComputedStyle in
- * a hook forced a style recalculation per Kp bar per redraw (16-PERF B5).
- *
- * Loading (16-PERF B1/B2): one AbortController per stack, so a superseded
- * range click is cancelled, and any response whose range is no longer the
- * stack's current one is dropped; responses are kept per range for 60 s, so
- * going back to a range already seen redraws without a request.
- *
- * Kp's bars and every zero/reference/class-band line are hand-drawn in a
- * `hooks.draw` callback against uPlot's public `valToPos`/`ctx` API,
- * instead of uPlot's own (ESM-only, build-step-only) bars path plugin —
- * this project ships no bundler (D-002), so that plugin can't be vendored.
+ * Every v0.1.3 behaviour (16-PERF-AND-CHART-ENGINE.md §2, D-058) survives
+ * the engine swap: palette resolved once per render (B5), AbortController +
+ * stale-response guard (B1), a 60 s per-range client cache reusing setOption
+ * instead of a rebuild (B2), width-only resize (B4), i18n parsed once (B6).
  */
 (function () {
   "use strict";
 
   var CACHE_TTL_MS = 60 * 1000; // matches web/charts.py SERIES_CACHE_SECONDS
   var BAND_ALPHA = 0.16;
+  var SOURCE_MARK_MERGE_SECONDS = 30 * 60; // a run shorter than this merges into one marker
 
-  // Kept in sync with web/charts.py KP_SEVERITY_THRESHOLDS/KP_SEVERITY_STATUSES
-  // (NOAA's Kp->G mapping folded onto the portal's 4-step status vocabulary).
-  var KP_THRESHOLDS = [4, 5, 7];
-  var KP_STATUSES = ["ok", "stale", "serious", "error"];
-
-  // ---- palette (B5): resolved once, read many times ----------------------
-
-  var PALETTE_VARS = [
-    "--chart-text", "--chart-grid", "--chart-axis", "--chart-ref", "--surface-card",
-    "--chart-s1", "--chart-s2", "--chart-s3", "--chart-s4", "--chart-s5", "--chart-s6",
-    "--status-ok", "--status-stale", "--status-serious", "--status-error",
-  ];
-  var palette = {};
-
-  function resolvePalette() {
-    var style = getComputedStyle(document.documentElement);
-    var next = {};
-    PALETTE_VARS.forEach(function (name) {
-      next[name] = style.getPropertyValue(name).trim();
-    });
-    palette = next;
-  }
-
-  function color(name) {
-    return palette[name] || "";
-  }
-
-  // "#rrggbb" / "#rgb" / "rgb(r, g, b)" -> "rgba(r, g, b, a)"; anything else
-  // (a named color) is returned as-is rather than guessed at.
-  function withAlpha(c, alpha) {
-    var m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
-    if (m) {
-      var hex = m[1].length === 3 ? m[1].replace(/./g, "$&$&") : m[1];
-      var n = parseInt(hex, 16);
-      return "rgba(" + (n >> 16) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + alpha + ")";
-    }
-    m = /^rgba?\(([^)]+)\)$/i.exec(c);
-    if (m) {
-      var parts = m[1].split(",").slice(0, 3).join(",");
-      return "rgba(" + parts + "," + alpha + ")";
-    }
-    return c;
-  }
+  // Kept in sync with web/charts.py KP_SEVERITY_THRESHOLDS/KP_SEVERITY_STATUSES.
+  var KP_THRESHOLDS = [5, 6, 7, 8];
+  var KP_STATUSES = ["ok", "minor", "moderate", "strong", "severe"];
 
   function kpSeverityVar(value) {
     if (value == null) return null;
     for (var i = 0; i < KP_THRESHOLDS.length; i++) {
-      if (value < KP_THRESHOLDS[i]) return "--status-" + KP_STATUSES[i];
+      if (value < KP_THRESHOLDS[i]) return "--severity-" + KP_STATUSES[i];
     }
-    return "--status-" + KP_STATUSES[KP_STATUSES.length - 1];
+    return "--severity-" + KP_STATUSES[KP_STATUSES.length - 1];
+  }
+
+  // ---- palette (B5): resolved once per render, read many times ----------
+
+  var PALETTE_VARS = [
+    "--ink", "--ink-soft", "--ink-faint", "--line", "--grid", "--raised", "--accent", "--bt", "--ref",
+    "--chart-s1", "--chart-s2", "--chart-s3", "--chart-s4", "--chart-s5", "--chart-s6",
+    "--severity-ok", "--severity-minor", "--severity-moderate", "--severity-strong", "--severity-severe",
+  ];
+
+  function readPalette() {
+    var style = getComputedStyle(document.documentElement);
+    var out = {};
+    PALETTE_VARS.forEach(function (name) { out[name] = style.getPropertyValue(name).trim(); });
+    return out;
+  }
+
+  // "#rrggbb" / "#rgb" -> "rgba(r,g,b,a)"; anything else (already rgba(),
+  // or a named colour) is returned as-is rather than guessed at.
+  function withAlpha(c, alpha) {
+    var m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+    if (!m) return c;
+    var hex = m[1].length === 3 ? m[1].replace(/./g, "$&$&") : m[1];
+    var n = parseInt(hex, 16);
+    return "rgba(" + (n >> 16) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + alpha + ")";
   }
 
   function fmtNum(v) {
-    if (v == null) return "";
+    if (v == null) return "—";
     var abs = Math.abs(v);
     if (abs !== 0 && (abs < 0.01 || abs >= 1e5)) return v.toExponential(2);
     var digits = abs >= 100 ? 0 : abs >= 1 ? 1 : 2;
@@ -98,511 +76,574 @@
 
   // ---- UT time formatting (13-AUDIT §3: 24 h, dd/mm in ES, "15 Oct" in EN)
 
-  function pad2(n) {
-    return n < 10 ? "0" + n : "" + n;
-  }
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
 
   function fmtDate(d, i18n) {
     if (i18n.lang === "en") return pad2(d.getUTCDate()) + " " + i18n.months[d.getUTCMonth()];
     return pad2(d.getUTCDate()) + "/" + pad2(d.getUTCMonth() + 1);
   }
-
-  function fmtTime(d) {
-    return pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes());
+  function fmtTime(d) { return pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()); }
+  function fmtUT(sec, i18n) {
+    var d = new Date(sec * 1000);
+    return fmtDate(d, i18n) + " " + fmtTime(d) + " UT";
   }
 
-  function timeAxisValues(i18n) {
-    return function (u, splits, axisIdx, foundSpace, foundIncr) {
-      var prevDay = null;
-      return splits.map(function (v) {
-        if (v == null) return "";
-        var d = new Date(v * 1000);
-        var day = d.getUTCFullYear() * 400 + d.getUTCMonth() * 32 + d.getUTCDate();
-        var label;
-        if (foundIncr >= 86400) {
-          label = fmtDate(d, i18n);
-        } else if (day !== prevDay) {
-          label = fmtTime(d) + "\n" + fmtDate(d, i18n);
-        } else {
-          label = fmtTime(d);
-        }
-        prevDay = day;
-        return label;
-      });
-    };
+  // ---- geometry: fixed per-grid pixel height, from the approved mockup --
+
+  function geom(tall) {
+    var narrow = window.innerWidth < 680;
+    var H = narrow ? (tall ? 150 : 92) : (tall ? 210 : 118);
+    return { H: H, top: 8, bottom: 30, left: narrow ? 44 : 58, right: 8 };
   }
 
-  // Log axes: one tick/grid line per decade only (no minor lines).
-  function decadeSplits(u, axisIdx, min, max) {
+  // ---- building the ECharts option -------------------------------------
+
+  function buildMarks(sources) {
+    // sources: array of [productId sourceArray aligned to its own time
+    // array]; we only have the stack's shared x grid here via `times`, so
+    // the caller passes pre-resolved [timestamp, label] change points.
+    var marks = [];
+    for (var i = 1; i < sources.length; i++) {
+      var next = sources[i + 1], dur = next ? next[0] - sources[i][0] : Infinity;
+      if (dur < SOURCE_MARK_MERGE_SECONDS) {
+        marks.push([sources[i][0], sources[i][1] + " · " + Math.max(1, Math.round(dur / 60)) + " min"]);
+        i++;
+      } else {
+        marks.push([sources[i][0], sources[i][1]]);
+      }
+    }
+    return marks;
+  }
+
+  function sourceChangePoints(times, source) {
     var out = [];
-    for (var e = Math.ceil(Math.log10(min) - 1e-9); e <= Math.floor(Math.log10(max) + 1e-9); e++) {
-      out.push(Math.pow(10, e));
+    var prev = null;
+    for (var i = 0; i < source.length; i++) {
+      if (source[i] && prev && source[i] !== prev) out.push([times[i], source[i]]);
+      if (source[i]) prev = source[i];
     }
     return out;
   }
 
-  // ---- hand-drawn overlays (hooks.draw) --------------------------------
-
-  function drawHLine(u, value, strokeColor, dashed, label) {
-    var top = u.valToPos(value, "y", true);
-    if (!(top >= u.bbox.top && top <= u.bbox.top + u.bbox.height)) return;
-    var ctx = u.ctx;
-    ctx.save();
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 1;
-    ctx.setLineDash(dashed ? [5, 4] : []);
-    ctx.beginPath();
-    ctx.moveTo(u.bbox.left, top);
-    ctx.lineTo(u.bbox.left + u.bbox.width, top);
-    ctx.stroke();
-    if (label) {
-      ctx.setLineDash([]);
-      ctx.fillStyle = strokeColor;
-      ctx.font = "11px system-ui, sans-serif";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(label, u.bbox.left + u.bbox.width - ctx.measureText(label).width - 4, top - 2);
-    }
-    ctx.restore();
+  function seriesColor(slotName, P) {
+    return P[slotName] || P["--ink-faint"];
   }
 
-  function drawLastDatumDots(u, panel) {
-    var ctx = u.ctx;
-    var surface = color("--surface-card") || "#fff";
-    for (var s = 1; s < panel.series.length + 1; s++) {
-      var ys = u.data[s];
-      var idx = lastIndexWithValue(ys);
-      if (idx < 0) continue;
-      var x = u.valToPos(u.data[0][idx], "x", true);
-      var y = u.valToPos(ys[idx], "y", true);
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = surface;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, 2 * Math.PI);
-      ctx.fillStyle = color(panel.series[s - 1].color || "--chart-text");
-      ctx.fill();
-      ctx.restore();
-    }
-  }
+  function buildStackOption(stack, dataById, P) {
+    var panels = stack.panels, g = geom(stack.tall);
+    var grids = [], xs = [], ys = [], series = [], titles = [];
+    var MONO = "JetBrains Mono, ui-monospace, monospace";
+    var UI = "Poppins, system-ui, sans-serif";
 
-  function drawKpBars(u) {
-    var xs = u.data[0], ys = u.data[1];
-    if (!xs.length) return;
-    var ctx = u.ctx;
-    // Narrowest spacing between two real bars, so a null bucket (a gap)
-    // never makes the bars next to it look wider.
-    var colWidthPx = 20;
-    for (var j = 1; j < xs.length; j++) {
-      var w = Math.abs(u.valToPos(xs[j], "x", true) - u.valToPos(xs[j - 1], "x", true));
-      if (w > 0 && (j === 1 || w < colWidthPx)) colWidthPx = w;
-    }
-    var barWidth = Math.max(2, colWidthPx * 0.7);
-    var baseline = u.valToPos(0, "y", true);
-    ctx.save();
-    for (var i = 0; i < xs.length; i++) {
-      var v = ys[i];
-      if (v == null) continue;
-      var x = u.valToPos(xs[i], "x", true);
-      var y = u.valToPos(v, "y", true);
-      ctx.fillStyle = color(kpSeverityVar(v));
-      ctx.fillRect(x - barWidth / 2, Math.min(y, baseline), barWidth, Math.max(1, Math.abs(baseline - y)));
-    }
-    ctx.restore();
-  }
-
-  function drawSourceMarkers(u, source) {
-    if (!source) return;
-    var ctx = u.ctx;
-    ctx.save();
-    ctx.strokeStyle = color("--chart-axis");
-    ctx.lineWidth = 1;
-    ctx.setLineDash([2, 3]);
-    var prev = null;
-    for (var i = 0; i < source.length; i++) {
-      var s = source[i];
-      if (s && prev && s !== prev) {
-        var x = u.valToPos(u.data[0][i], "x", true);
-        ctx.beginPath();
-        ctx.moveTo(x, u.bbox.top);
-        ctx.lineTo(x, u.bbox.top + u.bbox.height);
-        ctx.stroke();
+    // A shared time domain across every grid: the widest span any panel's
+    // product actually returned (a product with no data yet still shares
+    // the others' axis instead of collapsing the stack).
+    var tmin = null, tmax = null;
+    panels.forEach(function (p) {
+      var d = dataById[p.product_id];
+      if (d && d.time && d.time.length) {
+        var t0 = d.time[0] * 1000, t1 = d.time[d.time.length - 1] * 1000;
+        tmin = tmin == null ? t0 : Math.min(tmin, t0);
+        tmax = tmax == null ? t1 : Math.max(tmax, t1);
       }
-      if (s) prev = s;
-    }
-    ctx.restore();
-  }
+    });
+    if (tmin == null) { tmin = Date.now() - 86400000; tmax = Date.now(); }
+    stack.spanSeconds = (tmax - tmin) / 1000; // read by .github/scripts/screenshots.py
 
-  function drawExtras(panelState) {
-    var panel = panelState.spec;
-    return function (u) {
-      if (panel.show_source) drawSourceMarkers(u, panelState.lastData && panelState.lastData.source);
-      if (panel.kind === "bars") drawKpBars(u);
-      else drawLastDatumDots(u, panel);
-      // Drawn last so a dashed threshold stays visible crossing a bar/line,
-      // not hidden underneath it.
-      if (panel.zero_line) drawHLine(u, 0, color("--chart-ref"), false, null);
+    var allSourceChanges = [];
+    var panelPrimary = []; // the one real series per panel that hosts its markLine/markArea
+    panels.forEach(function (panel, pi) {
+      var last = pi === panels.length - 1;
+      var data = dataById[panel.product_id];
+      var times = (data && data.time) || [];
+
+      grids.push({
+        left: g.left, right: g.right, top: g.top + pi * g.H, height: g.H,
+        show: true, borderColor: P["--line"], borderWidth: 1, backgroundColor: "transparent",
+      });
+      xs.push({
+        type: "time", gridIndex: pi, min: tmin, max: tmax,
+        axisLine: { show: false }, axisTick: { show: last, lineStyle: { color: P["--line"] } },
+        axisLabel: {
+          show: last, color: P["--ink-faint"], fontFamily: MONO, fontSize: 10, hideOverlap: true,
+          formatter: function (v) {
+            var d = new Date(v);
+            return (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) ? "{d|" + fmtDate(d, stack.i18n) + "}" : fmtTime(d);
+          },
+          rich: { d: { fontWeight: 600, color: P["--ink-soft"], fontFamily: MONO, fontSize: 10 } },
+        },
+        splitLine: { show: true, lineStyle: { color: P["--grid"] } },
+        name: last ? stack.i18n.time_axis_label : undefined,
+        nameLocation: "end", nameGap: 4,
+        nameTextStyle: { color: P["--ink-faint"], fontFamily: MONO, fontSize: 9 },
+      });
+
+      var isLog = panel.y === "log";
+      var yAxis = {
+        type: isLog ? "log" : "value", gridIndex: pi, scale: !panel.zero_line, splitNumber: 3,
+        axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: {
+          showMinLabel: false, showMaxLabel: false, color: P["--ink-faint"], fontFamily: MONO, fontSize: 10,
+          formatter: isLog ? function (v) { return v.toExponential(0); } : null,
+        },
+        splitLine: { show: true, lineStyle: { color: P["--grid"] } },
+      };
+      if (panel.y_range) { yAxis.min = panel.y_range[0]; yAxis.max = panel.y_range[1]; }
+      else if (!isLog) {
+        yAxis.min = function (v) { return Math.floor(v.min - (v.max - v.min) * 0.08); };
+        yAxis.max = function (v) { return Math.ceil(v.max + (v.max - v.min) * 0.08); };
+      }
+      ys.push(yAxis);
+
+      // A `title` component (not `graphic`: GraphicComponent isn't in the
+      // trimmed build, ref/echarts-swx/entry.js) positioned over its own
+      // grid -- ECharts supports an array of independent titles.
+      titles.push({
+        text: panel.title + "  ·  " + panel.unit, left: g.left + 8, top: g.top + pi * g.H + 5,
+        textStyle: { fontFamily: UI, fontSize: 10, fontWeight: 500, color: P["--ink-faint"] },
+      });
+
+      var ml = [];
+      if (panel.zero_line) ml.push({ yAxis: 0, lineStyle: { color: P["--ref"], width: 1, type: "solid" }, label: { show: false } });
       (panel.ref_lines || []).forEach(function (r) {
-        drawHLine(u, r.value, color("--chart-ref"), true, r.label);
-      });
-      // The class letters themselves sit on the right-hand axis.
-      (panel.log_bands || []).forEach(function (b) {
-        drawHLine(u, b.value, color("--chart-grid"), false, null);
-      });
-    };
-  }
-
-  // ---- building a uPlot instance ---------------------------------------
-
-  function axisOpts(extra) {
-    return Object.assign(
-      {
-        stroke: color("--chart-text"),
-        grid: { stroke: color("--chart-grid"), width: 1 },
-        ticks: { stroke: color("--chart-axis"), width: 1 },
-      },
-      extra || {}
-    );
-  }
-
-  // Column order handed to uPlot: [time, mean_1..mean_n, (min_1, max_1)...]
-  // — the band series come after every line so legend/aria indices of the
-  // real series don't move.
-  function columnsFor(panel, data) {
-    var columns = [data.time];
-    panel.series.forEach(function (s) {
-      columns.push(data.series[s.field] || []);
-    });
-    if (panel.envelope) {
-      panel.series.forEach(function (s) {
-        columns.push((data.min || {})[s.field] || []);
-        columns.push((data.max || {})[s.field] || []);
-      });
-    }
-    return columns;
-  }
-
-  function buildSeries(panel, i18n) {
-    var series = [{
-      label: i18n.time_label,
-      value: function (u, v) {
-        if (v == null) return "";
-        var d = new Date(v * 1000);
-        return fmtDate(d, i18n) + " " + fmtTime(d) + " UT";
-      },
-    }];
-    panel.series.forEach(function (s) {
-      series.push({
-        label: s.label,
-        // Kp is hand-drawn as bars (drawKpBars) -- width 0 keeps uPlot from
-        // also stroking a line path, but the legend still needs a swatch.
-        stroke: panel.kind === "bars" ? color("--status-stale") : color(s.color),
-        width: panel.kind === "bars" ? 0 : 1.5 / (window.devicePixelRatio || 1),
-        points: { show: false },
-        value: function (u, v) { return v == null ? "—" : fmtNum(v); },
-      });
-    });
-    if (panel.envelope) {
-      panel.series.forEach(function (s) {
-        ["min", "max"].forEach(function (kind) {
-          series.push({ label: s.label + " " + kind, stroke: "transparent", width: 0, points: { show: false } });
+        ml.push({
+          yAxis: r.value, lineStyle: { color: P["--ref"], width: 1, type: "dashed" },
+          label: { show: true, formatter: r.label, color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "insideEndTop" },
         });
       });
-    }
-    return series;
-  }
-
-  function buildBands(panel) {
-    if (!panel.envelope) return undefined;
-    var n = panel.series.length;
-    return panel.series.map(function (s, i) {
-      var minIdx = n + 1 + 2 * i;
-      return { series: [minIdx + 1, minIdx], fill: withAlpha(color(s.color), BAND_ALPHA) };
-    });
-  }
-
-  function buildOpts(panelState, width, i18n) {
-    var panel = panelState.spec;
-    var yAxis = axisOpts({ label: panel.unit || undefined });
-    var axes = [
-      axisOpts({ label: i18n.time_axis_label, values: timeAxisValues(i18n) }),
-      yAxis,
-    ];
-    var yScale = { distr: panel.y === "log" ? 3 : 1 };
-    if (panel.y_range) {
-      yScale.range = function () { return panel.y_range.slice(); };
-      yScale.auto = false;
-    }
-    if (panel.y === "log") {
-      yAxis.splits = decadeSplits;
-      yAxis.values = function (u, vals) {
-        return vals.map(function (v) { return v == null ? "" : v.toExponential(0); });
-      };
-    }
-    if (panel.log_bands && panel.log_bands.length) {
-      // NOAA-style flare classes on the right: each letter centered in its
-      // own decade (A between 1e-8 and 1e-7, ..., X above 1e-4).
-      // Keyed by decade, not by the float itself: uPlot rounds the splits
-      // it hands back to `values`, so an exact-float lookup misses.
-      var letters = {};
-      var mids = panel.log_bands.map(function (b) {
-        letters[Math.round(Math.log10(b.value))] = b.label;
-        return b.value * Math.sqrt(10);
+      (panel.log_bands || []).forEach(function (b) {
+        // Centred in its own decade (geometric mean of the two edges), with
+        // no visible line — the markArea below already shows the band.
+        ml.push({
+          yAxis: b.value * Math.sqrt(10), lineStyle: { opacity: 0 },
+          label: { show: true, formatter: b.label, color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "end" },
+        });
       });
-      axes.push(axisOpts({
-        scale: "y",
-        side: 1,
-        size: 28,
-        grid: { show: false },
-        ticks: { show: false },
-        splits: function () { return mids; },
-        // uPlot's default log-axis filter blanks every split that isn't a
-        // "nice" log value, which would drop all of these half-decades.
-        filter: function (u, splits) { return splits; },
-        values: function (u, vals) {
-          return vals.map(function (v) { return v == null ? "" : letters[Math.floor(Math.log10(v))] || ""; });
-        },
-      }));
+
+      // markLine/markArea ride on a *real* series (never a phantom
+      // empty-data one): ECharts' canvas compositor can hand getDataURL a
+      // zero-sized layer for an empty series, which throws "the image
+      // argument is a canvas element with a width or height of 0" on
+      // export — caught interactively (headless Chromium), not just
+      // reasoned about.
+      var primary;
+      if (panel.kind === "bars") {
+        var values = (data && data.series[panel.series[0].field]) || [];
+        primary = {
+          id: panel.key, name: panel.series[0].label, type: "bar", xAxisIndex: pi, yAxisIndex: pi,
+          barMaxWidth: 10, large: true, silent: true, z: 3,
+          data: times.map(function (t, i) {
+            var v = values[i];
+            return { value: [t * 1000, v], itemStyle: v == null ? undefined : { color: P[kpSeverityVar(v)] } };
+          }),
+        };
+        series.push(primary);
+      } else {
+        panel.series.forEach(function (s, si) {
+          var color = seriesColor(s.color, P);
+          var values = (data && data.series[s.field]) || [];
+          if (panel.envelope) {
+            var lo = (data && data.min[s.field]) || [], hi = (data && data.max[s.field]) || [];
+            series.push({
+              id: "band-lo-" + panel.key + "-" + si, type: "line", xAxisIndex: pi, yAxisIndex: pi,
+              stack: "band" + panel.key + si, symbol: "none", silent: true, lineStyle: { opacity: 0 },
+              data: times.map(function (t, i) { return [t * 1000, lo[i]]; }), z: 1,
+            });
+            series.push({
+              id: "band-hi-" + panel.key + "-" + si, type: "line", xAxisIndex: pi, yAxisIndex: pi,
+              stack: "band" + panel.key + si, symbol: "none", silent: true, lineStyle: { opacity: 0 },
+              areaStyle: { color: withAlpha(color, BAND_ALPHA) },
+              data: times.map(function (t, i) {
+                return [t * 1000, (hi[i] == null || lo[i] == null) ? null : hi[i] - lo[i]];
+              }), z: 1,
+            });
+          }
+          var lineSeries = {
+            id: panel.key + "-" + si, name: s.label, type: "line", xAxisIndex: pi, yAxisIndex: pi,
+            showSymbol: false, symbol: "none", sampling: "none", connectNulls: false,
+            lineStyle: { width: 1.5, color: color }, itemStyle: { color: color }, z: 3, emphasis: { disabled: true },
+            data: times.map(function (t, i) { return [t * 1000, values[i]]; }),
+          };
+          series.push(lineSeries);
+          if (si === 0) primary = lineSeries;
+        });
+        if (panel.log_bands && panel.log_bands.length) {
+          // Faint class-severity bands between consecutive thresholds
+          // (A=ok .. X=severe), the same shared scale as the strip chips.
+          var edges = [panel.y_range ? panel.y_range[0] : 1e-9].concat(panel.log_bands.map(function (b) { return b.value; }));
+          var sevOrder = ["ok", "minor", "moderate", "strong", "severe"];
+          var areas = [];
+          for (var bi = 0; bi < edges.length - 1 && bi < sevOrder.length; bi++) {
+            var sevColor = P["--severity-" + sevOrder[bi]];
+            areas.push([{ yAxis: edges[bi], itemStyle: { color: withAlpha(sevColor, 0.08) } }, { yAxis: edges[bi + 1] }]);
+          }
+          primary.markArea = { silent: true, data: areas };
+        }
+      }
+      if (ml.length) primary.markLine = { silent: true, symbol: "none", animation: false, data: ml.slice() };
+      panelPrimary.push(primary);
+
+      if (panel.show_source && data && data.source) {
+        sourceChangePoints(times, data.source).forEach(function (c) { allSourceChanges.push(c); });
+      }
+    });
+
+    // Active-spacecraft change markers (§1): one dashed vertical line per
+    // change, across every grid, label on the top grid only. Merged onto
+    // each panel's existing markLine (its primary series) rather than a
+    // separate phantom series, same reasoning as above.
+    allSourceChanges.sort(function (a, b) { return a[0] - b[0]; });
+    var marks = buildMarks([[null, null]].concat(allSourceChanges)); // mimic prototype's 1-based scan
+    if (marks.length) {
+      panelPrimary.forEach(function (primarySeries, pi) {
+        var markData = marks.map(function (m) {
+          return {
+            xAxis: m[0] * 1000, lineStyle: { color: P["--ref"], width: 1, type: "dashed" },
+            label: { show: pi === 0, formatter: m[1], color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "insideEndTop" },
+          };
+        });
+        if (primarySeries.markLine) primarySeries.markLine.data = primarySeries.markLine.data.concat(markData);
+        else primarySeries.markLine = { silent: true, symbol: "none", animation: false, data: markData };
+      });
     }
-    var nMain = panel.series.length;
+
     return {
-      width: width,
-      height: panelState.height,
-      padding: [8, 12, 4, 4],
-      tzDate: function (ts) { return uPlot.tzDate(new Date(ts * 1000), "Etc/UTC"); }, // eslint-disable-line no-undef
-      series: buildSeries(panel, i18n),
-      bands: buildBands(panel),
-      scales: { y: yScale },
-      axes: axes,
-      cursor: {
-        sync: { key: panelState.syncKey },
-        // Band series are stroked "transparent", so their hover dots are too.
-        points: { size: 8 },
-      },
-      legend: { show: nMain > 1 || panel.kind === "bars" },
-      hooks: {
-        draw: [drawExtras(panelState)],
-        init: [function (u) { hideBandLegendRows(u, nMain); }],
-        ready: [syncLegendIdle],
-        setCursor: [syncLegendIdle],
-      },
+      useUTC: true, animation: false, textStyle: { fontFamily: MONO },
+      title: titles, grid: grids, xAxis: xs, yAxis: ys, series: series,
+      axisPointer: { link: [{ xAxisIndex: "all" }], lineStyle: { color: P["--ref"], type: "dashed" }, label: { show: false } },
+      tooltip: { trigger: "axis", showContent: false, axisPointer: { type: "line" } },
+      dataZoom: [{ type: "inside", xAxisIndex: panels.map(function (_x, i) { return i; }), filterMode: "none" }],
     };
   }
 
-  function hideBandLegendRows(u, nMain) {
-    var rows = u.root.querySelectorAll(".u-legend .u-series");
-    // style.display, not `hidden`: uPlot's own CSS sets display on these rows.
-    for (var i = nMain + 1; i < rows.length; i++) rows[i].style.display = "none";
+  // ---- readout column ---------------------------------------------------
+
+  function buildReadout(readEl, panels, H) {
+    var html = "";
+    panels.forEach(function (p) {
+      html += '<div class="rrow" style="height:' + H + 'px">';
+      p.series.forEach(function (s) {
+        html += '<div><span class="k"><span class="sw" data-sw="' + s.color + '"></span>' + escapeHtml(s.label) + '</span><b data-k="' + p.key + ":" + s.field + '">—</b></div>';
+      });
+      html += '<div><span class="unit">' + escapeHtml(p.unit) + "</span></div></div>";
+    });
+    readEl.innerHTML = html;
   }
 
-  // 13-AUDIT §3: no "Hora: --" legend while the cursor is off the chart.
-  function syncLegendIdle(u) {
-    u.root.classList.toggle("swx-legend-idle", u.cursor.idx == null);
+  function escapeHtml(s) {
+    var div = document.createElement("div");
+    div.textContent = s == null ? "" : String(s);
+    return div.innerHTML;
   }
 
-  // ---- panel lifecycle ---------------------------------------------------
-
-  var liveStacks = [];
+  function paintReadoutSwatches(readEl, P) {
+    readEl.querySelectorAll("[data-sw]").forEach(function (el) {
+      el.style.background = seriesColor(el.dataset.sw, P);
+    });
+  }
 
   function trendPhrase(values, i18n) {
     var idx = lastIndexWithValue(values);
     if (idx < 1) return "";
     var prevIdx = -1;
-    for (var i = idx - 1; i >= 0; i--) {
-      if (values[i] != null) { prevIdx = i; break; }
-    }
+    for (var i = idx - 1; i >= 0; i--) { if (values[i] != null) { prevIdx = i; break; } }
     if (prevIdx < 0) return "";
     var delta = values[idx] - values[prevIdx];
     if (Math.abs(delta) < 1e-12) return i18n.trend_flat;
     return delta > 0 ? i18n.trend_up : i18n.trend_down;
   }
 
-  function destroyPanel(panelState) {
-    if (panelState.uplot) {
-      panelState.uplot.destroy();
-      panelState.uplot = null;
-    }
-    panelState.chartEl.innerHTML = ""; // uPlot never clears a mount point itself (v0.1's stuck "Cargando…")
+  // ---- per-stack lifecycle ------------------------------------------------
+
+  var liveStacks = [];
+
+  function Stack(root) {
+    this.root = root;
+    this.i18n = JSON.parse(document.getElementById(root.dataset.i18nId).textContent);
+    this.panels = JSON.parse(document.getElementById(root.dataset.panelsId).textContent);
+    this.tall = root.dataset.tall === "1";
+    this.ariaLabel = root.dataset.ariaLabel || "";
+    this.plotEl = root.querySelector("[data-stack-plot]");
+    this.readEl = root.querySelector("[data-stack-read]");
+    this.metaEl = root.querySelector("[data-stack-meta]");
+    this.snapEl = root.querySelector("[data-stack-snap]");
+    this.ec = null;
+    this.lastDataById = null;
+    this.cache = new Map(); // range -> {data, fetchedAt}
+    this.controller = null;
+    this.endpoints = {};
+    var self = this;
+    this.panels.forEach(function (p) { self.endpoints[p.product_id] = p.endpoint; });
+    this.statusEls = [];
+    root.__swxStack = this; // read by .github/scripts/screenshots.py
   }
 
-  function renderPanel(panelState, data, i18n, rebuild) {
-    var el = panelState.chartEl;
-    var statusEl = panelState.statusEl;
-    var panel = panelState.spec;
-    panelState.lastData = data;
+  Stack.prototype.ensureStatusOverlays = function () {
+    if (this.statusEls.length) return;
+    var self = this;
+    this.panels.forEach(function () {
+      var el = document.createElement("p");
+      el.className = "swx-stack-status";
+      el.hidden = true;
+      self.plotEl.appendChild(el);
+      self.statusEls.push(el);
+    });
+  };
 
-    if (!data || !data.time || !data.time.length) {
-      destroyPanel(panelState);
-      el.classList.add("swx-panel__chart--empty");
-      statusEl.hidden = false;
-      statusEl.textContent = data ? i18n.no_data_message : i18n.error_message;
-      el.setAttribute("aria-label", panel.title + ": " + statusEl.textContent);
-      return;
-    }
-    el.classList.remove("swx-panel__chart--empty");
-    statusEl.hidden = true;
+  Stack.prototype.layoutStatusOverlays = function () {
+    var g = geom(this.tall);
+    this.statusEls.forEach(function (el, pi) {
+      el.style.top = (g.top + pi * g.H) + "px";
+      el.style.height = g.H + "px";
+    });
+  };
 
-    var columns = columnsFor(panel, data);
-    if (panelState.uplot && !rebuild) {
-      // Same panel, new range: swap the data in place instead of tearing
-      // the chart down (16-PERF B2) — no DOM churn, no relayout.
-      panelState.uplot.setData(columns);
-    } else {
-      destroyPanel(panelState);
-      panelState.width = el.clientWidth || 600;
-      panelState.uplot = new uPlot(buildOpts(panelState, panelState.width, i18n), columns, el); // eslint-disable-line no-undef
-    }
+  Stack.prototype.render = function (dataById, rebuild) {
+    this.lastDataById = dataById;
+    this.ensureStatusOverlays();
+    this.layoutStatusOverlays();
+    var P = readPalette();
 
-    var parts = panel.series.map(function (s, i) {
-      var values = columns[i + 1] || [];
-      var lastIdx = lastIndexWithValue(values);
-      if (lastIdx < 0) return null;
-      var trend = trendPhrase(values, i18n);
-      return s.label + " " + fmtNum(values[lastIdx]) + " " + panel.unit + (trend ? " (" + trend + ")" : "");
-    }).filter(Boolean);
-    el.setAttribute("aria-label", panel.title + ": " + (parts.length ? parts.join("; ") : i18n.no_data_message));
-
-    if (panel.show_source && panelState.sourceEl) {
-      var source = data.source || [];
-      var lastSourceIdx = lastIndexWithValue(source);
-      panelState.sourceEl.textContent = lastSourceIdx >= 0 ? i18n.active_source + " " + source[lastSourceIdx] : "";
-    }
-  }
-
-  // `--panel-chart-height` lives on .swx-panel-stack in base.css, with a
-  // media-query override for narrow screens -- read on resize, not cached,
-  // so a breakpoint crossed while resizing picks up the new height too.
-  function panelHeight(stackEl) {
-    var v = parseInt(getComputedStyle(stackEl).getPropertyValue("--panel-chart-height"), 10);
-    return v || 240;
-  }
-
-  function initStack(stackEl) {
-    // B6: parsed once here, never again per panel or per theme change.
-    var i18n = JSON.parse(document.getElementById(stackEl.dataset.i18nId).textContent);
-    var panels = JSON.parse(document.getElementById(stackEl.dataset.panelsId).textContent);
-    var panelEls = stackEl.querySelectorAll(".swx-panel");
-    var syncKey = stackEl.dataset.syncKey;
-    var height = panelHeight(stackEl);
-
-    var states = panels.map(function (panel, i) {
-      var root = panelEls[i];
-      return {
-        spec: panel,
-        syncKey: syncKey,
-        height: height,
-        width: 0,
-        chartEl: root.querySelector(".swx-panel__chart"),
-        statusEl: root.querySelector(".swx-panel__status"),
-        sourceEl: root.querySelector(".swx-panel__source"),
-        uplot: null,
-        lastData: null,
-      };
+    var anyData = false;
+    var self = this;
+    this.panels.forEach(function (p, pi) {
+      var d = dataById[p.product_id];
+      var ok = !!(d && d.time && d.time.length);
+      if (ok) anyData = true;
+      self.statusEls[pi].hidden = ok;
+      self.statusEls[pi].textContent = ok ? "" : (d ? self.i18n.no_data_message : self.i18n.error_message);
     });
 
-    stackEl.__swxPanelStates = states; // read by the CI screenshot job (.github/scripts/screenshots.py)
-
-    var endpoints = {};
-    panels.forEach(function (p) { endpoints[p.product_id] = p.endpoint; });
-    var productIds = Object.keys(endpoints);
-
-    var cache = new Map(); // range -> {data: {product_id: payload}, fetchedAt}
-    var controller = null;
-
-    function renderAll(dataById, rebuild) {
-      states.forEach(function (state) {
-        renderPanel(state, dataById[state.spec.product_id], i18n, rebuild);
-      });
+    // The container's height must be set *before* echarts.init() reads it
+    // to size its internal canvas -- .plot has no CSS height of its own,
+    // so init-before-resize created a real 0-height canvas (getDataURL
+    // then threw drawImage-ing it; caught interactively, headless
+    // Chromium, not just reasoned about).
+    var g = geom(this.tall);
+    this.plotEl.style.height = (g.top + this.panels.length * g.H + g.bottom) + "px";
+    if (!this.ec) {
+      this.ec = echarts.init(this.plotEl, null, { renderer: "canvas" }); // eslint-disable-line no-undef
     }
+    var option = buildStackOption(this, dataById, P);
+    this.ec.setOption(option, { notMerge: true, lazyUpdate: !rebuild });
+    this.plotEl.dataset.echartsReady = "true";
 
-    function load(range) {
-      var hit = cache.get(range);
-      if (hit && Date.now() - hit.fetchedAt < CACHE_TTL_MS) {
-        if (controller) controller.abort();
-        renderAll(hit.data, false);
-        return;
+    if (!this.readBuilt) { buildReadout(this.readEl, this.panels, g.H); this.readBuilt = true; }
+    paintReadoutSwatches(this.readEl, P);
+    this.setReadoutLatest();
+    this.updateMetaAndAria(dataById, anyData);
+
+    var self2 = this;
+    this.ec.off("updateAxisPointer");
+    this.ec.on("updateAxisPointer", function (e) {
+      var info = e.axesInfo && e.axesInfo[0];
+      if (!info) { self2.setReadoutLatest(); return; }
+      self2.setReadoutAt(Math.round(info.value / 1000));
+    });
+    this.ec.getZr().off("globalout");
+    this.ec.getZr().on("globalout", function () { self2.setReadoutLatest(); });
+  };
+
+  Stack.prototype.timeArrayFor = function (productId) {
+    var d = this.lastDataById && this.lastDataById[productId];
+    return (d && d.time) || [];
+  };
+
+  Stack.prototype.setReadoutAt = function (tsSec) {
+    var self = this;
+    this.panels.forEach(function (p) {
+      var times = self.timeArrayFor(p.product_id);
+      var idx = -1, best = Infinity;
+      for (var i = 0; i < times.length; i++) {
+        var diff = Math.abs(times[i] - tsSec);
+        if (diff < best) { best = diff; idx = i; }
       }
-      if (controller) controller.abort(); // B1: a superseded click never lands
-      var mine = (controller = window.AbortController ? new AbortController() : null);
-      var signal = mine ? mine.signal : undefined;
-      Promise.all(productIds.map(function (id) {
-        return fetch(endpoints[id] + "?range=" + encodeURIComponent(range), { signal: signal })
-          .then(function (r) {
-            if (!r.ok) throw new Error("HTTP " + r.status);
-            return r.json();
-          })
-          .then(function (data) { return [id, data]; }, function (err) {
-            if (err && err.name === "AbortError") throw err;
-            return [id, null];
-          });
-      })).then(function (results) {
-        if (stackEl.dataset.range !== range) return; // B1: stale response
-        var dataById = {};
-        var complete = true;
-        results.forEach(function (r) {
-          dataById[r[0]] = r[1];
-          if (r[1] == null) complete = false;
-        });
-        if (complete) cache.set(range, { data: dataById, fetchedAt: Date.now() });
-        renderAll(dataById, false);
-      }, function () { /* aborted: a newer load owns the stack now */ });
-    }
+      p.series.forEach(function (s) {
+        var b = self.readEl.querySelector('[data-k="' + p.key + ":" + s.field + '"]');
+        if (!b) return;
+        var d = self.lastDataById && self.lastDataById[p.product_id];
+        var v = idx >= 0 && d ? d.series[s.field][idx] : null;
+        b.textContent = fmtNum(v);
+      });
+    });
+  };
 
-    var rangeRow = document.querySelector('[data-range-row="' + syncKey + '"]');
+  Stack.prototype.setReadoutLatest = function () {
+    var self = this;
+    this.panels.forEach(function (p) {
+      var d = self.lastDataById && self.lastDataById[p.product_id];
+      p.series.forEach(function (s) {
+        var b = self.readEl.querySelector('[data-k="' + p.key + ":" + s.field + '"]');
+        if (!b) return;
+        var values = (d && d.series[s.field]) || [];
+        var idx = lastIndexWithValue(values);
+        b.textContent = idx >= 0 ? fmtNum(values[idx]) : "—";
+      });
+    });
+  };
+
+  function fmtBucket(seconds, i18n) {
+    var mins = Math.round(seconds / 60);
+    var n = mins < 1 ? Math.round(seconds) : mins;
+    var unit = mins < 1 ? i18n.seconds_unit : i18n.minutes_unit;
+    return i18n.averages_label + " " + n + " " + unit;
+  }
+
+  Stack.prototype.updateMetaAndAria = function (dataById, anyData) {
+    var self = this;
+    var latestTs = null, activeSource = null, bucketSeconds = null, parts = [];
+    this.panels.forEach(function (p) {
+      var d = dataById[p.product_id];
+      if (!d || !d.time || !d.time.length) return;
+      var lastT = d.time[d.time.length - 1];
+      if (latestTs == null || lastT > latestTs) latestTs = lastT;
+      if (bucketSeconds == null) bucketSeconds = d.bucket_seconds;
+      if (p.show_source && d.source) {
+        var idx = lastIndexWithValue(d.source);
+        if (idx >= 0) activeSource = d.source[idx];
+      }
+      p.series.forEach(function (s) {
+        var values = d.series[s.field] || [];
+        var idx = lastIndexWithValue(values);
+        if (idx < 0) return;
+        var trend = trendPhrase(values, self.i18n);
+        parts.push(s.label + " " + fmtNum(values[idx]) + " " + p.unit + (trend ? " (" + trend + ")" : ""));
+      });
+    });
+    if (this.metaEl) {
+      var bits = [];
+      if (activeSource) bits.push(this.i18n.active_source_label + " " + activeSource);
+      if (latestTs != null) bits.push(this.i18n.last_datum_label + " " + fmtUT(latestTs, this.i18n));
+      if (bucketSeconds) bits.push(fmtBucket(bucketSeconds, this.i18n));
+      this.metaEl.innerHTML = bits.map(escapeHtml).join(" · ");
+    }
+    if (this.snapEl) {
+      var hasSrcMark = this.panels.some(function (p) { return p.show_source; });
+      if (hasSrcMark && latestTs != null) {
+        this.snapEl.hidden = false;
+        this.snapEl.innerHTML =
+          "<span>" + escapeHtml(this.i18n.last_datum_label + " " + fmtUT(latestTs, this.i18n)) + "</span>" +
+          "<span>" + escapeHtml(this.i18n.source_mark_note) + "</span>";
+      } else {
+        this.snapEl.hidden = true;
+      }
+    }
+    this.plotEl.setAttribute(
+      "aria-label",
+      this.ariaLabel + (parts.length ? ": " + parts.join("; ") : ": " + (anyData ? this.i18n.no_data_message : this.i18n.error_message))
+    );
+  };
+
+  Stack.prototype.load = function (range) {
+    var self = this;
+    var hit = this.cache.get(range);
+    if (hit && Date.now() - hit.fetchedAt < CACHE_TTL_MS) {
+      if (this.controller) this.controller.abort();
+      this.render(hit.data, false);
+      return;
+    }
+    if (this.controller) this.controller.abort(); // B1: a superseded click never lands
+    var mine = (this.controller = window.AbortController ? new AbortController() : null);
+    var signal = mine ? mine.signal : undefined;
+    var ids = Object.keys(this.endpoints);
+    Promise.all(ids.map(function (id) {
+      return fetch(self.endpoints[id] + "?range=" + encodeURIComponent(range), { signal: signal })
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (data) { return [id, data]; }, function (err) {
+          if (err && err.name === "AbortError") throw err;
+          return [id, null];
+        });
+    })).then(function (results) {
+      if (self.root.dataset.range !== range) return; // B1: stale response
+      var dataById = {};
+      var complete = true;
+      results.forEach(function (r) { dataById[r[0]] = r[1]; if (r[1] == null) complete = false; });
+      if (complete) self.cache.set(range, { data: dataById, fetchedAt: Date.now() });
+      self.render(dataById, false);
+    }, function () { /* aborted: a newer load owns the stack now */ });
+  };
+
+  Stack.prototype.rebuild = function () {
+    if (this.lastDataById) this.render(this.lastDataById, true);
+  };
+
+  Stack.prototype.resize = function () {
+    if (!this.ec) return;
+    var g = geom(this.tall);
+    this.plotEl.style.height = (g.top + this.panels.length * g.H + g.bottom) + "px";
+    this.layoutStatusOverlays();
+    this.ec.resize();
+    if (this.readBuilt) {
+      this.readEl.querySelectorAll(".rrow").forEach(function (row) { row.style.height = g.H + "px"; });
+    }
+  };
+
+  function wireControls(stack) {
+    var root = stack.root;
+    var rangeRow = document.querySelector('[data-range-row="' + root.dataset.syncKey + '"]');
     if (rangeRow) {
       rangeRow.addEventListener("click", function (ev) {
         var btn = ev.target.closest("[data-chart-range]");
         if (!btn || btn.getAttribute("aria-disabled") === "true") return;
-        if (btn.dataset.chartRange === stackEl.dataset.range) return;
-        stackEl.dataset.range = btn.dataset.chartRange;
+        if (btn.dataset.chartRange === root.dataset.range) return;
+        root.dataset.range = btn.dataset.chartRange;
         rangeRow.querySelectorAll("[data-chart-range]").forEach(function (b) {
-          b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+          var on = b === btn;
+          b.setAttribute("aria-pressed", on ? "true" : "false");
+          b.classList.toggle("on", on);
         });
-        load(stackEl.dataset.range);
+        stack.load(root.dataset.range);
       });
     }
+    var resetBtn = root.querySelector("[data-reset-zoom]");
+    if (resetBtn) {
+      resetBtn.addEventListener("click", function () {
+        if (stack.ec) stack.ec.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
+      });
+    }
+    var pngBtn = root.querySelector("[data-png-export]");
+    if (pngBtn) {
+      pngBtn.addEventListener("click", function () {
+        if (!stack.ec) return;
+        var P = readPalette();
+        var url = stack.ec.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: P["--raised"] });
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = (root.dataset.syncKey || "chart") + ".png";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      });
+    }
+  }
 
-    // B4: react to width changes only (a height change is our own doing —
-    // a panel switching to its empty state — and must not trigger a
-    // redraw of every chart), once per animation frame at most.
+  function initStack(root) {
+    var stack = new Stack(root);
+    wireControls(stack);
+    liveStacks.push(stack);
+
     if (window.ResizeObserver) {
-      var lastWidth = stackEl.clientWidth;
-      var frame = 0;
+      var lastWidth = root.clientWidth, frame = 0;
       new ResizeObserver(function () {
         if (frame) return;
         frame = requestAnimationFrame(function () {
           frame = 0;
-          var w = stackEl.clientWidth;
+          var w = root.clientWidth;
           if (w === lastWidth) return;
           lastWidth = w;
-          var h = panelHeight(stackEl);
-          states.forEach(function (state) {
-            state.height = h;
-            var cw = state.chartEl.clientWidth || 600;
-            if (state.uplot && (cw !== state.width || h !== state.uplot.height)) {
-              state.width = cw;
-              state.uplot.setSize({ width: cw, height: h });
-            }
-          });
+          stack.resize();
         });
-      }).observe(stackEl);
+      }).observe(root);
     }
 
-    var stack = {
-      rebuild: function () {
-        states.forEach(function (state) {
-          if (state.lastData) renderPanel(state, state.lastData, i18n, true);
-        });
-      },
-    };
-    liveStacks.push(stack);
-    load(stackEl.dataset.range);
+    stack.load(root.dataset.range);
   }
 
   function initAll() {
-    resolvePalette();
-    document.querySelectorAll(".swx-panel-stack").forEach(initStack);
+    document.querySelectorAll(".swx-stack").forEach(initStack);
   }
 
   if (document.readyState === "loading") {
@@ -611,7 +652,10 @@
     initAll();
   }
   document.addEventListener("swx:themechange", function () {
-    resolvePalette();
-    liveStacks.forEach(function (stack) { stack.rebuild(); });
+    liveStacks.forEach(function (stack) {
+      if (stack.ec) { stack.ec.dispose(); stack.ec = null; }
+      stack.readBuilt = false;
+      stack.rebuild();
+    });
   });
 })();

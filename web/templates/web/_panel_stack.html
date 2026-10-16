@@ -2,21 +2,27 @@
 {{ panels|json_script:panels_id }}
 {{ chart_i18n|json_script:i18n_id }}
 
-<div class="range-toggle" data-range-row="{{ stack_id }}" role="group" aria-label="{% trans 'Rango' %}">
-  {% for r in ranges %}
-  <button type="button" data-chart-range="{{ r.key }}" aria-pressed="{% if r.key == default_range %}true{% else %}false{% endif %}"{% if not r.enabled %} aria-disabled="true" title="{{ r.title }}"{% endif %}>{{ r.label }}</button>
-  {% endfor %}
-</div>
-
-<div class="swx-panel-stack{% if tall %} swx-panel-stack--tall{% endif %}" data-sync-key="{{ stack_id }}" data-range="{{ default_range }}" data-panels-id="{{ panels_id }}" data-i18n-id="{{ i18n_id }}">
-  {% for panel in panels %}
-  <section class="swx-panel">
-    <div class="swx-panel__head">
-      <h3 id="{{ panel.dom_id }}-title">{{ panel.title }}</h3>
-      <span class="swx-panel__source"></span>
+<section class="card swx-stack" data-sync-key="{{ stack_id }}" data-range="{{ default_range }}"
+         data-panels-id="{{ panels_id }}" data-i18n-id="{{ i18n_id }}"
+         data-tall="{% if tall %}1{% else %}0{% endif %}" data-aria-label="{{ stack_aria_label }}">
+  <div class="card-top">
+    <div class="meta" data-stack-meta></div>
+    <div class="ctl">
+      <div class="seg" data-range-row="{{ stack_id }}" role="group" aria-label="{% trans 'Rango' %}">
+        {% for r in ranges %}
+        <button type="button" class="{% if r.key == default_range %}on{% endif %}" data-chart-range="{{ r.key }}" aria-pressed="{% if r.key == default_range %}true{% else %}false{% endif %}"{% if not r.enabled %} aria-disabled="true" title="{{ r.title }}"{% endif %}>{{ r.label }}</button>
+        {% endfor %}
+      </div>
+      <button class="sbtn" type="button" data-reset-zoom>{% trans "Restablecer zoom" %}</button>
+      <button class="sbtn" type="button" data-png-export>PNG</button>
+      {% if csv_stub %}<button class="sbtn" type="button" disabled>{% trans "CSV · próximamente" %}</button>{% endif %}
     </div>
-    <div class="swx-panel__chart" id="{{ panel.dom_id }}" role="img" aria-label="{{ panel.title }}"></div>
-    <p class="swx-panel__status" hidden></p>
-  </section>
-  {% endfor %}
-</div>
+  </div>
+  <div class="figwrap">
+    <div class="stage">
+      <div class="plot" data-stack-plot role="img" aria-label="{{ stack_aria_label }}"></div>
+      <div class="read" data-stack-read></div>
+    </div>
+    <div class="snap meta" data-stack-snap hidden></div>
+  </div>
+</section>

@@ -48,6 +48,11 @@ jobs:
           DJANGO_SETTINGS_MODULE: climaespacial.settings.dev
         run: python manage.py check_templates
 
+      - name: Check static CSS/JS (no early /* */ comment closes)
+        env:
+          DJANGO_SETTINGS_MODULE: climaespacial.settings.dev
+        run: python manage.py check_static_comments
+
       - name: Validate product manifests
         env:
           DJANGO_SETTINGS_MODULE: climaespacial.settings.dev

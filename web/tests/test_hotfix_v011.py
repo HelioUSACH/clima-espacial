@@ -120,9 +120,12 @@ def test_no_raw_template_comment_leaks(client_localhost, one_product, url_name, 
 @pytest.mark.django_db
 @pytest.mark.parametrize("url_name", PUBLIC_PAGES)
 def test_uplot_loads_and_no_external_script_src(client_localhost, one_product, url_name):
+    # Name kept (uPlot -> ECharts, 18-HANDOFF-v0.2.0.md §1/D-row): the real
+    # guard here is "no external <script src>", not which engine it is.
     response = client_localhost.get(reverse(url_name))
     body = response.content.decode()
-    assert "vendor/uplot/uPlot.iife.min.js" in body, "uPlot's own script tag is missing or was swallowed"
+    assert "vendor/echarts/echarts.swx.min.js" in body, "ECharts' own script tag is missing or was swallowed"
+    assert "uPlot" not in body, "a reference to the retired uPlot engine leaked onto the page"
     import re
 
     external_scripts = re.findall(r'<script[^>]*\ssrc="(https?://[^"]*)"', body)

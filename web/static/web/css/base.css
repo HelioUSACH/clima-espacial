@@ -1,310 +1,375 @@
-/* Design tokens (dataviz skill palette.md — brand-neutral placeholder,
- * identity v1 is M2 polish, docs/DECISIONS.md D-050). System sans only:
- * no vendored webfont to keep M1 scope honest.
+/* Identity v1 (18-HANDOFF-v0.2.0.md §2; supersedes D-050's neutral
+ * placeholder) — ported from the approved mockup (ref/mockup-v0.2/*.dc.html
+ * <helmet><style>, its .swx/.swx.night tokens) onto the existing theme
+ * contract: `data-theme="day"|"night"` on <html>, set pre-paint by
+ * base.html's inline script from localStorage['theme'] (same key/values as
+ * the group site, D-053). Day is the bare :root default, night overrides
+ * under `[data-theme='night']` — no `prefers-color-scheme` fallback, same
+ * reasoning as D-053: the stored choice must carry over to the group site
+ * exactly, default included.
  *
- * Theme (D-053, 12-HANDOFF-2026-10-15.md §2): `data-theme="day"|"night"` on
- * <html>, set pre-paint by base.html's inline script from
- * localStorage['theme'] (same key/values as the group site, so a choice
- * carries over at helio.fisica.usach.cl), default "day". Day is the bare
- * :root default; night overrides under `[data-theme='night']` -- no
- * `prefers-color-scheme` fallback on purpose, the default must stay "day"
- * even under OS dark mode until the visitor explicitly toggles, matching
- * the group site's own mechanism exactly. */
+ * --chart-* and --status-* keep their D-053 names (web/charts.py,
+ * web/static/web/js/charts.js read them) but now alias the mockup's own
+ * tokens instead of a separate palette. */
 :root {
   color-scheme: light;
-  --surface-page:   #f9f9f7;
-  --surface-card:   #fcfcfb;
-  --text-primary:   #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted:     #898781;
-  --grid:           #e1e0d9;
-  --axis:           #c3c2b7;
-  --border:         rgba(11, 11, 11, 0.10);
-  --accent:         #2a78d6;
+  --bg:          #ffffff;
+  --band:        #edf1f4;
+  --raised:      #ffffff;
+  --ink:         #16181b;
+  --ink-soft:    #454c55;
+  --ink-faint:   #6b737c;
+  --line:        rgba(22, 24, 27, .12);
+  --grid:        rgba(22, 24, 27, .07);
+  --accent:      #3f7688;
+  --accent-ink:  #ffffff;
+  --accent-soft: #dbe8e8;
+  --s1:          #2a78d6;
+  --s1-band:     rgba(42, 120, 214, .16);
+  --s2:          #eb6834;
+  --bt:          #454c55;
+  --ref:         #8a929a;
+  --ok:          #1f8a4c;
+  --ok-soft:     #e3f3e9;
+
+  /* Shared severity scale (§2): NOAA scale chips, Kp/Dst chips, and the
+   * X-ray class bands all read this one five-step ramp, text+colour never
+   * colour alone. "ok" aliases the mockup's own --ok/--ok-soft above. */
+  --severity-ok:            var(--ok);
+  --severity-ok-soft:       var(--ok-soft);
+  --severity-minor:         #8a6000;
+  --severity-minor-soft:    #f6ecd2;
+  --severity-moderate:      #a14e0e;
+  --severity-moderate-soft: #fbe6d4;
+  --severity-strong:        #b02f23;
+  --severity-strong-soft:   #fbdcd8;
+  --severity-severe:        #8c1e4c;
+  --severity-severe-soft:   #f5d9e4;
+
+  /* Heartbeat status (is *our* collector healthy — unrelated to how severe
+   * the space weather is, D-053). Carried over unchanged: already checked
+   * for AA contrast against the white text/dots in .status-badge__dot and
+   * .scale-badge__level. */
   --status-ok:       #0ca30c;
   --status-stale:    #fab219;
   --status-serious:  #ec835a;
   --status-error:    #d03b3b;
   --status-nodata:   #898781;
 
-  /* Chart contract (12-HANDOFF §2): instance 1 defines these names/values,
-   * instance 2's charts only read them and redraw on `swx:themechange`. */
-  --chart-bg:        transparent;
-  --chart-text:      var(--text-secondary);
-  --chart-axis:      var(--axis);
-  --chart-grid:      var(--grid);
-  --chart-crosshair: var(--text-muted);
-  --chart-ref:       #b8b6ac;
-  --chart-band-1:    #0ca30c;
-  --chart-band-2:    #fab219;
-  --chart-band-3:    #ec835a;
-  --chart-band-4:    #d03b3b;
-  --chart-band-5:    #a12323;
-  /* Slots 1-6 of the dataviz skill's validated 8-hue default order
-   * (references/palette.md) — truncating a validated chain keeps every
-   * consecutive pair's CVD separation intact; slots 1-3 already match
-   * SLOT_COLORS in web/charts.py (D-050). */
-  --chart-s1:        #2a78d6;
-  --chart-s2:        #eb6834;
-  --chart-s3:        #1baf7a;
-  --chart-s4:        #eda100;
-  --chart-s5:        #e87ba4;
-  --chart-s6:        #008300;
+  /* Chart contract (D-053 §2): charts.js resolves these once per render,
+   * never inside a draw hook (16-PERF B5). s1/s2 alias the mockup's own
+   * series colours; s3-s6 extend the same validated 8-hue default order
+   * (dataviz skill references/palette.md) for panels with 3+ series
+   * (protons) carried over from D-053 unchanged -- the surface shift here
+   * (--raised #fcfcfb->#ffffff) is too small to matter to the validator. */
+  --chart-text:  var(--ink-faint);
+  --chart-grid:  var(--grid);
+  --chart-axis:  var(--line);
+  --chart-ref:   var(--ref);
+  --chart-s1:    var(--s1);
+  --chart-s2:    var(--s2);
+  --chart-s3:    #1baf7a;
+  --chart-s4:    #eda100;
+  --chart-s5:    #e87ba4;
+  --chart-s6:    #008300;
+
+  --font-display: 'Bebas Neue', 'Poppins', sans-serif;
+  --font-ui:      'Poppins', system-ui, sans-serif;
+  --font-body:    'Roboto', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+  --radius:    14px;
+  --radius-sm: 8px;
 }
 
-/* Night: a deep-navy "operations" look, distinct from the group site's own
- * night theme (D-007/D-035 — related lineage, never confusable) and from
- * the plain dark-neutral palette this replaces. Checked for WCAG AA body
- * text contrast (>=4.5:1) against both surfaces. */
+/* Night: deep-navy "operations" look (D-007/D-035 — related lineage to the
+ * group site, never confusable), ported from the mockup's .swx.night. */
 :root[data-theme='night'] {
   color-scheme: dark;
-  --surface-page:   #0a0e18;
-  --surface-card:   #111a2b;
-  --text-primary:   #eef2fa;
-  --text-secondary: #aab6cc;
-  --text-muted:     #7986a3;
-  --grid:           #1c2740;
-  --axis:           #2a3750;
-  --border:         rgba(170, 182, 204, 0.16);
-  --accent:         #5bb0ff;
-  /* Kept close in luminance to their day counterparts above, not just
-   * recolored for mood — the badge markup overlays white digits/dots on
-   * these fills (status-badge__dot, scale-badge__level), so a brighter
-   * pick here would quietly fail the same AA check the day values pass. */
+  --bg:          #0b0f14;
+  --band:        #0f1a2a;
+  --raised:      #131a22;
+  --ink:         #eef1f4;
+  --ink-soft:    #b7c0c9;
+  --ink-faint:   #8a95a2;
+  --line:        rgba(255, 255, 255, .11);
+  --grid:        rgba(255, 255, 255, .06);
+  --accent:      #6ddeff;
+  --accent-ink:  #06121a;
+  --accent-soft: #2c4a5a;
+  --s1:          #3987e5;
+  --s1-band:     rgba(57, 135, 229, .22);
+  --s2:          #d95926;
+  --bt:          #b7c0c9;
+  --ref:         #6b7682;
+  --ok:          #5fd18f;
+  --ok-soft:     #173326;
+
+  --severity-ok:            var(--ok);
+  --severity-ok-soft:       var(--ok-soft);
+  --severity-minor:         #e3b54a;
+  --severity-minor-soft:    #3a3115;
+  --severity-moderate:      #e98a4a;
+  --severity-moderate-soft: #3a2414;
+  --severity-strong:        #e55b4a;
+  --severity-strong-soft:   #3a1a14;
+  --severity-severe:        #e0569c;
+  --severity-severe-soft:   #3a1830;
+
   --status-ok:       #1fae55;
   --status-stale:    #e0a83c;
   --status-serious:  #e0794f;
   --status-error:    #e2463f;
   --status-nodata:   #8a93ab;
 
-  --chart-text:      var(--text-secondary);
-  --chart-axis:      var(--axis);
-  --chart-grid:      var(--grid);
-  --chart-crosshair: #c6cfe2;
-  --chart-ref:       #3c4a6b;
-  --chart-band-1:    #1fae55;
-  --chart-band-2:    #e0a83c;
-  --chart-band-3:    #e0794f;
-  --chart-band-4:    #e2463f;
-  --chart-band-5:    #b8322c;
-  --chart-s1:        #3987e5;
-  --chart-s2:        #d95926;
-  --chart-s3:        #199e70;
-  --chart-s4:        #c98500;
-  --chart-s5:        #d55181;
-  --chart-s6:        #008300;
+  --chart-text:  var(--ink-faint);
+  --chart-grid:  var(--grid);
+  --chart-axis:  var(--line);
+  --chart-ref:   var(--ref);
+  --chart-s1:    var(--s1);
+  --chart-s2:    var(--s2);
+  --chart-s3:    #199e70;
+  --chart-s4:    #c98500;
+  --chart-s5:    #d55181;
+  --chart-s6:    #008300;
 }
 
+/* ---------- base ---------- */
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  background: var(--surface-page);
-  color: var(--text-primary);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
 }
-a { color: var(--accent); }
-.skip-link {
-  position: absolute; left: -999px; top: 0;
-}
-.skip-link:focus { left: 0; background: var(--surface-card); padding: .5em 1em; z-index: 10; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.wrap { max-width: 1200px; margin: 0 auto; padding-left: 24px; padding-right: 24px; }
+.skip-link { position: absolute; left: -999px; top: 0; }
+.skip-link:focus { left: 0; background: var(--raised); padding: .6em 1em; z-index: 10; }
 
-.site-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface-card) 92%, transparent);
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
+/* ---------- header ---------- */
+.hdr {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
 }
-.site-header__inner {
-  max-width: 1100px; margin: 0 auto; padding: 0 1rem;
-  min-height: 60px;
-  display: flex; align-items: center; gap: 1.25rem;
+.hdr-in { display: flex; align-items: center; gap: 24px; height: 64px; }
+.brand { display: flex; flex-direction: column; line-height: 1; text-decoration: none; color: var(--ink); }
+.brand b { font-family: var(--font-display); font-weight: 400; font-size: 27px; letter-spacing: .02em; color: var(--ink); }
+.brand span { font-family: var(--font-ui); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin-top: 3px; }
+.nav { display: flex; gap: 22px; margin-left: auto; flex-wrap: wrap; }
+.nav a { font-family: var(--font-ui); font-size: 13.5px; color: var(--ink-soft); text-decoration: none; }
+.nav a:hover { color: var(--ink); }
+.nav a[aria-current] { color: var(--ink); font-weight: 500; }
+.tools { display: flex; align-items: center; gap: 10px; }
+.lang-switch { font-family: var(--font-ui); font-size: 12.5px; color: var(--ink-faint); display: flex; gap: .4em; }
+.lang-switch a { color: var(--ink-faint); text-decoration: none; }
+.lang-switch a:hover { color: var(--ink); }
+.lang-switch a[aria-current] { color: var(--ink); font-weight: 600; }
+.ibtn {
+  width: 40px; height: 40px; border-radius: var(--radius-sm);
+  border: 1px solid var(--line); background: transparent; color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.brand-group { display: flex; flex-direction: column; gap: .1rem; line-height: 1.1; }
-.back-link {
-  font-size: .72rem; color: var(--text-muted); text-decoration: none;
-  white-space: nowrap;
-}
-.back-link:hover { color: var(--accent); }
-.wordmark { text-decoration: none; }
-.wordmark__name { font-weight: 700; font-size: 1.1rem; color: var(--text-primary); white-space: nowrap; }
-.main-nav { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-left: auto; }
-.main-nav a { text-decoration: none; color: var(--text-secondary); font-size: .92rem; white-space: nowrap; }
-.main-nav a:hover { color: var(--accent); }
-.header-tools { display: flex; align-items: center; gap: .6rem; flex: none; }
-.lang-switch { display: flex; gap: .6rem; }
-.lang-switch a {
-  font: inherit; font-size: .92rem; color: var(--text-secondary);
-  text-decoration: none;
-}
-.lang-switch a:hover { color: var(--accent); }
-.lang-switch a[aria-current] { color: var(--text-primary); font-weight: 700; }
-.icon-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; flex: none;
-  border-radius: 999px; border: 1px solid var(--border);
-  background: transparent; color: var(--text-secondary); cursor: pointer;
-}
-.icon-btn:hover { color: var(--accent); }
+.ibtn:hover { color: var(--accent); border-color: var(--accent); }
 .theme-toggle .icon-night { display: none; }
 :root[data-theme='night'] .theme-toggle .icon-day { display: none; }
 :root[data-theme='night'] .theme-toggle .icon-night { display: inline; }
 .menu-toggle { display: none; }
 
-main { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
-
-.site-footer {
-  border-top: 1px solid var(--border);
-  color: var(--text-muted); font-size: .85rem;
-  padding: 1.5rem 1rem; margin-top: 2rem;
-}
-.site-footer p { max-width: 1100px; margin: 0 auto; }
-
-h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
-h2 { font-size: 1.2rem; margin: 2rem 0 .75rem; }
-.lede { color: var(--text-secondary); margin: 0 0 1.5rem; }
-
-/* Status badge: icon + label, never color alone (dataviz skill) */
-.status-badge {
-  display: inline-flex; align-items: center; gap: .4em;
-  font-size: .82rem; color: var(--text-secondary);
-}
-.status-badge__dot {
-  width: .6em; height: .6em; border-radius: 50%; flex: none;
-  box-shadow: 0 0 0 2px var(--surface-card);
-}
-
-/* NOAA scale badges (G/S/R), severity mapped onto the reserved status ramp */
-.scale-row { display: flex; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
-.scale-badge {
-  display: flex; flex-direction: column; align-items: center; gap: .25rem;
-  padding: .6rem 1rem; border-radius: 8px; background: var(--surface-card);
-  border: 1px solid var(--border); min-width: 5.5rem;
-}
-.scale-badge__letter { font-weight: 700; font-size: .78rem; color: var(--text-muted); }
-.scale-badge__level {
-  font-size: 1.4rem; font-weight: 700; width: 2em; height: 2em; line-height: 2em;
-  text-align: center; border-radius: 50%; color: #fff;
-}
-.scale-badge__text { font-size: .72rem; color: var(--text-secondary); }
-
-/* "Now" row (12-HANDOFF §4): compact stat tiles above the panel stack —
- * dataviz skill stat-tile contract (label, value, no delta/trend here, the
- * charts below carry that). */
-.now-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; margin: 1.25rem 0; }
-.stat-tile {
-  background: var(--surface-card); border: 1px solid var(--border); border-radius: 8px;
-  padding: .75rem .9rem; display: flex; flex-direction: column; gap: .2rem;
-}
-.stat-tile__label { font-size: .75rem; color: var(--text-muted); }
-.stat-tile__value { font-size: 1.35rem; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
-.stat-tile__value small { font-size: .65em; font-weight: 400; color: var(--text-secondary); }
-.stat-tile__time { font-size: .72rem; color: var(--text-muted); }
-
-/* Range toggle (shared by the home and product-page panel stacks) */
-.range-toggle { display: flex; gap: .25rem; margin: .5rem 0; }
-.range-toggle button {
-  font: inherit; font-size: .78rem; padding: .25em .7em; border-radius: 999px;
-  border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer;
-}
-.range-toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
-/* A range longer than the stored history (13-AUDIT §3): still focusable so
- * its title ("datos disponibles desde …") is reachable, but inert. */
-.range-toggle button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
-
-/* Panel stack (12-HANDOFF §4): one extended, full-width panel per metric,
- * sharing a time axis and a synced uPlot cursor (web/static/web/js/charts.js).
- * --panel-chart-height drives both the uPlot height passed from JS and this
- * CSS min-height, so the two never drift apart. */
-.swx-panel-stack {
-  --panel-chart-height: 190px;
-  display: flex; flex-direction: column; gap: 1rem; margin: 1rem 0 2rem;
-}
-.swx-panel-stack--tall { --panel-chart-height: 260px; }
-@media (min-width: 640px) {
-  .swx-panel-stack { --panel-chart-height: 220px; }
-  .swx-panel-stack--tall { --panel-chart-height: 340px; }
-}
-.swx-panel {
-  position: relative;
-  background: var(--surface-card); border: 1px solid var(--border); border-radius: 8px;
-  padding: .75rem 1rem 1rem;
-}
-.swx-panel__head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
-.swx-panel__head h3 { margin: 0; font-size: .92rem; }
-.swx-panel__source { font-size: .72rem; color: var(--text-muted); }
-/* The mount point keeps its height even while empty (16-PERF B4): a panel
- * switching to its empty/error state must not collapse and shift the rest
- * of the stack — the status text is laid over the empty chart area instead. */
-.swx-panel__chart { min-height: var(--panel-chart-height); }
-.swx-panel__status {
-  position: absolute; left: 1rem; right: 1rem; top: 50%; transform: translateY(-50%);
-  color: var(--text-muted); font-size: .85rem; text-align: center; margin: 0;
-}
-.u-legend { font-size: .78rem; color: var(--text-secondary); }
-/* 13-AUDIT §3: no "Hora: --" while the cursor is off the chart — the time
- * row and the values only appear while hovering (charts.js syncLegendIdle). */
-.swx-legend-idle .u-legend .u-series:first-child { display: none; }
-.swx-legend-idle .u-legend .u-value { display: none; }
-
-/* Catalogue / status tables */
-.product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
-.product-card {
-  background: var(--surface-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem;
-  display: flex; flex-direction: column; gap: .4rem;
-}
-.product-card h3 { margin: 0; font-size: 1rem; }
-.badge {
-  display: inline-block; font-size: .72rem; padding: .15em .6em; border-radius: 999px;
-  background: var(--surface-page); color: var(--text-secondary); border: 1px solid var(--border);
-  width: fit-content;
-}
-.status-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-.status-table th, .status-table td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--border); }
-
-/* Forms (registration stub) */
-.form-field { margin-bottom: 1rem; display: flex; flex-direction: column; gap: .25rem; max-width: 32rem; }
-.form-field label { font-size: .85rem; color: var(--text-secondary); }
-.form-field input, .form-field select, .form-field textarea {
-  font: inherit; padding: .5em .6em; border-radius: 6px; border: 1px solid var(--axis);
-  background: var(--surface-card); color: var(--text-primary);
-}
-.form-field--checkbox label { display: flex; align-items: flex-start; gap: .5em; font-size: .9rem; color: var(--text-primary); }
-.form-field--checkbox input { width: auto; margin-top: .2em; }
-button.primary {
-  font: inherit; background: var(--accent); color: #fff; border: none; border-radius: 6px;
-  padding: .6em 1.2em; cursor: pointer;
-}
-.errorlist { color: var(--status-error); font-size: .82rem; padding-left: 1em; }
-
-.offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
-.offer-card { background: var(--surface-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
-.offer-card h3 { margin-top: 0; }
-
-/* Responsive header (12-HANDOFF item 3): nav + language + theme toggle fit
- * one row down to 900px; below that a hamburger collapses the nav links
- * into a full-width dropdown panel, same shape as the group site's header
- * (Web/helio-usach src/styles/global.css), so the header never wraps into
- * three lines on a phone. */
-@media (max-width: 1040px) {
-  .main-nav { gap: .8rem; }
-}
 @media (max-width: 900px) {
+  .nav { display: none; }
   .menu-toggle { display: inline-flex; }
-  .site-header__inner { position: relative; flex-wrap: wrap; min-height: 56px; }
-  .main-nav {
-    display: none;
+  .hdr-in { position: relative; flex-wrap: wrap; }
+  .nav {
     position: absolute; top: 100%; left: 0; right: 0;
     flex-direction: column; align-items: stretch; gap: 0;
-    background: var(--surface-card); border-bottom: 1px solid var(--border);
-    padding: .5rem 1rem 1rem;
-    margin-left: 0;
+    background: var(--raised); border-bottom: 1px solid var(--line);
+    padding: .5rem 24px 1rem;
   }
-  .main-nav a { display: block; padding: .75rem 0; border-bottom: 1px solid var(--border); }
-  .site-header[data-open='true'] .main-nav { display: flex; }
+  .nav a { display: block; padding: .75rem 0; border-bottom: 1px solid var(--line); }
+  .hdr[data-open='true'] .nav { display: flex; }
 }
-@media (max-width: 480px) {
-  .back-link { display: none; }
+@media (max-width: 420px) { .wrap { padding-left: 16px; padding-right: 16px; } }
+
+/* ---------- status strip ---------- */
+.strip { background: var(--band); border-bottom: 1px solid var(--line); }
+.strip-in {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
+  padding-top: 9px; padding-bottom: 9px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft);
 }
+.scale { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; }
+.scale:hover { color: var(--ink); }
+.scale i {
+  font-style: normal; font-weight: 500; border-radius: 6px; padding: 1px 7px;
+  color: var(--severity-ok); background: var(--severity-ok-soft);
+}
+.scale i.sv-minor    { color: var(--severity-minor);    background: var(--severity-minor-soft); }
+.scale i.sv-moderate { color: var(--severity-moderate); background: var(--severity-moderate-soft); }
+.scale i.sv-strong   { color: var(--severity-strong);   background: var(--severity-strong-soft); }
+.scale i.sv-severe   { color: var(--severity-severe);   background: var(--severity-severe-soft); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--severity-ok); display: inline-block; }
+.sep { width: 1px; height: 16px; background: var(--line); }
+@media (max-width: 680px) { .strip-in .sep { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 48px; padding-top: 64px; padding-bottom: 56px; align-items: start; }
+.eyebrow { font-family: var(--font-ui); font-size: 11.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 76px; line-height: .92; letter-spacing: .01em; margin: 14px 0 18px; text-wrap: balance; }
+.lede { font-size: 17px; color: var(--ink-soft); max-width: 56ch; margin: 0 0 1.5rem; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.btn {
+  font-family: var(--font-ui); font-size: 14px; font-weight: 500; border-radius: 999px; padding: 11px 20px;
+  text-decoration: none; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); color: var(--ink);
+}
+.btn:hover { border-color: var(--accent); color: var(--ink); }
+a.btn.pri { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+a.btn.pri:hover { color: var(--accent-ink); opacity: .9; }
+.offer { display: grid; gap: 12px; }
+.ocard { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; display: grid; gap: 6px; }
+.ocard h3 { font-family: var(--font-ui); font-size: 16px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.ocard p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+.pill {
+  font-family: var(--font-ui); font-size: 11px; font-weight: 500; letter-spacing: .04em; border-radius: 999px;
+  padding: 2px 9px; border: 1px solid var(--line); color: var(--ink-soft); white-space: nowrap;
+}
+.pill.beta { background: var(--accent-soft); border-color: transparent; color: var(--ink); }
+.pill.ok { background: var(--severity-ok-soft); border-color: transparent; color: var(--severity-ok); display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-top: 40px; }
+  h1 { font-size: 56px; }
+}
+
+/* ---------- sections, cards, chart stack ---------- */
+.sec { padding-top: 24px; padding-bottom: 56px; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }
+h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-height: 1; margin: 6px 0 0; letter-spacing: .01em; }
+.meta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+.ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { font-family: var(--font-ui); font-size: 12.5px; border: 0; background: transparent; color: var(--ink-soft); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.seg button.on { background: var(--ink); color: var(--bg); }
+.seg button[aria-disabled='true'] { opacity: .45; cursor: not-allowed; }
+.sbtn {
+  font-family: var(--font-ui); font-size: 12.5px; border: 1px solid var(--line); background: transparent; color: var(--ink);
+  border-radius: 999px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+}
+.sbtn:hover { border-color: var(--accent); }
+.sbtn[disabled] { color: var(--ink-faint); cursor: not-allowed; }
+.card { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); }
+.card-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.figwrap { padding: 16px 16px 10px; }
+
+/* One ECharts instance per stack (web/static/web/js/charts.js); the
+ * readout column is plain DOM, driven by updateAxisPointer/globalout. */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 168px; gap: 16px; }
+.plot { position: relative; min-width: 0; }
+.read { display: grid; align-content: start; font-family: var(--font-mono); font-size: 12.5px; }
+.rrow { border-left: 1px solid var(--line); padding-left: 12px; display: grid; align-content: center; gap: 3px; }
+.rrow div { display: flex; justify-content: space-between; gap: 8px; }
+.rrow b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.k { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-soft); }
+.sw { width: 12px; height: 2px; border-radius: 1px; display: inline-block; }
+.unit { color: var(--ink-faint); font-size: 11px; }
+.snap { margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; }
+/* Error/empty state, per product, overlaid on just that product's grids
+ * (16-PERF B4: the mount point keeps its height, nothing collapses). */
+.swx-stack-status {
+  position: absolute; left: 0; right: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--ink-faint); font-size: .85rem; text-align: center; padding: 0 1rem; pointer-events: none;
+}
+
+@media (max-width: 680px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .read { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rrow { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; }
+}
+
+/* ---------- link cards ---------- */
+.more { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.mcard { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; display: grid; gap: 6px; text-decoration: none; color: var(--ink); }
+.mcard:hover { border-color: var(--accent); color: var(--ink); }
+.mcard b { font-family: var(--font-ui); font-size: 14.5px; font-weight: 600; }
+.mcard span { font-size: 13.5px; color: var(--ink-soft); }
+.mcard em { font-style: normal; font-family: var(--font-ui); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 900px) { .more { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .more { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- footer ---------- */
+.foot { background: var(--band); border-top: 1px solid var(--line); margin-top: 24px; }
+.foot-in { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); gap: 32px; padding-top: 40px; padding-bottom: 40px; font-size: 13.5px; color: var(--ink-soft); }
+.foot h4 { font-family: var(--font-ui); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 10px; font-weight: 600; }
+.foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.foot p { margin: 0 0 8px; }
+@media (max-width: 900px) { .foot-in { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- product page ---------- */
+.crumb { font-family: var(--font-ui); font-size: 13px; color: var(--ink-faint); padding-top: 28px; }
+.crumb a { text-decoration: none; }
+.head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; padding-top: 10px; padding-bottom: 22px; }
+.head h1 { font-size: 60px; line-height: .95; margin: 0; }
+.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.now { display: flex; gap: 28px; flex-wrap: wrap; }
+.now div { display: grid; gap: 2px; }
+.now small { font-family: var(--font-ui); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+.now b { font-family: var(--font-mono); font-weight: 500; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.now b span { font-size: 14px; color: var(--ink-faint); margin-left: 4px; }
+.below { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; padding-top: 32px; padding-bottom: 64px; }
+.below h2 { font-family: var(--font-ui); font-size: 17px; font-weight: 600; margin: 0 0 10px; }
+.below p { margin: 0 0 12px; color: var(--ink-soft); max-width: 64ch; }
+.below dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 20px; font-size: 14px; }
+.below dt { color: var(--ink-faint); font-family: var(--font-ui); font-size: 12.5px; }
+.below dd { margin: 0; color: var(--ink); }
+@media (max-width: 900px) { .below { grid-template-columns: minmax(0, 1fr); } .head h1 { font-size: 46px; } }
+@media (max-width: 680px) { .now b { font-size: 24px; } }
+
+/* Every page's own content supplies its own .wrap for width + side
+ * padding (the mockup's own pattern) -- main only adds bottom spacing, so
+ * a .wrap never ends up padded twice by nesting inside a padded main.
+ * .page is the plain top-level pages (catalogue, status, about, ...) that
+ * aren't built from mockup sections (hero/sec/card), which supply their
+ * own top spacing already. */
+main { display: block; padding-bottom: 3rem; }
+.page { padding-top: 32px; }
+
+/* ---------- retained components (status badges, catalogue, forms) ---------- */
+.status-badge { display: inline-flex; align-items: center; gap: .4em; font-size: .82rem; color: var(--ink-soft); }
+.status-badge__dot { width: .6em; height: .6em; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px var(--raised); }
+
+/* NOAA scale badges (G/S/R) on a product_detail_event page (e.g.
+ * noaa.scales itself) -- the home page strip replaces these there. */
+.scale-row { display: flex; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
+.scale-badge { display: flex; flex-direction: column; align-items: center; gap: .25rem; padding: .6rem 1rem; border-radius: var(--radius-sm); background: var(--raised); border: 1px solid var(--line); min-width: 5.5rem; }
+.scale-badge__letter { font-weight: 700; font-size: .78rem; color: var(--ink-faint); }
+.scale-badge__level { font-size: 1.4rem; font-weight: 700; width: 2em; height: 2em; line-height: 2em; text-align: center; border-radius: 50%; color: #fff; }
+.scale-badge__text { font-size: .72rem; color: var(--ink-soft); }
+
+.product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.product-card { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1rem; display: flex; flex-direction: column; gap: .4rem; }
+.product-card h3 { margin: 0; font-size: 1rem; }
+.badge { display: inline-block; font-size: .72rem; padding: .15em .6em; border-radius: 999px; background: var(--band); color: var(--ink-soft); border: 1px solid var(--line); width: fit-content; }
+.status-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.status-table th, .status-table td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+
+.form-field { margin-bottom: 1rem; display: flex; flex-direction: column; gap: .25rem; max-width: 32rem; }
+.form-field label { font-size: .85rem; color: var(--ink-soft); }
+.form-field input, .form-field select, .form-field textarea {
+  font: inherit; padding: .5em .6em; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--raised); color: var(--ink);
+}
+.form-field--checkbox label { display: flex; align-items: flex-start; gap: .5em; font-size: .9rem; color: var(--ink); }
+.form-field--checkbox input { width: auto; margin-top: .2em; }
+button.primary { font: inherit; background: var(--accent); color: var(--accent-ink); border: none; border-radius: 6px; padding: .6em 1.2em; cursor: pointer; }
+.errorlist { color: var(--severity-strong); font-size: .82rem; padding-left: 1em; }
+
+/* que_ofrecemos.html's stakeholder cards (home uses .offer/.ocard instead) */
+.offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.offer-card { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1.25rem; }
+.offer-card h3 { margin-top: 0; }

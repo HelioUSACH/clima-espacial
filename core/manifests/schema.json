@@ -6,6 +6,17 @@
   "type": "object",
   "required": ["id", "version", "kind", "title", "maturity", "cadence", "stale_after", "producer", "source"],
   "additionalProperties": false,
+  "$defs": {
+    "bilingual": {
+      "type": "object",
+      "required": ["es", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "es": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    }
+  },
   "properties": {
     "id": {
       "type": "string",
@@ -70,6 +81,23 @@
         "push": {"type": "array", "items": {"type": "string"}}
       }
     },
-    "model_card": {"type": "string"}
+    "model_card": {"type": "string"},
+    "description": {
+      "$ref": "#/$defs/bilingual",
+      "description": "18-HANDOFF-v0.2.0.md §2: the product page's 'Qué muestra' text."
+    },
+    "facts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "18-HANDOFF-v0.2.0.md §2: the product page's 'Ficha del producto' <dl>.",
+      "properties": {
+        "source": {"$ref": "#/$defs/bilingual"},
+        "spacecraft": {"$ref": "#/$defs/bilingual"},
+        "cadence": {"$ref": "#/$defs/bilingual"},
+        "coordinates": {"$ref": "#/$defs/bilingual"},
+        "license": {"$ref": "#/$defs/bilingual"},
+        "used_by": {"$ref": "#/$defs/bilingual"}
+      }
+    }
   }
 }

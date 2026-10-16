@@ -1,17 +1,19 @@
-"""Release screenshots + browser smoke checks (13-AUDIT §5 B.2, D-058).
+"""Release screenshots + browser smoke checks (18-HANDOFF-v0.2.0.md §3;
+supersedes the uPlot-era version, D-058).
 
     python .github/scripts/screenshots.py http://127.0.0.1:8000 shots/
 
 Against a running portal with seeded data (`manage.py seed_dev_data`), for
-home and one product page × 1440/390 px × day/night × ES/EN:
+home and one product page x 1440/390 px x day/night x ES/EN:
 
-- waits for every chart to render and saves a full-page screenshot;
-- fails if the number of rendered charts isn't the expected one, if any
-  panel shows its empty/error status, or if the page logs a JS error;
-- once per page (ES, day, desktop): checks the range-click race fix
-  (16-PERF B1) — a fast 7d→6h double click must end up showing 6 h of
-  data, not whichever response arrived last — and that the second visit to
-  a range is served from the client cache without a request (B2).
+- waits for exactly one ECharts canvas group per stack and saves a
+  full-page screenshot (to sit next to the matching mockup artboard in the
+  PR, per 18-HANDOFF "Done means");
+- fails if the stack count is wrong, if any product's status overlay is
+  visible, or if the page logs a JS error;
+- once per page (ES, day, desktop): checks that "reset zoom" restores the
+  full range after a programmatic zoom, and that the range-click race fix
+  (16-PERF B1) and client cache (B2) both still hold with the new engine.
 
 Exit status 1 on any failure, with every failure listed.
 """
@@ -22,56 +24,59 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 PAGES = {
-    # name: (path, expected chart count)
-    "home": ("/", 9),
-    "noaa.rtsw.mag": ("/productos/noaa.rtsw.mag/", 2),
+    # name: (path, expected stack count -- one ECharts instance per stack,
+    # not one per panel: home's 5-panel solar-wind stack is ONE instance).
+    "home": ("/", 1),
+    "noaa.rtsw.mag": ("/productos/noaa.rtsw.mag/", 1),
 }
 WIDTHS = {"desktop": 1440, "mobile": 390}
 THEMES = ("day", "night")
 LANGS = {"es": "", "en": "/en"}
-# An explicit browser locale: uPlot builds an Intl formatter at load time,
-# and a runner whose shell locale is e.g. "en_US@posix" hands Chromium an
-# invalid language tag that makes it throw before any chart exists.
+# An explicit browser locale: ECharts/the page build Intl formatters at
+# load time, and a runner whose shell locale is e.g. "en_US@posix" hands
+# Chromium an invalid language tag that can make those throw before any
+# chart exists.
 BROWSER_LOCALES = {"es": "es-CL", "en": "en-US"}
 
-COUNT_CHARTS = "document.querySelectorAll('.swx-panel__chart .uplot').length"
+COUNT_READY_STACKS = "document.querySelectorAll('[data-stack-plot][data-echarts-ready=\"true\"]').length"
 VISIBLE_STATUS = """
-[...document.querySelectorAll('.swx-panel__status')]
-  .filter(el => !el.hidden && el.offsetParent !== null)
+[...document.querySelectorAll('.swx-stack-status')]
+  .filter(el => el.textContent.trim() && el.offsetParent !== null)
   .map(el => el.textContent.trim())
 """
-FIRST_SPAN_SECONDS = """
-(() => {
-  const states = document.querySelector('.swx-panel-stack').__swxPanelStates;
-  const t = states[0].uplot.data[0];
-  return t[t.length - 1] - t[0];
-})()
-"""
+SPAN_SECONDS = "document.querySelector('.swx-stack').__swxStack.spanSeconds"
 
 
 def wait_for_charts(page, expected):
-    page.wait_for_function(
-        f"{COUNT_CHARTS} >= {expected} || document.querySelectorAll('.swx-panel__status:not([hidden])').length",
-        timeout=20000,
-    )
+    page.wait_for_function(f"{COUNT_READY_STACKS} >= {expected}", timeout=20000)
     page.wait_for_load_state("networkidle")
+
+
+def check_zoom_reset(page, failures, label):
+    stack_ref = "document.querySelector('.swx-stack').__swxStack"
+    page.evaluate(f"{stack_ref}.ec.dispatchAction({{type: 'dataZoom', start: 20, end: 40}})")
+    page.click("[data-reset-zoom]")
+    page.wait_for_timeout(200)
+    dz = page.evaluate(f"{stack_ref}.ec.getOption().dataZoom[0]")
+    if not (dz["start"] == 0 and dz["end"] == 100):
+        failures.append(f"{label}: 'Restablecer zoom' left dataZoom at {dz['start']}-{dz['end']}, not 0-100")
 
 
 def check_range_race(page, failures, label):
     requests = []
     page.on("request", lambda r: requests.append(r.url) if "serie.json" in r.url else None)
     row = page.locator("[data-range-row]").first
-    row.locator('[data-chart-range="7d"]').click()
-    row.locator('[data-chart-range="6h"]').click()
+    row.locator('[data-chart-range="7d"]').click(force=True)
+    row.locator('[data-chart-range="6h"]').click(force=True)
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(300)
-    span = page.evaluate(FIRST_SPAN_SECONDS)
+    span = page.evaluate(SPAN_SECONDS)
     if span > 6 * 3600 + 120:
-        failures.append(f"{label}: after a fast 7d→6h click the chart shows {span / 3600:.1f} h, not 6 h (B1)")
+        failures.append(f"{label}: after a fast 7d->6h click the chart shows {span / 3600:.1f} h, not 6 h (B1)")
     requests.clear()
-    row.locator('[data-chart-range="7d"]').click()  # aborted above: fetched now
+    row.locator('[data-chart-range="7d"]').click(force=True)  # aborted above: fetched now
     page.wait_for_load_state("networkidle")
-    row.locator('[data-chart-range="6h"]').click()  # loaded above: cached
+    row.locator('[data-chart-range="6h"]').click(force=True)  # loaded above: cached
     page.wait_for_timeout(300)
     sixh = [u for u in requests if "range=6h" in u]
     if sixh:
@@ -104,9 +109,9 @@ def main(base_url, out_dir):
                             wait_for_charts(page, expected)
                         except Exception as exc:  # noqa: BLE001 — reported below with the counts
                             failures.append(f"{label}: charts never finished rendering ({exc.__class__.__name__})")
-                        count = page.evaluate(COUNT_CHARTS)
+                        count = page.evaluate(COUNT_READY_STACKS)
                         if count != expected:
-                            failures.append(f"{label}: {count} charts rendered, expected {expected}")
+                            failures.append(f"{label}: {count} chart stack(s) rendered, expected {expected}")
                         statuses = page.evaluate(VISIBLE_STATUS)
                         if statuses:
                             failures.append(f"{label}: panel status visible: {statuses}")
@@ -114,6 +119,7 @@ def main(base_url, out_dir):
                             failures.append(f"{label}: JS errors: {errors}")
                         page.screenshot(path=str(out / f"{label}.png"), full_page=True)
                         if lang == "es" and theme == "day" and size == "desktop":
+                            check_zoom_reset(page, failures, label)
                             check_range_race(page, failures, label)
                         context.close()
         browser.close()

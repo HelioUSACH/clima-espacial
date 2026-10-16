@@ -77,6 +77,11 @@ parameters:
   - {name: state, enum: [QUIET, RISING, POST_IMPULSIVE]}
 exchange: {hapi: true, feed: true, push: [national-platform]}   # what may leave the portal
 model_card: docs/products/usach.flare.nrt.md
+description: {es: "...", en: "..."}   # optional: the product page's "Qué muestra" text
+facts:                                # optional: the product page's "Ficha del producto" <dl>
+  source: {es: "...", en: "..."}      # recognised keys: source, spacecraft, cadence,
+  license: {es: "...", en: "..."}     # coordinates, license, used_by -- a product skips
+                                       # any row it doesn't set, never shows one empty
 ```
 
 Validated against `core/manifests/schema.json` by `manage.py

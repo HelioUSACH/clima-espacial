@@ -2,6 +2,7 @@
 {% load i18n %}
 {% block title %}{% trans "Qué ofrecemos" %}{% endblock %}
 {% block content %}
+<div class="wrap page">
 <h1>{% trans "Qué ofrecemos" %}</h1>
 <p class="lede">{% trans "Productos pensados para quienes toman decisiones operativas, no solo para la comunidad científica." %}</p>
 
@@ -27,4 +28,5 @@
 <h2>{% trans "Sobre nuestros modelos" %}</h2>
 <p>{% trans "Cada modelo publica una ficha con su desempeño frente a persistencia/climatología y su nivel de madurez — nunca se presenta como una alerta oficial mientras esté en etapa experimental o beta." %}</p>
 <a href="{% url 'web:catalogue' %}">{% trans "Ver catálogo de productos y modelos →" %}</a>
+</div>
 {% endblock %}
