@@ -138,3 +138,24 @@ USE_TZ = True
 STATIC_URL = f"{SWX_SCRIPT_NAME}/static/" if SWX_SCRIPT_NAME else "static/"
 STATIC_ROOT = os.environ.get("STATIC_ROOT") or BASE_DIR / "staticfiles"
 # web/static/ is found via APP_DIRS (the "web" app) — no extra STATICFILES_DIRS entry.
+
+# D-055: hashed static filenames (base.3f9c2a.css), so a release can never
+# pair new HTML with a browser's cached old CSS/JS again (13-AUDIT §1) and
+# nginx can serve /static/ as `immutable`. `collectstatic` writes the
+# manifest; settings.dev swaps in the plain storage so runserver and the
+# test suite never need one.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"},
+}
+
+# D-057: per-process memory cache for the `serie.json` responses (60 s) —
+# no Redis on this VM (D-002). Each gunicorn worker keeps its own copy,
+# which only means up to one query per worker per minute per (product, range).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "swx",
+        "OPTIONS": {"MAX_ENTRIES": 500},
+    }
+}

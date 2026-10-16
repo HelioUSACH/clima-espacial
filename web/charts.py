@@ -6,8 +6,10 @@ only draws what it's given.
 
 Series colors are CSS variable *names*, not resolved hex: a `<canvas>` 2D
 context can't resolve `var(--chart-s1)` the way the DOM can, so
-`web/static/web/js/charts.js` reads the real value via `getComputedStyle`
-at render time and again on `swx:themechange` (D-053 theme contract)."""
+`web/static/web/js/charts.js` resolves them once per render into a palette
+object (never inside a draw hook, 16-PERF B5) and again on
+`swx:themechange` (D-053 theme contract). `web/series.py` turns the panels'
+fields into the bucketed `serie.json` (D-056)."""
 
 from __future__ import annotations
 
@@ -89,6 +91,24 @@ RANGE_DAYS = {key: days for key, _es, _en, days in RANGE_CHOICES}
 DEFAULT_RANGE_HOME = "1d"
 DEFAULT_RANGE_PRODUCT = "3d"  # 12-HANDOFF §4: "default 3d on product pages, 1d on home"
 
+# Server-side bucket size per range (D-056): `serie.json` aggregates in SQL
+# with PostgreSQL's `date_bin` to one mean/min/max per bucket, so a 7-day
+# click is ~670 points per series instead of ~10,000 raw 1-min rows. 6 h
+# keeps 1-min buckets — the raw RTSW cadence, so nothing is lost there.
+BUCKET_SECONDS = {"6h": 60, "1d": 120, "3d": 300, "7d": 900}
+
+# Provider fill values (NOAA RTSW's -9999, GOES' -1e5, ...) are dropped in
+# SQL *before* aggregating, so one fill can't drag a whole bucket's mean
+# and min down by thousands. No real value of any plotted field gets near
+# this (the strongest Dst on record is about -1,600 nT).
+FILL_VALUE_CEILING = -9999
+
+# How long one (product, range) `serie.json` response is reused, both by
+# Django's cache and by the browser/nginx via Cache-Control (D-057). The
+# fastest products update every minute, so 60 s never hides a new point
+# for longer than one collector tick.
+SERIES_CACHE_SECONDS = 60
+
 
 @dataclass(frozen=True)
 class Series:
@@ -96,6 +116,18 @@ class Series:
     label_es: str
     label_en: str
     slot: int | None = None  # None for a bars panel colored by severity, not identity
+    # Rounding of the bucketed values in `serie.json` (D-056): either fixed
+    # decimals (nT to 0.01, km/s to 0.1, …) or significant figures for the
+    # log-axis quantities (temperature, fluxes) that span many decades.
+    decimals: int | None = 2
+    sig_figs: int | None = None
+
+    def round(self, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if self.sig_figs:
+            return float(f"{value:.{self.sig_figs}g}")
+        return round(value, self.decimals)
 
 
 @dataclass(frozen=True)
@@ -112,6 +144,8 @@ class Panel:
     log_bands: tuple[tuple[float, str], ...] = ()  # (threshold, class letter) on a log axis, labelled on the right
     show_source: bool = False  # annotate the active L1 spacecraft + mark where it changes
     kp_bucket: bool = False  # bars colored by the Kp->G severity bucket, not a fixed slot
+    y_range: tuple[float, float] | None = None  # fixed y-axis limits instead of auto-scaling
+    envelope: bool = False  # draw each series' per-bucket min-max as a faint band around the mean line
 
 
 # Energy-channel products (X-ray, protons) interleave one row per channel
@@ -128,25 +162,26 @@ PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
         Panel(
             key="bz", title_es="Bt / Bz (IMF)", title_en="Bt / Bz (IMF)", unit="nT",
             series=(Series("bt", "Bt", "Bt", 1), Series("bz_gsm", "Bz (GSM)", "Bz (GSM)", 2)),
-            zero_line=True, show_source=True,
+            zero_line=True, show_source=True, envelope=True,
         ),
         Panel(
             key="bxby", title_es="Bx / By (GSM)", title_en="Bx / By (GSM)", unit="nT",
             series=(Series("bx_gsm", "Bx (GSM)", "Bx (GSM)", 1), Series("by_gsm", "By (GSM)", "By (GSM)", 2)),
+            envelope=True,
         ),
     ),
     "noaa.rtsw.wind": (
         Panel(
             key="speed", title_es="Velocidad del viento solar", title_en="Solar wind speed", unit="km/s",
-            series=(Series("proton_speed", "Velocidad", "Speed", 1),), show_source=True,
+            series=(Series("proton_speed", "Velocidad", "Speed", 1, decimals=1),), show_source=True, envelope=True,
         ),
         Panel(
             key="density", title_es="Densidad", title_en="Density", unit="p/cm³",
-            series=(Series("proton_density", "Densidad", "Density", 1),),
+            series=(Series("proton_density", "Densidad", "Density", 1),), envelope=True,
         ),
         Panel(
             key="temperature", title_es="Temperatura", title_en="Temperature", unit="K", y="log",
-            series=(Series("proton_temperature", "Temperatura", "Temperature", 1),),
+            series=(Series("proton_temperature", "Temperatura", "Temperature", 1, sig_figs=3),), envelope=True,
         ),
     ),
     "noaa.kp": (
@@ -166,19 +201,20 @@ PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
         Panel(
             key="xray", title_es="Rayos X (GOES)", title_en="X-rays (GOES)", unit="W/m²", y="log",
             series=(
-                Series("0.1-0.8nm", "Largo (0.1-0.8 nm)", "Long (0.1-0.8 nm)", 1),
-                Series("0.05-0.4nm", "Corto (0.05-0.4 nm)", "Short (0.05-0.4 nm)", 2),
+                Series("0.1-0.8nm", "Largo (0.1-0.8 nm)", "Long (0.1-0.8 nm)", 1, sig_figs=3),
+                Series("0.05-0.4nm", "Corto (0.05-0.4 nm)", "Short (0.05-0.4 nm)", 2, sig_figs=3),
             ),
             log_bands=((1e-8, "A"), (1e-7, "B"), (1e-6, "C"), (1e-5, "M"), (1e-4, "X")),
+            y_range=(1e-9, 1e-2),  # fixed, NOAA-style: the class letters never move between ranges
         ),
     ),
     "noaa.goes.protons": (
         Panel(
             key="protons", title_es="Protones (GOES)", title_en="Protons (GOES)", unit="pfu", y="log",
             series=(
-                Series(">=10 MeV", "≥10 MeV", "≥10 MeV", 1),
-                Series(">=100 MeV", "≥100 MeV", "≥100 MeV", 2),
-                Series(">=1 MeV", "≥1 MeV", "≥1 MeV", 3),
+                Series(">=10 MeV", "≥10 MeV", "≥10 MeV", 1, sig_figs=3),
+                Series(">=100 MeV", "≥100 MeV", "≥100 MeV", 2, sig_figs=3),
+                Series(">=1 MeV", "≥1 MeV", "≥1 MeV", 3, sig_figs=3),
             ),
             ref_lines=((10, "S1"),),  # S1 threshold, ≥10 MeV
         ),
@@ -207,6 +243,10 @@ def kp_severity(value: float | None) -> str | None:
 
 def product_fields(product_id: str) -> list[str]:
     return [s.field for panel in PRODUCT_PANELS.get(product_id, ()) for s in panel.series]
+
+
+def product_series(product_id: str) -> list[Series]:
+    return [s for panel in PRODUCT_PANELS.get(product_id, ()) for s in panel.series]
 
 
 def xray_class(flux: float | None) -> str | None:

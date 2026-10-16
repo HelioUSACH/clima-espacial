@@ -1,5 +1,8 @@
+import datetime as dt
+
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from core import swxkit
 
@@ -23,7 +26,9 @@ PRODUCT_MANIFEST = {
 @pytest.fixture
 def one_product(monkeypatch):
     monkeypatch.setattr(swxkit, "get_manifest", lambda product_id: dict(PRODUCT_MANIFEST))
-    swxkit.publish_timeseries("noaa.kp", [{"time_tag": "2026-10-15T00:00:00Z", "kp": 2.0}])
+    # Relative to now, not a fixed date: serie.json only returns the last
+    # N days, so a hard-coded date silently ages out of every range.
+    swxkit.publish_timeseries("noaa.kp", [{"time_tag": timezone.now() - dt.timedelta(hours=1), "kp": 2.0}])
 
 
 @pytest.mark.django_db

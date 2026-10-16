@@ -13,6 +13,7 @@ pip install -r requirements-dev.txt
 cp .env.example .env                                  # fill in SECRET_KEY, DATABASE_URL
 createuser swx && createdb -O swx swx                 # local PostgreSQL 16
 python manage.py migrate
+python manage.py seed_dev_data --days 7     # optional: 7 days of synthetic charts data (dev only)
 python manage.py runserver
 ```
 
@@ -65,15 +66,58 @@ model card (`docs/models/MODEL-CARD-TEMPLATE.md`).
       PR is explicitly a core change (needs `CODEOWNERS` review)
 
 CI (`.github/workflows/ci.yml`) runs lint, tests, manifest validation,
-`makemigrations --check` and `check --deploy` on every PR.
+`makemigrations --check` and `check --deploy` on every PR (job `test`), then
+a real browser against seeded data (job `screenshots`, D-058): home and the
+`noaa.rtsw.mag` page at 1440/390 px × day/night × ES/EN. Its screenshots
+are uploaded as the run's `screenshots` artifact — **look at them before
+approving a PR that touches templates, CSS or JS**. The job fails if a
+chart is missing, a panel shows its error/empty state, the page logs a JS
+error, or the range buttons regress (16-PERF B1/B2). To run it locally:
+`pip install playwright==1.55.0 && python -m playwright install chromium`,
+start `runserver` on seeded data, then
+`python .github/scripts/screenshots.py http://127.0.0.1:8000 screenshots/`.
 
-## Branching
+## Branching: every change goes through a PR
 
-`main` is meant to stay protected (GitHub branch protection isn't actually
-configured yet — until it is, treat this as a convention, not an enforced
-rule). Work on a feature branch, open a PR, wait for CI and the required
-review. Deploys are a tagged release pulled onto the server by a human
-running `deploy/deploy.sh` — never a direct push to the server.
+**Every change to `main` goes through a pull request** — no direct pushes,
+including by the maintainer and by AI sessions. Work on a branch
+(`fix/…`, `feat/…`), open a PR, wait for both CI jobs and the review, merge.
+(v0.1.2 landed as two direct commits on `main` with no PR and no
+screenshots; that is how a broken release reached the server, 13-AUDIT §2.)
+
+**Branch protection (one-time, maintainer):** on GitHub, open the repository
+→ **Settings** → **Rules** → **Rulesets** → **New ruleset** → **New branch
+ruleset**, then:
+
+- *Ruleset name:* `main`; *Enforcement status:* **Active**
+- *Target branches* → **Add target** → **Include default branch**
+- tick **Restrict deletions** and **Block force pushes**
+- tick **Require a pull request before merging** (required approvals: 0 is
+  fine while there's one maintainer — the PR itself is the gate)
+- tick **Require status checks to pass** → **Add checks** → add `test` and
+  `screenshots` (they appear in the search once CI has run on a PR), and
+  tick **Require branches to be up to date before merging**
+- **Create**
+
+(Direct link: `https://github.com/HelioUSACH/clima-espacial/settings/rules`.
+The older equivalent is **Settings** → **Branches** → **Add classic branch
+protection rule** for `main` with the same options.)
+
+## Releasing
+
+1. Merge the PR; bump `version` in `pyproject.toml` in that PR.
+2. Tag the merge commit: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. On the server: `sudo bash /opt/swx/deploy/deploy.sh vX.Y.Z`. Its smoke
+   test checks `/estado/`, `/`, one `serie.json` and that the hashed static
+   files the page references exist.
+4. If `deploy/nginx-clima-espacial.conf` changed: copy it to
+   `/etc/nginx/snippets/clima-espacial.conf`, `sudo nginx -t`, then
+   `sudo systemctl reload nginx`.
+5. **After every deploy, a hard-refresh check** (Ctrl+Shift+R / Cmd+Shift+R)
+   of the home page and one product page, in both themes and both
+   languages: every chart drawn, no unstyled header, the toggle works.
+   Hashed static files (D-055) mean a normal visitor never needs this —
+   it's to catch what the smoke test can't see.
 
 ## For the maintainer: keep `.git` outside OneDrive
 

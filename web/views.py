@@ -1,15 +1,18 @@
 import datetime as dt
+import json
 
-from django.http import JsonResponse
+from django.core.cache import cache
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.cache import patch_cache_control
 from django.utils.translation import get_language, gettext
 from django.views.decorators.http import require_http_methods
 
 from core.models import Event, Heartbeat, Product, TimeSeriesPoint
 
-from . import charts
+from . import charts, series
 from .forms import RegistrationForm
 
 FLARE_PRODUCT_ID = "usach.flare.nrt"
@@ -92,8 +95,7 @@ def home(request):
             "stack_id": "home",
             "panels_id": "home-panels",
             "i18n_id": "home-i18n",
-            "ranges": charts.RANGE_CHOICES,
-            "default_range": charts.DEFAULT_RANGE_HOME,
+            **_range_buttons(charts.HOME_PRODUCT_ORDER, charts.DEFAULT_RANGE_HOME, lang),
             "scales_badges": scales_badges,
             "flare_card_ready": _flare_card_ready(),
         },
@@ -168,6 +170,8 @@ def _panel_json(product_id, panel, lang):
         "log_bands": [{"value": v, "label": label} for v, label in panel.log_bands],
         "show_source": panel.show_source,
         "kp_bucket": panel.kp_bucket,
+        "envelope": panel.envelope,
+        "y_range": list(panel.y_range) if panel.y_range else None,
     }
 
 
@@ -177,7 +181,10 @@ def _chart_i18n():
     # the request's actual active language, same msgids already in
     # locale/en/LC_MESSAGES/django.po for the pre-panel-stack charts.
     return {
+        "lang": "en" if get_language() == "en" else "es",
         "time_label": gettext("Hora"),
+        "time_axis_label": gettext("UT"),
+        "months": [gettext(m) for m in _MONTH_ABBR],
         "no_data_message": gettext("Sin datos todavía."),
         "error_message": gettext("No se pudo cargar la serie."),
         "trend_up": gettext("en aumento"),
@@ -185,6 +192,76 @@ def _chart_i18n():
         "trend_flat": gettext("estable"),
         "active_source": gettext("Fuente activa:"),
     }
+
+
+# English month abbreviations for the EN time axis ("15 Oct"); ES uses
+# dd/mm and never reads these. Translated through gettext anyway so the
+# list isn't English-only by accident if a third language ever appears.
+_MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+# A range button is offered once the stored history covers most of it
+# (13-AUDIT §3: "7 días" was offered with ~1.5 days of data). 0.9, not
+# 1.0, so a 7-day archive that's a few minutes short still gets "7 días".
+_RANGE_COVERAGE = 0.9
+_HISTORY_CACHE_SECONDS = 300
+
+
+def _fmt_ut(when, lang):
+    when = when.astimezone(dt.UTC)
+    if lang == "en":
+        return f"{when.day:02d} {gettext(_MONTH_ABBR[when.month - 1])} {when:%H:%M} UT"
+    return f"{when:%d/%m %H:%M} UT"
+
+
+def _history_since(product_ids):
+    """The newest of the products' oldest stored points: a range is only
+    complete once *every* panel in the stack has data that far back. A
+    product with nothing stored yet doesn't count (its panel shows its own
+    empty state either way)."""
+    cache_key = "swx:history:" + ",".join(product_ids)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+    oldest = []
+    for pid in product_ids:
+        first = TimeSeriesPoint.objects.filter(product_id=pid).order_by("time_tag").values_list("time_tag", flat=True)
+        first = first.first()
+        if first is not None:
+            oldest.append(first)
+    since = max(oldest) if oldest else None
+    cache.set(cache_key, since or "", _HISTORY_CACHE_SECONDS)
+    return since
+
+
+def _range_buttons(product_ids, default_range, lang):
+    since = _history_since(product_ids)
+    history_days = (timezone.now() - since).total_seconds() / 86400 if since else None
+    buttons = []
+    for i, (key, label_es, label_en, days) in enumerate(charts.RANGE_CHOICES):
+        # The shortest range is always offered; so is every range while
+        # nothing is stored yet (no history to measure against).
+        enabled = i == 0 or history_days is None or history_days >= days * _RANGE_COVERAGE
+        buttons.append({
+            "key": key,
+            "label": label_en if lang == "en" else label_es,
+            "enabled": enabled,
+            "title": "" if enabled else gettext("Datos disponibles desde %(since)s") % {"since": _fmt_ut(since, lang)},
+        })
+    enabled_keys = [b["key"] for b in buttons if b["enabled"]]
+    if default_range not in enabled_keys:
+        # The longest available range that is shorter than the default.
+        order = [b["key"] for b in buttons]
+        default_range = max(enabled_keys, key=order.index)
+    return {"ranges": buttons, "default_range": default_range}
+
+
+def _license_text(raw):
+    # The manifests' `license:` is English data ("Public domain (NOAA)");
+    # translate the known value on the page (13-AUDIT §3), fall back to
+    # the raw text for anything else.
+    if raw == "Public domain (NOAA)":
+        return gettext("Dominio público (NOAA)")
+    return raw
 
 
 def _scales_badges(event, lang):
@@ -239,8 +316,7 @@ def product_detail(request, product_id):
         "product": product,
         "title": _fmt_title(product, lang),
         "status": _status_badge(product_id, hb.effective_status() if hb else "no_data", lang),
-        "ranges": charts.RANGE_CHOICES,
-        "default_range": charts.DEFAULT_RANGE_PRODUCT,
+        "source_license": _license_text(product.source_license),
     }
     if product.kind == "event":
         event = Event.objects.filter(product=product).order_by("-issued").first()
@@ -256,6 +332,7 @@ def product_detail(request, product_id):
         return render(request, "web/product_detail_event.html", context)
 
     stack_id = _dom_id(product_id)
+    context.update(_range_buttons((product_id,), charts.DEFAULT_RANGE_PRODUCT, lang))
     context["panels"] = [_panel_json(product_id, panel, lang) for panel in charts.PRODUCT_PANELS.get(product_id, ())]
     context["chart_i18n"] = _chart_i18n()
     context["stack_id"] = stack_id
@@ -266,95 +343,22 @@ def product_detail(request, product_id):
 
 
 def product_series_json(request, product_id):
-    product = get_object_or_404(Product, id=product_id)
+    """Bucketed mean/min/max per field (D-056, contract in web/series.py),
+    cached per (product, range) for SERIES_CACHE_SECONDS (D-057). A cache
+    hit touches no database table at all — not even the Product lookup —
+    so a burst of visitors clicking "7 días" costs one query per minute."""
     range_key = request.GET.get("range", charts.DEFAULT_RANGE_PRODUCT)
-    days = charts.RANGE_DAYS.get(range_key, charts.RANGE_DAYS[charts.DEFAULT_RANGE_PRODUCT])
-    since = timezone.now() - dt.timedelta(days=days)
-
-    points = (
-        TimeSeriesPoint.objects.filter(product=product, time_tag__gte=since)
-        .order_by("time_tag")
-        .values("time_tag", "source", "payload")
-    )
-
-    fields = charts.product_fields(product_id)
-    if product_id in charts.ENERGY_CHANNEL_PRODUCTS:
-        time_values, series, source_values = _channel_columns(points, fields)
-    else:
-        time_values, series, source_values = _columns(points, fields)
-
-    time_values, series, source_values = _insert_gap_markers(time_values, series, source_values)
-
-    payload = {"time": time_values, "series": series}
-    # Active-L1-source annotation (12-HANDOFF §4) — only worth sending for
-    # products that actually carry a spacecraft name per row (mag, wind);
-    # everything else leaves TimeSeriesPoint.source blank.
-    if any(source_values):
-        payload["source"] = source_values
-    return JsonResponse(payload)
-
-
-def _columns(points, keys):
-    time_values = []
-    source_values = []
-    series = {k: [] for k in keys}
-    for row in points:
-        time_values.append(int(row["time_tag"].timestamp()))
-        source_values.append(row["source"] or None)
-        for k in keys:
-            series[k].append(row["payload"].get(k))
-    return time_values, series, source_values
-
-
-def _channel_columns(points, channels):
-    # Energy-channel products (X-ray, protons) interleave one row per
-    # channel per timestamp; re-pivot into aligned columns on the shared
-    # timestamp set so uPlot gets one x-array for every series.
-    by_time = {}
-    source_by_time = {}
-    for row in points:
-        t = int(row["time_tag"].timestamp())
-        by_time.setdefault(t, {})[row["payload"].get("energy")] = row["payload"].get("flux")
-        if row["source"]:
-            source_by_time[t] = row["source"]
-    time_values = sorted(by_time)
-    series = {c: [by_time[t].get(c) for t in time_values] for c in channels}
-    source_values = [source_by_time.get(t) for t in time_values]
-    return time_values, series, source_values
-
-
-def _insert_gap_markers(time_values, series, source_values):
-    # 12-HANDOFF §4: "gaps stay gaps (no interpolation across missing
-    # data)". uPlot draws a straight segment between any two consecutive
-    # points regardless of their time distance, so a missing collector run
-    # would otherwise silently bridge the gap with a line. A single `null`
-    # row inserted where a sample is clearly overdue breaks the line there
-    # — uPlot skips both segments touching a null point.
-    #
-    # The threshold comes from the *observed* median spacing in this same
-    # result set, not the manifest's `cadence_seconds` (how often the
-    # collector polls) — those two differ for noaa.kp, whose collector
-    # polls every 15 min for data NOAA itself only updates every 3h,
-    # which made every single real point look like it followed a gap
-    # (confirmed against real seeded dev data, not just reasoned about).
-    if len(time_values) < 3:
-        return time_values, series, source_values
-    deltas = sorted(time_values[i + 1] - time_values[i] for i in range(len(time_values) - 1))
-    median_delta = deltas[len(deltas) // 2]
-    threshold = max(median_delta * 2.5, 120)
-    new_time, new_source = [], []
-    new_series = {k: [] for k in series}
-    for i, t in enumerate(time_values):
-        if new_time and t - new_time[-1] > threshold:
-            new_time.append(new_time[-1] + median_delta)
-            new_source.append(None)
-            for k in new_series:
-                new_series[k].append(None)
-        new_time.append(t)
-        new_source.append(source_values[i])
-        for k in new_series:
-            new_series[k].append(series[k][i])
-    return new_time, new_series, new_source
+    if range_key not in charts.BUCKET_SECONDS:
+        range_key = charts.DEFAULT_RANGE_PRODUCT
+    cache_key = f"swx:serie:v1:{product_id}:{range_key}"
+    body = cache.get(cache_key)
+    if body is None:
+        get_object_or_404(Product, id=product_id)
+        body = json.dumps(series.bucketed_series(product_id, range_key), separators=(",", ":"))
+        cache.set(cache_key, body, charts.SERIES_CACHE_SECONDS)
+    response = HttpResponse(body, content_type="application/json")
+    patch_cache_control(response, public=True, max_age=charts.SERIES_CACHE_SECONDS)
+    return response
 
 
 def que_ofrecemos(request):

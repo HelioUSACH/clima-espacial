@@ -11,7 +11,7 @@
     {{ status.label }}
   </span>
 </p>
-<p>{% trans "Fuente:" %} {{ product.source_provider }}{% if product.source_license %} — {{ product.source_license }}{% endif %}</p>
+<p>{% trans "Fuente:" %} {{ product.source_provider }}{% if source_license %} — {{ source_license }}{% endif %}</p>
 
 {% if latest_event %}
 <h2>{% trans "Último evento" %}</h2>

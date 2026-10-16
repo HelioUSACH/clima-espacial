@@ -76,3 +76,66 @@ jobs:
           ALLOWED_HOSTS: "helio.fisica.usach.cl"
           CSRF_TRUSTED_ORIGINS: "https://helio.fisica.usach.cl"
         run: python manage.py check --deploy --fail-level WARNING
+
+  # D-058 / 13-AUDIT §5 B.2: what the browser actually shows, on every PR —
+  # home + one product page × 1440/390 px × day/night × ES/EN, uploaded as
+  # artifacts for review. Fails on a wrong chart count, a visible panel
+  # error/empty state, a JS error, or a regression of the range-click race
+  # (16-PERF B1) / client cache (B2). See .github/scripts/screenshots.py.
+  screenshots:
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: swx
+          POSTGRES_PASSWORD: swx-ci
+          POSTGRES_DB: swx
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_SETTINGS_MODULE: climaespacial.settings.dev
+      PLAYWRIGHT_VERSION: "1.55.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      # CI-only tool, deliberately not in requirements-dev.txt: nothing in
+      # the app or its tests imports it.
+      - name: Install dependencies + Playwright Chromium
+        run: |
+          pip install -r requirements-dev.txt "playwright==${PLAYWRIGHT_VERSION}"
+          python -m playwright install --with-deps chromium
+
+      - name: Migrate + seed 7 days of synthetic data
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_dev_data --days 7.1
+
+      - name: Start the portal
+        run: |
+          python manage.py runserver 127.0.0.1:8000 --noreload > runserver.log 2>&1 &
+          curl --silent --fail --retry 20 --retry-connrefused --retry-delay 1 -o /dev/null http://127.0.0.1:8000/
+
+      - name: Screenshots + browser checks
+        run: python .github/scripts/screenshots.py http://127.0.0.1:8000 screenshots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: |
+            screenshots/
+            runserver.log
+          if-no-files-found: warn

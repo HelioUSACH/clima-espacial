@@ -27,7 +27,7 @@
 </section>
 
 <section aria-labelledby="context-heading">
-  <h2 id="context-heading">{% trans "Franja de contexto" %}</h2>
+  <h2 id="context-heading">{% trans "Condiciones en L1 y en la Tierra" %}</h2>
   {% include "web/_panel_stack.html" %}
 </section>
 
@@ -40,7 +40,7 @@
       {% if flare_card_ready %}
         <p>{% trans "Modelo propio de HelioUSACH, probabilidad y estado en casi tiempo real." %}</p>
       {% else %}
-        <p>{% trans "En preparación — este producto se activa sin bloquear el resto del portal (ver docs/models/INTEGRATION.md)." %}</p>
+        <p>{% trans "En preparación: el detector propio de HelioUSACH se publicará aquí en cuanto esté en operación." %}</p>
       {% endif %}
       <a href="{% url 'web:catalogue' %}">{% trans "Ver catálogo de productos y modelos →" %}</a>
     </div>

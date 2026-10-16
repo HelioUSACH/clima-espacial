@@ -210,6 +210,9 @@ h2 { font-size: 1.2rem; margin: 2rem 0 .75rem; }
   border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer;
 }
 .range-toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* A range longer than the stored history (13-AUDIT §3): still focusable so
+ * its title ("datos disponibles desde …") is reachable, but inert. */
+.range-toggle button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 
 /* Panel stack (12-HANDOFF §4): one extended, full-width panel per metric,
  * sharing a time axis and a synced uPlot cursor (web/static/web/js/charts.js).
@@ -225,16 +228,26 @@ h2 { font-size: 1.2rem; margin: 2rem 0 .75rem; }
   .swx-panel-stack--tall { --panel-chart-height: 340px; }
 }
 .swx-panel {
+  position: relative;
   background: var(--surface-card); border: 1px solid var(--border); border-radius: 8px;
   padding: .75rem 1rem 1rem;
 }
 .swx-panel__head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
 .swx-panel__head h3 { margin: 0; font-size: .92rem; }
 .swx-panel__source { font-size: .72rem; color: var(--text-muted); }
+/* The mount point keeps its height even while empty (16-PERF B4): a panel
+ * switching to its empty/error state must not collapse and shift the rest
+ * of the stack — the status text is laid over the empty chart area instead. */
 .swx-panel__chart { min-height: var(--panel-chart-height); }
-.swx-panel__chart--empty { min-height: 0; }
-.swx-panel__status { color: var(--text-muted); font-size: .85rem; text-align: center; padding: 2rem 0; margin: 0; }
+.swx-panel__status {
+  position: absolute; left: 1rem; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: .85rem; text-align: center; margin: 0;
+}
 .u-legend { font-size: .78rem; color: var(--text-secondary); }
+/* 13-AUDIT §3: no "Hora: --" while the cursor is off the chart — the time
+ * row and the values only appear while hovering (charts.js syncLegendIdle). */
+.swx-legend-idle .u-legend .u-series:first-child { display: none; }
+.swx-legend-idle .u-legend .u-value { display: none; }
 
 /* Catalogue / status tables */
 .product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
