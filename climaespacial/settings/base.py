@@ -52,8 +52,11 @@ SWX_DATA_DIR = Path(os.environ.get("SWX_DATA_DIR") or BASE_DIR / "data")
 # D-051/P6: shown on the data/API registration form's privacy notice. No
 # real address is known yet (not something to guess at for a form that
 # collects personal data) — set SWX_CONTACT_EMAIL before taking real
-# registrations.
-SITE_CONTACT_EMAIL = os.environ.get("SWX_CONTACT_EMAIL", "[pendiente — ver docs/DECISIONS.md D-051]")
+# registrations. Empty (not an internal placeholder string, 19-HANDOFF-
+# v0.2.1.md §1.5: the old "[pendiente — ver docs/DECISIONS.md D-051]" leaked
+# straight onto the public page) until then — `web/templates/web/data_api.html`
+# renders a neutral "coming soon" line whenever this is falsy.
+SITE_CONTACT_EMAIL = os.environ.get("SWX_CONTACT_EMAIL", "")
 
 
 # --- Django --------------------------------------------------------------------

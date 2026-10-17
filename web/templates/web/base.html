@@ -95,7 +95,7 @@
       <span>L1 · {{ strip_source }}{% if strip_last_seen_at %} · {{ strip_last_seen_at }}{% endif %}</span>
       {% endif %}
       <span class="sep"></span>
-      <a class="scale" href="{{ strip_kp.url }}">Kp {% if strip_kp.severity %}<i class="sv-{{ strip_kp.severity }}">{{ strip_kp.value }}</i>{% else %}<i>—</i>{% endif %}</a>
+      <a class="scale" href="{{ strip_kp.url }}"{% if strip_kp.title_value %} title="Kp {{ strip_kp.title_value }}"{% endif %}>Kp {% if strip_kp.severity %}<i class="sv-{{ strip_kp.severity }}">{{ strip_kp.value }}</i>{% else %}<i>—</i>{% endif %}</a>
       <a class="scale" href="{{ strip_dst.url }}">Dst {% if strip_dst.severity %}<i class="sv-{{ strip_dst.severity }}">{{ strip_dst.value }} nT</i>{% else %}<i>—</i>{% endif %}</a>
     </div>
   </div>

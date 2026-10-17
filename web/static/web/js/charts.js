@@ -59,12 +59,89 @@
     return "rgba(" + (n >> 16) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + alpha + ")";
   }
 
-  function fmtNum(v) {
+  // ---- number formatting (19-HANDOFF-v0.2.1.md §1.4: ES comma/EN point,
+  // a true minus "−" not a hyphen, grouped temperatures, no raw "1.07e+5"
+  // anywhere in the UI) ----------------------------------------------------
+
+  var SUPERSCRIPT = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "-": "⁻" };
+
+  function superscript(n) {
+    return String(n).split("").map(function (c) { return SUPERSCRIPT[c] !== undefined ? SUPERSCRIPT[c] : c; }).join("");
+  }
+
+  // Intl.NumberFormat renders the ASCII hyphen-minus for negatives in this
+  // build's Chromium, not U+2212 (confirmed interactively) -- substituted
+  // by hand since the leading sign is always the formatted string's first
+  // character in these locales.
+  function trueMinus(s) { return s.charAt(0) === "-" ? "−" + s.slice(1) : s; }
+
+  function intl(lang, opts) {
+    return new Intl.NumberFormat(lang === "en" ? "en-US" : "es-CL", opts);
+  }
+
+  function fmtDecimal(v, lang, digits) {
+    return trueMinus(intl(lang, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v));
+  }
+
+  // Grouped, no decimals -- a temperature in K ("107 000" / "107,000"), not
+  // "1.07e+5" or an ungrouped "107000".
+  function fmtGrouped(v, lang) {
+    return trueMinus(intl(lang, { maximumFractionDigits: 0 }).format(Math.round(v)));
+  }
+
+  // "6.2×10⁻⁷", not JS's native "6.20e-7" -- used for anything that would
+  // otherwise fall back to exponential notation.
+  function fmtSci(v, lang) {
+    if (v === 0) return "0";
+    var exp = Math.floor(Math.log10(Math.abs(v)));
+    var mantissa = v / Math.pow(10, exp);
+    if (Math.abs(mantissa) >= 9.995) { mantissa /= 10; exp += 1; }
+    if (Math.abs(mantissa) < 0.995) { mantissa *= 10; exp -= 1; }
+    var mantissaStr = trueMinus(intl(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(mantissa));
+    return mantissaStr + "×10" + superscript(exp);
+  }
+
+  function fmtNum(v, lang) {
     if (v == null) return "—";
     var abs = Math.abs(v);
-    if (abs !== 0 && (abs < 0.01 || abs >= 1e5)) return v.toExponential(2);
+    if (abs !== 0 && (abs < 0.01 || abs >= 1e5)) return fmtSci(v, lang);
     var digits = abs >= 100 ? 0 : abs >= 1 ? 1 : 2;
-    return v.toFixed(digits);
+    return fmtDecimal(v, lang, digits);
+  }
+
+  // GOES long-channel flux (W/m²) -> class letter + multiplier, e.g.
+  // "B6.2" -- kept in sync with web/charts.py `xray_class()`. The class
+  // notation itself is NOAA's own fixed catalog format (always a period,
+  // like "M1.5"), not a localised decimal -- only the flux alongside it is.
+  var XRAY_CLASS_FIELD = "0.1-0.8nm";
+  var XRAY_BREAKPOINTS = [[1e-4, "X"], [1e-5, "M"], [1e-6, "C"], [1e-7, "B"]];
+
+  function xrayClassLetter(flux) {
+    if (!flux || flux <= 0) return null;
+    for (var i = 0; i < XRAY_BREAKPOINTS.length; i++) {
+      var threshold = XRAY_BREAKPOINTS[i][0], letter = XRAY_BREAKPOINTS[i][1];
+      if (flux >= threshold) return letter + (flux / threshold).toFixed(1);
+    }
+    return "A" + (flux / 1e-8).toFixed(1);
+  }
+
+  // The readout's per-unit formatting rule (§1.4): K is grouped (never
+  // scientific), W/m² is "class · flux" for the GOES long channel and
+  // plain "×10ⁿ" flux for everything else, everything else goes through
+  // the general fmtNum.
+  function formatReadoutValue(v, panel, s, lang) {
+    if (v == null) return "—";
+    if (panel.unit === "K") return fmtGrouped(v, lang);
+    if (panel.unit === "W/m²") {
+      var flux = fmtSci(v, lang);
+      if (s.field === XRAY_CLASS_FIELD) {
+        var cls = xrayClassLetter(v);
+        return cls ? cls + " · " + flux : flux;
+      }
+      return flux;
+    }
+    return fmtNum(v, lang);
   }
 
   function lastIndexWithValue(arr) {
@@ -166,6 +243,10 @@
         axisLine: { show: false }, axisTick: { show: last, lineStyle: { color: P["--line"] } },
         axisLabel: {
           show: last, color: P["--ink-faint"], fontFamily: MONO, fontSize: 10, hideOverlap: true,
+          // The last label ("12:0...") used to clip against the grid's
+          // right edge (19-HANDOFF-v0.2.1.md §1.3) -- align it fully inside
+          // instead of centring it on a point past the visible area.
+          alignMaxLabel: "right", alignMinLabel: "left",
           formatter: function (v) {
             var d = new Date(v);
             return (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) ? "{d|" + fmtDate(d, stack.i18n) + "}" : fmtTime(d);
@@ -179,19 +260,62 @@
       });
 
       var isLog = panel.y === "log";
+      // The resolved extent, filled in by yAxis.min/max below (for a fixed
+      // y_range, immediately; for an auto linear axis, by the callback
+      // ECharts invokes while building the axis -- always before it builds
+      // labels, same setOption pass) and read back by the label formatter
+      // to hide any tick within EDGE_PX of the grid's own top/bottom (§1.2:
+      // adjacent panels' labels collided at the shared boundary, there
+      // being no gap between one grid's bottom and the next one's top).
+      var extent = { min: null, max: null };
+      var EDGE_PX = 8;
+      function nearEdge(v) {
+        if (extent.min == null || extent.max == null) return false;
+        var frac = isLog
+          ? (Math.log10(extent.max) - Math.log10(v)) / (Math.log10(extent.max) - Math.log10(extent.min))
+          : (extent.max - v) / (extent.max - extent.min);
+        var px = frac * g.H;
+        return px < EDGE_PX || px > g.H - EDGE_PX;
+      }
       var yAxis = {
-        type: isLog ? "log" : "value", gridIndex: pi, scale: !panel.zero_line, splitNumber: 3,
+        type: isLog ? "log" : "value", gridIndex: pi, scale: !panel.zero_line,
+        // A fixed multi-decade log range (X-ray) needs one tick per decade
+        // -- splitNumber:3 over 1e-9..1e-2 produced exactly two ticks, the
+        // axis extent itself, and nothing in between (§1.1, confirmed
+        // interactively via the chart's own zrender scene graph: 0 decade
+        // labels existed at any width). An auto-scaled log axis (proton/
+        // temperature panels) keeps the old, already-correct default.
+        splitNumber: (isLog && panel.y_range) ? Math.round(Math.log10(panel.y_range[1] / panel.y_range[0])) : 3,
         axisLine: { show: false }, axisTick: { show: false },
         axisLabel: {
-          showMinLabel: false, showMaxLabel: false, color: P["--ink-faint"], fontFamily: MONO, fontSize: 10,
-          formatter: isLog ? function (v) { return v.toExponential(0); } : null,
+          color: P["--ink-faint"], fontFamily: MONO, fontSize: 10,
+          formatter: function (v) {
+            if (nearEdge(v)) return "";
+            // A linear axis keeps ECharts' own tick-value stringification
+            // (it already picks clean "nice" numbers) -- only the edge
+            // filter above is new here. A fixed y_range gets one label per
+            // decade ("10⁻⁸" style, §1.1); an auto-scaled log axis keeps
+            // the old plain exponential.
+            if (!isLog) return String(v);
+            return panel.y_range ? "10" + superscript(Math.round(Math.log10(v))) : v.toExponential(0);
+          },
         },
         splitLine: { show: true, lineStyle: { color: P["--grid"] } },
       };
-      if (panel.y_range) { yAxis.min = panel.y_range[0]; yAxis.max = panel.y_range[1]; }
-      else if (!isLog) {
-        yAxis.min = function (v) { return Math.floor(v.min - (v.max - v.min) * 0.08); };
-        yAxis.max = function (v) { return Math.ceil(v.max + (v.max - v.min) * 0.08); };
+      if (panel.y_range) {
+        yAxis.min = extent.min = panel.y_range[0];
+        yAxis.max = extent.max = panel.y_range[1];
+      } else if (!isLog) {
+        yAxis.min = function (v) { return (extent.min = Math.floor(v.min - (v.max - v.min) * 0.08)); };
+        yAxis.max = function (v) { return (extent.max = Math.ceil(v.max + (v.max - v.min) * 0.08)); };
+      } else {
+        // An auto-scaled log axis (temperature/protons, no fixed y_range):
+        // ECharts already picks the extent (its usual "nice" log bounds,
+        // left untouched here), just captured for the same edge filter --
+        // confirmed by comparing rendered ticks before/after this hook,
+        // identical either way.
+        yAxis.min = function (v) { return (extent.min = v.min); };
+        yAxis.max = function (v) { return (extent.max = v.max); };
       }
       ys.push(yAxis);
 
@@ -209,14 +333,6 @@
         ml.push({
           yAxis: r.value, lineStyle: { color: P["--ref"], width: 1, type: "dashed" },
           label: { show: true, formatter: r.label, color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "insideEndTop" },
-        });
-      });
-      (panel.log_bands || []).forEach(function (b) {
-        // Centred in its own decade (geometric mean of the two edges), with
-        // no visible line — the markArea below already shows the band.
-        ml.push({
-          yAxis: b.value * Math.sqrt(10), lineStyle: { opacity: 0 },
-          label: { show: true, formatter: b.label, color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "end" },
         });
       });
 
@@ -277,6 +393,25 @@
             var sevColor = P["--severity-" + sevOrder[bi]];
             areas.push([{ yAxis: edges[bi], itemStyle: { color: withAlpha(sevColor, 0.08) } }, { yAxis: edges[bi + 1] }]);
           }
+          // Class letters as borderless markArea labels, centred in each
+          // class's own band (19-HANDOFF-v0.2.1.md §1.1) -- a markLine with
+          // an invisible (opacity:0) line silently drops its label too in
+          // this build, confirmed interactively via the chart's own
+          // zrender scene graph (0 text nodes for A/B/C/M/X at any width,
+          // next to a visibly-rendered S1 ref line using the same yAxis-on-
+          // a-log-axis markLine shape elsewhere): the markArea route both
+          // matches the hand-off's own suggestion and is confirmed to work.
+          var topEdge = panel.y_range ? panel.y_range[1] : edges[edges.length - 1] * 10;
+          panel.log_bands.forEach(function (b, lbi) {
+            var hi = panel.log_bands[lbi + 1] ? panel.log_bands[lbi + 1].value : topEdge;
+            areas.push([
+              {
+                yAxis: b.value, itemStyle: { color: "transparent" },
+                label: { show: true, formatter: b.label, color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "insideRight" },
+              },
+              { yAxis: hi },
+            ]);
+          });
           primary.markArea = { silent: true, data: areas };
         }
       }
@@ -463,7 +598,7 @@
         if (!b) return;
         var d = self.lastDataById && self.lastDataById[p.product_id];
         var v = idx >= 0 && d ? d.series[s.field][idx] : null;
-        b.textContent = fmtNum(v);
+        b.textContent = formatReadoutValue(v, p, s, self.i18n.lang);
       });
     });
   };
@@ -477,7 +612,7 @@
         if (!b) return;
         var values = (d && d.series[s.field]) || [];
         var idx = lastIndexWithValue(values);
-        b.textContent = idx >= 0 ? fmtNum(values[idx]) : "—";
+        b.textContent = idx >= 0 ? formatReadoutValue(values[idx], p, s, self.i18n.lang) : "—";
       });
     });
   };
@@ -507,7 +642,7 @@
         var idx = lastIndexWithValue(values);
         if (idx < 0) return;
         var trend = trendPhrase(values, self.i18n);
-        parts.push(s.label + " " + fmtNum(values[idx]) + " " + p.unit + (trend ? " (" + trend + ")" : ""));
+        parts.push(s.label + " " + fmtNum(values[idx], self.i18n.lang) + " " + p.unit + (trend ? " (" + trend + ")" : ""));
       });
     });
     if (this.metaEl) {

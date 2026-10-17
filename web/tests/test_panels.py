@@ -39,6 +39,16 @@ def test_kp_severity_buckets(kp, expected):
     assert charts.kp_severity(kp) == expected
 
 
+@pytest.mark.parametrize(
+    "kp, expected",
+    # 19-HANDOFF-v0.2.1.md §1.4: Kp's own thirds notation, "-" a true minus.
+    [(None, None), (0, "0o"), (0.33, "0+"), (1, "1o"), (1.67, "2−"), (2, "2o"),
+     (2.33, "2+"), (5, "5o"), (5.67, "6−"), (9, "9o")],
+)
+def test_kp_thirds(kp, expected):
+    assert charts.kp_thirds(kp) == expected
+
+
 MAG_MANIFEST = {
     "id": "noaa.rtsw.mag", "version": 1, "kind": "timeseries",
     "title": {"es": "Campo magnético interplanetario (L1)", "en": "Interplanetary magnetic field (L1)"},
