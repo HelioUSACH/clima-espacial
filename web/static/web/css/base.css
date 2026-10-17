@@ -13,8 +13,8 @@
  * tokens instead of a separate palette. */
 :root {
   color-scheme: light;
-  --bg:          #ffffff;
-  --band:        #edf1f4;
+  --bg:          #f3f6f9;
+  --band:        #e8eef3;
   --raised:      #ffffff;
   --ink:         #16181b;
   --ink-soft:    #454c55;
@@ -31,6 +31,18 @@
   --ref:         #8a929a;
   --ok:          #1f8a4c;
   --ok-soft:     #e3f3e9;
+
+  /* Colour tokens v1.1 (22-HANDOFF-v0.3.0.md §1.3, ref/mockup-v0.3): the
+   * dark "space" surfaces -- utility bar, hero band, status strip, footer --
+   * stay dark in BOTH themes, so these are not redefined under night except
+   * --tint (the "En la red chilena" band). --sun is the amber accent, used
+   * only on those dark surfaces (>= 8:1 on --space). */
+  --space:       #0a1222;
+  --space-2:     #101c33;
+  --space-ink:   #eef1f4;
+  --space-soft:  #b9c4d0;
+  --sun:         #f0a14a;
+  --tint:        #e3eef0;
 
   /* Shared severity scale (§2): NOAA scale chips, Kp/Dst chips, and the
    * X-ray class bands all read this one five-step ramp, text+colour never
@@ -103,6 +115,7 @@
   --ref:         #6b7682;
   --ok:          #5fd18f;
   --ok-soft:     #173326;
+  --tint:        #0f1a2a;
 
   --severity-ok:            var(--ok);
   --severity-ok-soft:       var(--ok-soft);
@@ -148,7 +161,20 @@ a:hover { color: var(--ink); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .wrap { max-width: 1200px; margin: 0 auto; padding-left: 24px; padding-right: 24px; }
 .skip-link { position: absolute; left: -999px; top: 0; }
+/* The day --accent is too dark for a focus ring on the always-dark
+ * surfaces (v1.1 tokens); amber keeps it >= 3:1 there in both themes. */
+.ubar :focus-visible, .strip :focus-visible, .heroband :focus-visible, .foot :focus-visible { outline-color: var(--sun); }
 .skip-link:focus { left: 0; background: var(--raised); padding: .6em 1em; z-index: 10; }
+
+/* ---------- utility bar (22-HANDOFF-v0.3.0.md §1.1) ---------- */
+/* The portal is a sub-page of the group site: a thin dark bar above the
+ * header on every page, back link left, network tagline right. */
+.ubar { background: var(--space); color: var(--space-soft); font-family: var(--font-ui); font-size: 12.5px; }
+.ubar-in { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 34px; }
+.ubar a { color: var(--space-ink); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.ubar a:hover { color: var(--sun); }
+.ubar span { color: var(--space-soft); }
+@media (max-width: 680px) { .ubar span { display: none; } }
 
 /* ---------- header ---------- */
 .hdr {
@@ -159,6 +185,13 @@ a:hover { color: var(--ink); }
   border-bottom: 1px solid var(--line);
 }
 .hdr-in { display: flex; align-items: center; gap: 24px; height: 64px; }
+/* Emblem + wordmark. Two <img>s, one per theme, swapped by CSS so the
+ * right one is there at first paint (data-theme is set pre-paint). */
+.brand-row { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.brand-row img { width: 38px; height: 38px; display: block; }
+.brand-row .em-night { display: none; }
+:root[data-theme='night'] .brand-row .em-night { display: block; }
+:root[data-theme='night'] .brand-row .em-day { display: none; }
 .brand { display: flex; flex-direction: column; line-height: 1; text-decoration: none; color: var(--ink); }
 .brand b { font-family: var(--font-display); font-weight: 400; font-size: 27px; letter-spacing: .02em; color: var(--ink); }
 .brand span { font-family: var(--font-ui); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin-top: 3px; }
@@ -167,6 +200,15 @@ a:hover { color: var(--ink); }
 .nav a:hover { color: var(--ink); }
 .nav a[aria-current] { color: var(--ink); font-weight: 500; }
 .tools { display: flex; align-items: center; gap: 10px; }
+/* National platform pill (§1.2); the mobile menu carries it as .nav-natl. */
+a.natl {
+  font-family: var(--font-ui); font-size: 13px; font-weight: 500; color: var(--ink);
+  border: 1px solid var(--accent); border-radius: 999px; padding: 7px 14px;
+  display: inline-flex; align-items: center; gap: 8px; text-decoration: none; white-space: nowrap;
+}
+a.natl:hover { background: var(--accent); color: var(--accent-ink); }
+.natl .dot { background: var(--sun); }
+.nav .nav-natl { display: none; }
 .lang-switch { font-family: var(--font-ui); font-size: 12.5px; color: var(--ink-faint); display: flex; gap: .4em; }
 .lang-switch a { color: var(--ink-faint); text-decoration: none; }
 .lang-switch a:hover { color: var(--ink); }
@@ -193,19 +235,37 @@ a:hover { color: var(--ink); }
     padding: .5rem 24px 1rem;
   }
   .nav a { display: block; padding: .75rem 0; border-bottom: 1px solid var(--line); }
+  .nav .nav-natl { display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 500; }
   .hdr[data-open='true'] .nav { display: flex; }
+  a.natl.natl-nav { display: none; }
 }
+@media (max-width: 680px) { .brand-row img { width: 32px; height: 32px; } }
 @media (max-width: 420px) { .wrap { padding-left: 16px; padding-right: 16px; } }
 
 /* ---------- status strip ---------- */
-.strip { background: var(--band); border-bottom: 1px solid var(--line); }
+/* Dark in both themes (v1.1), so its severity chips always take the night
+ * ramp -- the day ramp's dark-on-pale chips are meant for a light surface. */
+.strip {
+  background: var(--space-2);
+  --severity-ok:            #5fd18f;
+  --severity-ok-soft:       #173326;
+  --severity-minor:         #e3b54a;
+  --severity-minor-soft:    #3a3115;
+  --severity-moderate:      #e98a4a;
+  --severity-moderate-soft: #3a2414;
+  --severity-strong:        #e55b4a;
+  --severity-strong-soft:   #3a1a14;
+  --severity-severe:        #e0569c;
+  --severity-severe-soft:   #3a1830;
+}
 .strip-in {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
   padding-top: 9px; padding-bottom: 9px;
-  font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft);
+  font-family: var(--font-mono); font-size: 12px; color: var(--space-soft);
 }
 .scale { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; }
 .scale:hover { color: var(--ink); }
+.strip .scale:hover { color: var(--space-ink); }
 .scale i {
   font-style: normal; font-weight: 500; border-radius: 6px; padding: 1px 7px;
   color: var(--severity-ok); background: var(--severity-ok-soft);
@@ -216,6 +276,7 @@ a:hover { color: var(--ink); }
 .scale i.sv-severe   { color: var(--severity-severe);   background: var(--severity-severe-soft); }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--severity-ok); display: inline-block; }
 .sep { width: 1px; height: 16px; background: var(--line); }
+.strip .sep { background: rgba(255, 255, 255, .14); }
 @media (max-width: 680px) { .strip-in .sep { display: none; } }
 
 /* ---------- hero ---------- */
@@ -247,8 +308,45 @@ a.btn.pri:hover { color: var(--accent-ink); opacity: .9; }
   h1 { font-size: 56px; }
 }
 
+/* Home hero: a full-bleed dark band in both themes (§1.3), the group's
+ * solar-wind/magnetosphere illustration behind a left-to-right gradient
+ * (vertical on phones, where the text spans the full width). */
+.heroband {
+  position: relative; color: var(--space-ink);
+  background:
+    linear-gradient(90deg, rgba(7, 11, 31, .96) 0%, rgba(7, 11, 31, .86) 42%, rgba(7, 11, 31, .35) 75%, rgba(7, 11, 31, .2) 100%),
+    url("../img/solar-wind-magnetosphere.svg") right center / cover no-repeat,
+    var(--space);
+}
+.heroband .hero { padding-top: 72px; padding-bottom: 72px; }
+.heroband h1 { color: #ffffff; }
+.heroband .lede { color: var(--space-soft); }
+.heroband .eyebrow { color: var(--sun); }
+/* The right column's eyebrow sits where the gradient is lightest: a field
+ * line crossing it measured 4.3:1. A tight --space halo keeps the glyph
+ * edges >= 4.5:1 (AA) without changing the look. */
+.heroband .eyebrow { text-shadow: 0 0 3px var(--space), 0 0 6px var(--space); }
+.heroband .ocard { background: rgba(10, 18, 34, .72); border-color: rgba(255, 255, 255, .14); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.heroband .ocard h3 { color: #ffffff; }
+.heroband .ocard p { color: var(--space-soft); }
+.heroband .pill { color: var(--space-soft); border-color: rgba(255, 255, 255, .22); }
+.heroband .pill.beta { background: var(--sun); color: #1a1206; border-color: transparent; }
+.heroband a.btn { color: #ffffff; border-color: rgba(255, 255, 255, .4); }
+.heroband a.btn:hover { border-color: #6ddeff; color: #ffffff; }
+.heroband a.btn.pri { background: #6ddeff; border-color: #6ddeff; color: #06121a; }
+.heroband a.btn.pri:hover { color: #06121a; }
+@media (max-width: 900px) {
+  .heroband {
+    background:
+      linear-gradient(180deg, rgba(7, 11, 31, .92) 0%, rgba(7, 11, 31, .85) 100%),
+      url("../img/solar-wind-magnetosphere.svg") center / cover no-repeat,
+      var(--space);
+  }
+}
+
 /* ---------- sections, cards, chart stack ---------- */
 .sec { padding-top: 24px; padding-bottom: 56px; }
+.sec-live { padding-top: 56px; }
 .sec-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }
 h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-height: 1; margin: 6px 0 0; letter-spacing: .01em; }
 .meta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
@@ -296,6 +394,10 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-h
   .rrow { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; }
 }
 
+/* "En la red chilena" sits on the --tint band (§1.3). */
+.tintband { background: var(--tint); margin-top: 8px; }
+.tintband .sec { padding-top: 48px; }
+
 /* ---------- link cards ---------- */
 .more { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .mcard { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; display: grid; gap: 6px; text-decoration: none; color: var(--ink); }
@@ -307,9 +409,14 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-h
 @media (max-width: 680px) { .more { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- footer ---------- */
-.foot { background: var(--band); border-top: 1px solid var(--line); margin-top: 24px; }
-.foot-in { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); gap: 32px; padding-top: 40px; padding-bottom: 40px; font-size: 13.5px; color: var(--ink-soft); }
-.foot h4 { font-family: var(--font-ui); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 10px; font-weight: 600; }
+/* Dark in both themes (v1.1). */
+.foot { background: var(--space); color: var(--space-soft); margin-top: 24px; }
+.foot-in { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); gap: 32px; padding-top: 40px; padding-bottom: 40px; font-size: 13.5px; color: var(--space-soft); }
+.foot h4 { font-family: var(--font-ui); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #8fa0b3; margin: 0 0 10px; font-weight: 600; }
+.foot a { color: var(--space-ink); }
+.foot a:hover { color: var(--sun); }
+.foot .brand b { color: #ffffff; }
+.foot .brand span { color: #8fa0b3; }
 .foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .foot p { margin: 0 0 8px; }
 @media (max-width: 900px) { .foot-in { grid-template-columns: minmax(0, 1fr); } }
@@ -341,6 +448,8 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-h
  * aren't built from mockup sections (hero/sec/card), which supply their
  * own top spacing already. */
 main { display: block; padding-bottom: 3rem; }
+/* Home ends on the full-bleed tint band: no bare strip under it. */
+main:has(> .tintband:last-child) { padding-bottom: 0; }
 .page { padding-top: 32px; }
 
 /* ---------- retained components (status badges, catalogue, forms) ---------- */

@@ -141,7 +141,13 @@ def test_collectstatic_with_manifest_storage_hashes_every_page_asset(tmp_path, c
     assets = re.findall(r'(?:src|href)="/?static/([^"]+)"', html)
     assert len(assets) >= 5
     for asset in assets:
-        # Identity v1 (18-HANDOFF §2) added self-hosted font preloads --
-        # ManifestStaticFilesStorage hashes those too, not just js/css.
-        assert re.search(r"\.[0-9a-f]{12}\.(js|css|woff2)$", asset), asset
+        # Identity v1 (18-HANDOFF §2) added self-hosted font preloads, v0.3.0
+        # the group emblem -- ManifestStaticFilesStorage hashes those too.
+        assert re.search(r"\.[0-9a-f]{12}\.(js|css|woff2|png)$", asset), asset
         assert (tmp_path / asset).exists(), asset
+    # The hero background is a url() inside base.css: the hashed stylesheet
+    # must point at the hashed illustration, or the hero band paints bare.
+    css = next(a for a in assets if a.startswith("web/css/base."))
+    bg = re.findall(r'url\("?(\.\./img/solar-wind-magnetosphere\.[0-9a-f]{12}\.svg)', (tmp_path / css).read_text())
+    assert bg, "base.css does not reference a hashed hero illustration"
+    assert (tmp_path / "web/css" / bg[0]).resolve().exists()

@@ -89,3 +89,16 @@ case "$SERIE_STATUS" in
     *) echo "Smoke test: serie.json returned HTTP $SERIE_STATUS." >&2; exit 1 ;;
 esac
 echo "Deployed $TAG. Now hard-refresh / and one product page in both themes (CONTRIBUTING.md)."
+
+# 22-HANDOFF-v0.3.0.md §2.3: nginx config is a manual step (it edits the
+# shared helio vhost), so a changed snippet is easy to miss -- v0.1.3's sat
+# uninstalled for two releases. Only remind; never touch nginx from here.
+SNIPPET_REPO="$DESTINO/deploy/nginx-clima-espacial.conf"
+SNIPPET_LIVE=/etc/nginx/snippets/clima-espacial.conf
+if ! cmp --silent "$SNIPPET_REPO" "$SNIPPET_LIVE"; then
+    echo
+    echo "NOTE: $SNIPPET_LIVE differs from this release's $SNIPPET_REPO"
+    echo "      (or is missing). To install it:"
+    echo "  sudo install -m 644 $SNIPPET_REPO $SNIPPET_LIVE"
+    echo "  sudo nginx -t && sudo systemctl reload nginx"
+fi

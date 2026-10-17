@@ -14,10 +14,14 @@ from .numfmt import fmt_number
 SITE_NAME = "Clima Espacial USACH"
 SITE_BYLINE = "HelioUSACH"
 
-# Group site lives at the host root (D-003/D-005/D-006); its own ES/EN home
-# routes (helio-usach's src/lib/i18n.ts) are plain root-relative paths, so no
-# FORCE_SCRIPT_NAME/reverse() involvement is needed to link to them.
-GROUP_SITE_HOME = {"es": "/", "en": "/en/"}
+# Group site lives at the host root (D-003/D-005/D-006), ES at / and EN at
+# /en/ (helio-usach's src/lib/i18n.ts). Absolute (22-HANDOFF-v0.3.0.md §1.1)
+# so the utility bar's back link also works from a dev/staging host.
+GROUP_SITE_HOME = {
+    "es": "https://helio.fisica.usach.cl/",
+    "en": "https://helio.fisica.usach.cl/en/",
+}
+NATIONAL_PLATFORM_URL = "https://meteorologiaespacial.cl/"
 
 
 def site(request):
@@ -46,6 +50,7 @@ def site(request):
         "alt_url_es_abs": request.build_absolute_uri(alt_url_es),
         "alt_url_en_abs": request.build_absolute_uri(alt_url_en),
         "group_site_home": GROUP_SITE_HOME[current_lang],
+        "national_platform_url": NATIONAL_PLATFORM_URL,
     }
 
 

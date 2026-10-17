@@ -1,22 +1,38 @@
 # Off-machine backups (D-039)
 
-helio cannot reach the backup host (donnager, icaria as fallback) on port
-22 (VM preflight, 2026-10-15) — so the backup host **pulls**, over a key
-that can only read `/srv/swx/backups/` and nothing else on helio. Nightly
-content of that directory is produced by `swx-dump.service`/`.timer`
-(`deploy/swx-dump.sh`): a `pg_dump` + a config bundle, 14-day local retention.
+The backup host is **icaria** (donnager cannot reach helio). helio never
+pushes (D-039): icaria **pulls**, over a key that can only read `/srv/swx/backups/` and nothing
+else on helio. Nightly content of that directory is produced by
+`swx-dump.service`/`.timer` (`deploy/swx-dump.sh`), kept 14 days on helio:
+
+| File | Contents |
+|---|---|
+| `swx-<stamp>.dump.gz` | `pg_dump --format=custom` of the `swx` database |
+| `swx-config-<stamp>.tar.gz` | `etc/swx/swx.env`, `modules/` (every deployed manifest), and since v0.3.0 the analytics: `goatcounter-db.sqlite3` (GoatCounter's database, copied with SQLite's online backup API so it's consistent while GoatCounter runs) and `etc/swx/goatcounter-import.env` (its import token) |
+
+If analytics isn't set up yet, the dump logs a warning and the bundle simply
+leaves those two out.
+
+On icaria the copy lives in `/data/backups/clima-espacial-usach` and keeps
+its **own** history: the pull never deletes a file just because helio has
+pruned it. `backup-pull.sh` instead prunes `swx-*` files older than
+`SWX_BACKUP_KEEP_DAYS` (default 90), and only after a successful pull, so
+a broken link to helio never eats into that history (D-070).
 
 **Treat the backup host as sensitive.** The config bundle in every night's
 backup contains `/etc/swx/swx.env` — `SECRET_KEY` and the database
-credentials — not just public data. Back it up and restrict access to it
-the same way you would the VM itself.
+credentials — and the GoatCounter API token, not just public data. Back it
+up and restrict access to it the same way you would the VM itself.
 
 ## One-time setup
 
-**On the backup host** (as the user that will run the pull — a dedicated
-service account is fine):
+**On icaria** (as the user that will run the pull — a dedicated service
+account is fine; it needs write access to `/data/bin` and `/data/backups`):
 ```
 ssh-keygen -t ed25519 -f ~/.ssh/swx-backup-pull -N "" -C "swx-backup-pull@$(hostname)"
+mkdir -p /data/bin /data/backups/clima-espacial-usach && chmod 700 /data/backups/clima-espacial-usach
+curl -fsSL -o /data/bin/swx-backup-pull.sh https://raw.githubusercontent.com/HelioUSACH/clima-espacial/main/deploy/backup-pull.sh
+chmod 700 /data/bin/swx-backup-pull.sh
 ```
 Add to `~/.ssh/config`:
 ```
@@ -56,9 +72,10 @@ command="/usr/bin/rrsync -ro /srv/swx/backups/",restrict ssh-ed25519 AAAA...the-
 
 ## Verify
 
-From the backup host:
+From icaria:
 ```
-bash deploy/backup-pull.sh
+SWX_BACKUP_DEST=/data/backups/clima-espacial-usach bash /data/bin/swx-backup-pull.sh
+ls -l /data/backups/clima-espacial-usach
 ```
 should copy the dump/config files and nothing else. Two checks worth doing
 once, by hand, before trusting the schedule (both confirmed against a real
@@ -76,11 +93,26 @@ anchors at `/srv/swx/backups/`, so the client must use a bare `host:` (see
 
 ## Schedule
 
-A simple daily cron entry on the backup host is enough:
+A daily cron entry on icaria at 04:30, an hour after helio's 03:30 dump
+(`crontab -e` as the pull user):
 ```
-30 4 * * *  /path/to/clima-espacial-deploy-copy/backup-pull.sh
+30 4 * * * SWX_BACKUP_DEST=/data/backups/clima-espacial-usach /bin/bash /data/bin/swx-backup-pull.sh >> /data/backups/clima-espacial-usach/pull.log 2>&1
 ```
-(or a systemd user timer, same idea as `swx-dump.timer` on helio).
+Add `SWX_BACKUP_KEEP_DAYS=<n>` to the same line to keep more or fewer than
+90 days. Check `tail /data/backups/clima-espacial-usach/pull.log` weekly.
+After a release that changes `deploy/backup-pull.sh`, re-run the `curl`
+line above to update the copy in `/data/bin`.
+
+## Restoring analytics
+
+```
+sudo systemctl stop goatcounter-import goatcounter
+sudo rm -f /srv/swx/goatcounter/db.sqlite3-wal /srv/swx/goatcounter/db.sqlite3-shm   # stale WAL must not replay onto the restored file
+tar xzf swx-config-<stamp>.tar.gz goatcounter-db.sqlite3 etc/swx/goatcounter-import.env
+sudo install -o swx -g swx -m 640 goatcounter-db.sqlite3 /srv/swx/goatcounter/db.sqlite3
+sudo install -o root -g swx -m 640 etc/swx/goatcounter-import.env /etc/swx/goatcounter-import.env
+sudo systemctl start goatcounter goatcounter-import
+```
 
 ## Restore drill
 

@@ -34,16 +34,17 @@ by Victor; nothing here is run by an AI session, AGENTS.md).
   no longer reach `/clima-espacial/` responses (Django sends its own HSTS,
   nosniff, Referrer-Policy and X-Frame-Options, so nothing is lost today).
 
-## Proposal, not applied: gunicorn threads instead of processes
+## gunicorn: threads instead of processes (applied in v0.3.0)
 
-`swx-web.service` runs 3 sync workers. Measured locally on v0.1.3 with the
-same seeded data, after the same warm-up requests: **3 sync workers =
-192 MB RSS (4 processes); `--workers 2 --threads 4 --worker-class gthread`
-= 133 MB (3 processes)**, about 60 MB less, and 8 concurrent requests
-instead of 3. The app is I/O-bound (PostgreSQL), so threads are a good fit.
-Worth doing before the models arrive on the same VM; change `ExecStart` in
-`systemd/swx-web.service` in its own PR and watch `systemctl status swx-web`
-for a day.
+`swx-web.service` runs `--workers 2 --threads 4 --worker-class gthread`.
+Measured locally on v0.1.3 with the same seeded data, after the same
+warm-up requests: **3 sync workers = 192 MB RSS (4 processes); 2 gthread
+workers × 4 threads = 133 MB (3 processes)**, about 60 MB less, and 8
+concurrent requests instead of 3. The app is I/O-bound (PostgreSQL), so
+threads are a good fit, and it frees memory before the models arrive on the
+same VM. After deploying, watch `systemctl status swx-web` (memory line)
+for a day. Note that the `serie.json` cache (D-057) is per *process*, so
+fewer processes also means fewer cold caches.
 
 ## Files
 
@@ -54,7 +55,7 @@ for a day.
 | `nginx-clima-espacial.conf` | `/clima-espacial/` location snippet for the existing `helio` vhost |
 | `systemd/swx-web.service` | gunicorn |
 | `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest |
-| `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle (local; pulled off-machine, see below) |
+| `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle incl. analytics (local; pulled off-machine, see below) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |
 | `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051) |
 | `swx-dump.sh` | the nightly backup script itself |

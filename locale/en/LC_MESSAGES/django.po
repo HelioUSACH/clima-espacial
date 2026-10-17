@@ -463,3 +463,9 @@ msgstr "no NOAA alerts"
 
 msgid "Dec"
 msgstr "Dec"
+
+msgid "Volver a HelioFísica USACH"
+msgstr "Back to HelioFísica USACH"
+
+msgid "Nodo USACH · Red Chilena de Clima Espacial"
+msgstr "USACH node · Chilean Space Weather Network"
