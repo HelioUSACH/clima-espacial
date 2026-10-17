@@ -2,6 +2,7 @@
 {% load i18n %}
 {% block title %}{% trans "Datos y API" %}{% endblock %}
 {% block content %}
+<div class="wrap page">
 <h1>{% trans "Datos y API" %}</h1>
 <p class="lede">
   {% trans "Ver el portal es libre. Las descargas y la futura API (incl. HAPI) requieren un registro simple y gratuito, que entrega una llave de acceso. Por ahora, este formulario registra tu interés; te avisaremos cuando las llaves de acceso y el endpoint HAPI estén disponibles." %}
@@ -29,4 +30,5 @@
   {% endfor %}
   <button type="submit" class="primary">{% trans "Enviar" %}</button>
 </form>
+</div>
 {% endblock %}

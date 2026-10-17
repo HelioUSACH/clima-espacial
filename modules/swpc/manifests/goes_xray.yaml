@@ -15,3 +15,12 @@ parameters:
   - {name: energy, enum: ["0.05-0.4nm", "0.1-0.8nm"]}
   - {name: satellite, units: "1"}
 exchange: {hapi: true, feed: false}
+description:
+  es: "Flujo de rayos X solares medido por los satélites GOES en dos bandas (0,05–0,4 nm y 0,1–0,8 nm), la base de la escala de clases de fulguraciones A/B/C/M/X de la NOAA. Una fulguración M o X puede afectar las comunicaciones de alta frecuencia en el lado diurno de la Tierra en minutos."
+  en: "Solar X-ray flux measured by the GOES satellites in two bands (0.05–0.4 nm and 0.1–0.8 nm), the basis of NOAA's A/B/C/M/X flare class scale. An M- or X-class flare can disrupt high-frequency radio on the sunlit side of Earth within minutes."
+facts:
+  source: {es: "NOAA SWPC, GOES", en: "NOAA SWPC, GOES"}
+  spacecraft: {es: "El satélite GOES primario vigente", en: "Whichever GOES satellite is currently primary"}
+  cadence: {es: "1 minuto", en: "1 minute"}
+  license: {es: "Dominio público (NOAA)", en: "Public domain (NOAA)"}
+  used_by: {es: "Detector de fulguraciones (NRT) de HelioUSACH", en: "HelioUSACH's flare detector (NRT)"}

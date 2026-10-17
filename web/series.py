@@ -16,7 +16,8 @@ Response contract (D-056):
      "bucket_seconds": N}
 
 A bucket with no valid value is `null` in every list. That is how a real
-gap stays a gap: uPlot never draws a segment across a `null`.
+gap stays a gap: the chart engine never draws a segment across a `null`
+(`connectNulls: false`, web/static/web/js/charts.js).
 """
 
 from __future__ import annotations

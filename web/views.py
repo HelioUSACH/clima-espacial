@@ -18,20 +18,6 @@ from .forms import RegistrationForm
 FLARE_PRODUCT_ID = "usach.flare.nrt"
 SCALES_PRODUCT_ID = "noaa.scales"
 
-# 12-HANDOFF §4: the home "now" row — each tile's (product_id, energy filter
-# for the two GOES products, which interleave channels on one row instead of
-# one column) and unit. Labels are a manual two-language dict (same
-# convention as STATUS_LABELS/scale titles above) since these are built
-# alongside a dynamically fetched value, not a static template string.
-NOW_ROW_LABELS = {
-    "bz": {"es": "Bz (IMF)", "en": "Bz (IMF)"},
-    "speed": {"es": "Velocidad del viento", "en": "Solar wind speed"},
-    "density": {"es": "Densidad", "en": "Density"},
-    "kp": {"es": "Kp", "en": "Kp"},
-    "xray": {"es": "Rayos X", "en": "X-rays"},
-    "protons": {"es": "Protones ≥10 MeV", "en": "≥10 MeV protons"},
-}
-
 
 def _flare_card_ready():
     """D-036: the beta card shows "en preparación" whenever the flare-nrt
@@ -73,35 +59,6 @@ def _status_badge(product_id, effective_status, lang):
     }
 
 
-def home(request):
-    lang = _lang(request)
-
-    scales_event = Event.objects.filter(product_id="noaa.scales").order_by("-issued").first()
-    scales_badges = _scales_badges(scales_event, lang) if scales_event else []
-
-    panels = [
-        _panel_json(product_id, panel, lang)
-        for product_id in charts.HOME_PRODUCT_ORDER
-        for panel in charts.PRODUCT_PANELS[product_id]
-    ]
-
-    return render(
-        request,
-        "web/home.html",
-        {
-            "now_row": _now_row(lang),
-            "panels": panels,
-            "chart_i18n": _chart_i18n(),
-            "stack_id": "home",
-            "panels_id": "home-panels",
-            "i18n_id": "home-i18n",
-            **_range_buttons(charts.HOME_PRODUCT_ORDER, charts.DEFAULT_RANGE_HOME, lang),
-            "scales_badges": scales_badges,
-            "flare_card_ready": _flare_card_ready(),
-        },
-    )
-
-
 def _latest_row(product_id, energy=None):
     qs = TimeSeriesPoint.objects.filter(product_id=product_id)
     if energy is not None:
@@ -109,43 +66,54 @@ def _latest_row(product_id, energy=None):
     return qs.order_by("-time_tag").first()
 
 
-def _stat_tile(key, lang, value, unit, last_seen_at):
-    # Pre-formatted here, not with the template's `floatformat` (which
-    # returns "" for a non-numeric value like the X-ray class string —
-    # found while checking this page against real seeded dev data, not
-    # just reasoned about), so every tile's `value` is already the exact
-    # display string, no further filtering needed in the template.
-    display = f"{value:.1f}" if isinstance(value, (int, float)) else value
-    return {"key": key, "label": NOW_ROW_LABELS[key][lang], "value": display, "unit": unit, "last_seen_at": last_seen_at}
-
-
-def _now_row(lang):
-    mag = _latest_row("noaa.rtsw.mag")
-    wind = _latest_row("noaa.rtsw.wind")
-    kp_row = _latest_row("noaa.kp")
-    xray_row = _latest_row("noaa.goes.xray", energy="0.1-0.8nm")
-    proton_row = _latest_row("noaa.goes.protons", energy=">=10 MeV")
+# 18-HANDOFF-v0.2.0.md §2: the "Lo que ofrece USACH" hero sidebar. Maturity
+# pills come from the Product registry where a Product row already exists
+# (so far only the flare detector, once its collector has run once);
+# everything else is the mockup's own static copy — dB/dt has no product
+# yet (it's a future model) and the data/API offer is never a product.
+def _offer_cards(lang):
+    flare = Product.objects.filter(id=FLARE_PRODUCT_ID).first()
+    flare_pill = flare.get_maturity_display() if flare else gettext("beta")
     return [
-        _stat_tile("bz", lang, mag.payload.get("bz_gsm") if mag else None, "nT", mag.time_tag if mag else None),
-        _stat_tile(
-            "speed", lang, wind.payload.get("proton_speed") if wind else None, "km/s", wind.time_tag if wind else None
-        ),
-        _stat_tile(
-            "density", lang, wind.payload.get("proton_density") if wind else None, "p/cm³", wind.time_tag if wind else None
-        ),
-        _stat_tile("kp", lang, kp_row.payload.get("kp") if kp_row else None, "", kp_row.time_tag if kp_row else None),
-        _stat_tile(
-            "xray",
-            lang,
-            charts.xray_class(xray_row.payload.get("flux")) if xray_row else None,
-            "",
-            xray_row.time_tag if xray_row else None,
-        ),
-        _stat_tile(
-            "protons", lang, proton_row.payload.get("flux") if proton_row else None, "pfu",
-            proton_row.time_tag if proton_row else None,
-        ),
+        {
+            "pill": flare_pill, "pill_class": "beta",
+            "title": gettext("Detección de fulguraciones (NRT)"),
+            "text": gettext("Detección automática de fulguraciones solares en tiempo casi real a partir del flujo de rayos X de GOES."),
+        },
+        {
+            "pill": gettext("en desarrollo"), "pill_class": "",
+            "title": gettext("dB/dt global"),
+            "text": gettext("Pronóstico de variaciones rápidas del campo geomagnético, el insumo de las corrientes inducidas en redes eléctricas."),
+        },
+        {
+            "pill": gettext("próximamente"), "pill_class": "",
+            "title": gettext("Datos abiertos y API"),
+            "text": gettext("Series curadas con licencia CC BY 4.0, descargas y acceso HAPI con registro gratuito."),
+        },
     ]
+
+
+def home(request):
+    lang = _lang(request)
+    panels = [
+        _panel_json(product_id, panel, lang)
+        for product_id in charts.HOME_PRODUCT_ORDER
+        for panel in charts.PRODUCT_PANELS[product_id]
+    ]
+    return render(
+        request,
+        "web/home.html",
+        {
+            "offer_cards": _offer_cards(lang),
+            "panels": panels,
+            "chart_i18n": _chart_i18n(),
+            "stack_id": "home",
+            "panels_id": "home-panels",
+            "i18n_id": "home-i18n",
+            "stack_aria_label": gettext("Viento solar en L1"),
+            **_range_buttons(charts.HOME_PRODUCT_ORDER, charts.DEFAULT_RANGE_HOME, lang),
+        },
+    )
 
 
 def _panel_json(product_id, panel, lang):
@@ -157,7 +125,6 @@ def _panel_json(product_id, panel, lang):
         series.append(entry)
     return {
         "product_id": product_id,
-        "dom_id": _dom_id(product_id) + "-" + panel.key,
         "endpoint": reverse("web:product_series_json", args=[product_id]),
         "key": panel.key,
         "title": panel.title_en if lang == "en" else panel.title_es,
@@ -179,18 +146,26 @@ def _chart_i18n():
     # One shared blob (web/templates/web/_panel_stack.html) instead of
     # repeating these in every panel's own JSON. gettext() resolves against
     # the request's actual active language, same msgids already in
-    # locale/en/LC_MESSAGES/django.po for the pre-panel-stack charts.
+    # locale/en/LC_MESSAGES/django.po for the pre-ECharts charts.
     return {
         "lang": "en" if get_language() == "en" else "es",
-        "time_label": gettext("Hora"),
         "time_axis_label": gettext("UT"),
-        "months": [gettext(m) for m in _MONTH_ABBR],
+        # Not run through gettext(): they're already the English text an EN
+        # page needs (an ES page never reads this list) -- gettext() here
+        # picked up Django's own bundled Spanish translation of "May" as a
+        # common word and silently turned it into "mayo" on ES pages.
+        "months": list(_MONTH_ABBR),
         "no_data_message": gettext("Sin datos todavía."),
         "error_message": gettext("No se pudo cargar la serie."),
         "trend_up": gettext("en aumento"),
         "trend_down": gettext("en descenso"),
         "trend_flat": gettext("estable"),
-        "active_source": gettext("Fuente activa:"),
+        "active_source_label": gettext("Nave activa"),
+        "last_datum_label": gettext("Último dato"),
+        "source_mark_note": gettext("Línea discontinua: cambio de nave activa"),
+        "averages_label": gettext("promedios de"),
+        "minutes_unit": gettext("min"),
+        "seconds_unit": gettext("s"),
     }
 
 
@@ -308,6 +283,46 @@ def catalogue(request):
     return render(request, "web/catalogue.html", {"rows": rows, "flare_card_ready": _flare_card_ready()})
 
 
+def _headline_value(label_es, label_en, value, unit, lang):
+    display = f"{value:.1f}" if isinstance(value, (int, float)) else value
+    return {"label": label_en if lang == "en" else label_es, "value": display, "unit": unit}
+
+
+# 18-HANDOFF-v0.2.0.md §2: the product page's headline values -- the
+# product's own key field(s), latest datum. Per-product because the right
+# field (and how to format it) genuinely differs (Bz vs. a bare index vs.
+# a derived X-ray class), not something to generalise from the panel specs.
+def _headline_values(product_id, lang):
+    if product_id == "noaa.rtsw.mag":
+        row = _latest_row(product_id)
+        payload = row.payload if row else {}
+        return [
+            _headline_value("Bz (GSM)", "Bz (GSM)", payload.get("bz_gsm"), "nT", lang),
+            _headline_value("Bt", "Bt", payload.get("bt"), "nT", lang),
+        ]
+    if product_id == "noaa.rtsw.wind":
+        row = _latest_row(product_id)
+        payload = row.payload if row else {}
+        return [
+            _headline_value("Velocidad", "Speed", payload.get("proton_speed"), "km/s", lang),
+            _headline_value("Densidad", "Density", payload.get("proton_density"), "p/cm³", lang),
+        ]
+    if product_id == "noaa.kp":
+        row = _latest_row(product_id)
+        return [_headline_value("Kp", "Kp", row.payload.get("kp") if row else None, "", lang)]
+    if product_id == "noaa.dst":
+        row = _latest_row(product_id)
+        return [_headline_value("Dst", "Dst", row.payload.get("dst") if row else None, "nT", lang)]
+    if product_id == "noaa.goes.xray":
+        row = _latest_row(product_id, energy="0.1-0.8nm")
+        value = charts.xray_class(row.payload.get("flux")) if row else None
+        return [_headline_value("Clase", "Class", value, "", lang)]
+    if product_id == "noaa.goes.protons":
+        row = _latest_row(product_id, energy=">=10 MeV")
+        return [_headline_value("≥10 MeV", "≥10 MeV", row.payload.get("flux") if row else None, "pfu", lang)]
+    return []
+
+
 def product_detail(request, product_id):
     lang = _lang(request)
     product = get_object_or_404(Product, id=product_id)
@@ -339,7 +354,34 @@ def product_detail(request, product_id):
     context["panels_id"] = stack_id + "-panels"
     context["i18n_id"] = stack_id + "-i18n"
     context["tall"] = True
+    context["csv_stub"] = True
+    context["stack_aria_label"] = context["title"]
+    context["headline_values"] = _headline_values(product_id, lang)
+    context["description"] = product.description(lang)
+    context["facts"] = _facts_list(product, lang)
     return render(request, "web/product_detail.html", context)
+
+
+# dt/dd order fixed, same for every product (18-HANDOFF §2 "Ficha del
+# producto"); a product whose manifest doesn't set a given fact (yet) just
+# skips that row instead of showing an empty one.
+_FACT_ROWS = (
+    ("source", "Fuente", "Source"),
+    ("spacecraft", "Naves", "Spacecraft"),
+    ("cadence", "Cadencia original", "Original cadence"),
+    ("coordinates", "Coordenadas", "Coordinates"),
+    ("license", "Licencia", "Licence"),
+    ("used_by", "Lo usan", "Used by"),
+)
+
+
+def _facts_list(product, lang):
+    rows = []
+    for key, label_es, label_en in _FACT_ROWS:
+        value = product.fact(key, lang)
+        if value:
+            rows.append({"label": label_en if lang == "en" else label_es, "value": value})
+    return rows
 
 
 def product_series_json(request, product_id):

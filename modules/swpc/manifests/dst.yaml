@@ -13,3 +13,11 @@ source:
 parameters:
   - {name: dst, units: nT}
 exchange: {hapi: true, feed: false}
+description:
+  es: "El índice Dst mide la depresión del campo magnético horizontal en el ecuador, producida por la corriente de anillo durante una tormenta geomagnética. Mientras más negativo, más intensa la tormenta: por debajo de −50 nT ya se considera una tormenta; por debajo de −250 nT, extrema."
+  en: "The Dst index measures the depression of the horizontal magnetic field at the equator caused by the ring current during a geomagnetic storm. More negative means a stronger storm: below −50 nT is already a storm; below −250 nT, extreme."
+facts:
+  source: {es: "Kyoto World Data Center for Geomagnetism, vía NOAA SWPC", en: "Kyoto World Data Center for Geomagnetism, via NOAA SWPC"}
+  cadence: {es: "1 hora (datos en tiempo casi real)", en: "1 hour (near-real-time data)"}
+  license: {es: "Dominio público (NOAA/Kyoto WDC)", en: "Public domain (NOAA/Kyoto WDC)"}
+  used_by: {es: "Franja de estado del portal", en: "The portal's status strip"}

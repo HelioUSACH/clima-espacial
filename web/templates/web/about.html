@@ -2,6 +2,7 @@
 {% load i18n %}
 {% block title %}{% trans "Acerca" %}{% endblock %}
 {% block content %}
+<div class="wrap page">
 <h1>{% trans "Acerca de Clima Espacial USACH" %}</h1>
 <p class="lede">
   {% trans "Clima Espacial USACH es el portal de clima espacial de HelioUSACH y el nodo USACH de la Plataforma Nacional de Meteorología Espacial. Muestra las condiciones que importan para Chile y publica los productos propios de HelioUSACH a la plataforma nacional a través de una interfaz versionada." %}
@@ -14,4 +15,5 @@
   {% trans "Código fuente Apache-2.0, datos CC BY 4.0." %}
   <a href="https://github.com/HelioUSACH/clima-espacial">GitHub</a>.
 </p>
+</div>
 {% endblock %}

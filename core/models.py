@@ -44,6 +44,12 @@ class Product(models.Model):
     producer_repo = models.CharField(max_length=200, blank=True, default="")
     source_provider = models.CharField(max_length=200, blank=True, default="")
     source_license = models.CharField(max_length=64, blank=True, default="")
+    # 18-HANDOFF-v0.2.0.md §2: the product page's "Qué muestra" text and
+    # "Ficha del producto" <dl> — both optional in the manifest schema, so
+    # not every product has them yet (kind=event products in particular).
+    description_es = models.TextField(blank=True, default="")
+    description_en = models.TextField(blank=True, default="")
+    facts = models.JSONField(default=dict, blank=True)
     exchange_hapi = models.BooleanField(default=False)
     exchange_feed = models.BooleanField(default=False)
     model_card_path = models.CharField(max_length=255, blank=True, default="")
@@ -61,6 +67,13 @@ class Product(models.Model):
 
     def title(self, lang="es"):
         return self.title_en if lang == "en" else self.title_es
+
+    def description(self, lang="es"):
+        return self.description_en if lang == "en" else self.description_es
+
+    def fact(self, key, lang="es"):
+        entry = self.facts.get(key)
+        return entry.get("en" if lang == "en" else "es", "") if entry else ""
 
 
 class ProductVersion(models.Model):

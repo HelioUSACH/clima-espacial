@@ -1,64 +1,47 @@
 {% extends "web/base.html" %}
-{% load i18n humanize %}
+{% load i18n %}
 {% block title %}{% trans "Inicio" %}{% endblock %}
 {% block content %}
 
-<section aria-labelledby="scales-heading">
-  <h1 id="scales-heading">{% trans "Condiciones de clima espacial" %}</h1>
-  <p class="lede">
-    {% trans "Contexto en vivo: escalas NOAA, viento solar e IMF en L1, Kp, Dst, rayos X y protones. Esta página no reemplaza la Plataforma Nacional — para impactos por sector, SUVI, magnetómetros chilenos, SUPIM y D-RAP visítala directamente." %}
-  </p>
-
-  {% if scales_badges %}
-  {% include "web/_scale_badges.html" %}
-  {% else %}
-  <p class="lede">{% trans "Las escalas NOAA aún no se han recolectado en este ambiente." %}</p>
-  {% endif %}
-
-  <div class="now-row">
-    {% for tile in now_row %}
-    <div class="stat-tile">
-      <span class="stat-tile__label">{{ tile.label }}</span>
-      <span class="stat-tile__value">{% if tile.value %}{{ tile.value }}{% if tile.unit %} <small>{{ tile.unit }}</small>{% endif %}{% else %}—{% endif %}</span>
-      <span class="stat-tile__time">{% if tile.last_seen_at %}{{ tile.last_seen_at|naturaltime }}{% else %}{% trans "sin datos" %}{% endif %}</span>
+<section class="wrap hero" id="inicio">
+  <div>
+    <div class="eyebrow">{% trans "Nodo USACH · Plataforma Nacional de Meteorología Espacial" %}</div>
+    <h1>{% trans "Clima espacial para la infraestructura de Chile" %}</h1>
+    <p class="lede">{% trans "Modelos propios, datos abiertos y una API para operadores eléctricos, minería, servicios GNSS y satelitales. Desarrollado por el grupo HelioUSACH del Departamento de Física de la Universidad de Santiago de Chile." %}</p>
+    <div class="ctas">
+      <a class="btn pri" href="{% url 'web:catalogue' %}">{% trans "Ver productos y modelos" %}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="btn" href="{% url 'web:data_api' %}">{% trans "Datos y API" %}</a>
     </div>
+  </div>
+  <div class="offer">
+    <div class="eyebrow">{% trans "Lo que ofrece USACH" %}</div>
+    {% for card in offer_cards %}
+    <article class="ocard">
+      <h3>{{ card.title }} <span class="pill{% if card.pill_class %} {{ card.pill_class }}{% endif %}">{{ card.pill }}</span></h3>
+      <p>{{ card.text }}</p>
+    </article>
     {% endfor %}
   </div>
 </section>
 
-<section aria-labelledby="context-heading">
-  <h2 id="context-heading">{% trans "Condiciones en L1 y en la Tierra" %}</h2>
+<section class="wrap sec" aria-labelledby="l1-h">
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow">{% trans "En vivo" %}</div>
+      <h2 id="l1-h">{% trans "Viento solar en L1" %}</h2>
+    </div>
+  </div>
   {% include "web/_panel_stack.html" %}
 </section>
 
-<section aria-labelledby="offer-heading">
-  <h2 id="offer-heading">{% trans "Lo que ofrece USACH" %}</h2>
-  <div class="offer-grid">
-    <div class="offer-card">
-      <span class="badge">{% trans "beta" %}</span>
-      <h3>{% trans "Detección de fulguraciones (NRT)" %}</h3>
-      {% if flare_card_ready %}
-        <p>{% trans "Modelo propio de HelioUSACH, probabilidad y estado en casi tiempo real." %}</p>
-      {% else %}
-        <p>{% trans "En preparación: el detector propio de HelioUSACH se publicará aquí en cuanto esté en operación." %}</p>
-      {% endif %}
-      <a href="{% url 'web:catalogue' %}">{% trans "Ver catálogo de productos y modelos →" %}</a>
-    </div>
-    <div class="offer-card">
-      <h3>{% trans "Productos y modelos" %}</h3>
-      <p>{% trans "Catálogo con madurez (experimental/beta/operacional) y hoja de ruta." %}</p>
-      <a href="{% url 'web:catalogue' %}">{% trans "Ir al catálogo →" %}</a>
-    </div>
-    <div class="offer-card">
-      <h3>{% trans "Qué ofrecemos" %}</h3>
-      <p>{% trans "Para operadores eléctricos, minería/GNSS, satélites y el servicio meteorológico." %}</p>
-      <a href="{% url 'web:que_ofrecemos' %}">{% trans "Ver más →" %}</a>
-    </div>
-    <div class="offer-card">
-      <h3>{% trans "Datos y API" %}</h3>
-      <p>{% trans "Licencia CC BY 4.0. Registro simple para descargas y HAPI (próximamente)." %}</p>
-      <a href="{% url 'web:data_api' %}">{% trans "Registrarse →" %}</a>
-    </div>
+<section class="wrap sec" aria-labelledby="mas-h">
+  <div class="sec-head"><div><div class="eyebrow">{% trans "Más condiciones" %}</div><h2 id="mas-h">{% trans "En la red chilena" %}</h2></div></div>
+  <div class="more">
+    <a class="mcard" href="{% url 'web:product_detail' 'noaa.goes.xray' %}"><em>{% trans "Este portal" %}</em><b>{% trans "Rayos X y protones (GOES)" %}</b><span>{% trans "Flujo de rayos X con clases A–X y protones con umbral S1." %}</span></a>
+    <a class="mcard" href="https://meteorologiaespacial.cl/impactos" rel="nofollow"><em>{% trans "Plataforma Nacional" %} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></em><b>{% trans "Kp, Dst e impactos" %}</b><span>{% trans "Escalas NOAA y efectos posibles por sector en Chile." %}</span></a>
+    <a class="mcard" href="https://meteorologiaespacial.cl/productos/magnetometro" rel="nofollow"><em>{% trans "Plataforma Nacional" %} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></em><b>{% trans "Magnetómetros chilenos" %}</b><span>{% trans "Red de estaciones con datos descargables." %}</span></a>
+    <a class="mcard" href="https://ccc.ciencias.uchile.cl/climaespacial/modelos/index.php" rel="nofollow"><em>{% trans "Universidad de Chile" %} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></em><b>{% trans "Pronósticos Dst y AU/AL" %}</b><span>{% trans "Modelos del Laboratorio de Clima Espacial." %}</span></a>
   </div>
 </section>
 {% endblock %}

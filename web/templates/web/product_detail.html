@@ -2,18 +2,43 @@
 {% load i18n %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-<a href="{% url 'web:catalogue' %}">&larr; {% trans "Catálogo" %}</a>
-<h1>{{ title }}</h1>
-<p class="lede">
-  <span class="badge">{{ product.get_maturity_display }}</span>
-  <span class="status-badge">
-    <span class="status-badge__dot" style="background:{{ status.color }}"></span>
-    {{ status.label }}
-  </span>
-</p>
-<p>{% trans "Fuente:" %} {{ product.source_provider }}{% if source_license %} — {{ source_license }}{% endif %}</p>
+<div class="wrap">
+  <div class="crumb"><a href="{% url 'web:catalogue' %}">{% trans "Productos y modelos" %}</a> / {{ title }}</div>
+  <div class="head">
+    <div>
+      <h1>{{ title }}</h1>
+      <div class="badges">
+        <span class="pill{% if status.status == 'ok' %} ok{% endif %}"><span class="dot" style="background:{{ status.color }}"></span>{{ status.label }}</span>
+        <span class="pill">{{ product.get_maturity_display }}</span>
+        <span class="pill">{{ product.source_provider }}</span>
+      </div>
+    </div>
+    {% if headline_values %}
+    <div class="now">
+      {% for h in headline_values %}
+      <div><small>{{ h.label }}</small><b>{% if h.value %}{{ h.value }}{% if h.unit %} <span>{{ h.unit }}</span>{% endif %}{% else %}—{% endif %}</b></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
 
-{% include "web/_panel_stack.html" %}
+  {% include "web/_panel_stack.html" %}
 
-<p class="lede">{% trans "Descarga de datos: próximamente." %}</p>
+  <div class="below">
+    <section>
+      <h2>{% trans "Qué muestra" %}</h2>
+      {% if description %}<p>{{ description }}</p>{% endif %}
+    </section>
+    {% if facts %}
+    <section>
+      <h2>{% trans "Ficha del producto" %}</h2>
+      <dl>
+        {% for f in facts %}
+        <dt>{{ f.label }}</dt><dd>{{ f.value }}</dd>
+        {% endfor %}
+      </dl>
+    </section>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

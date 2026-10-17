@@ -25,7 +25,7 @@
   }
 
   var menuBtn = document.getElementById("menu-toggle");
-  var header = document.querySelector(".site-header");
+  var header = document.querySelector(".hdr");
   if (menuBtn && header) {
     menuBtn.addEventListener("click", function () {
       var open = header.getAttribute("data-open") === "true";

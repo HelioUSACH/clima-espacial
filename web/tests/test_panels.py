@@ -31,7 +31,9 @@ def test_xray_class_breakpoints(flux, expected):
 
 @pytest.mark.parametrize(
     "kp, expected",
-    [(None, None), (0, "ok"), (3.9, "ok"), (4, "stale"), (4.9, "stale"), (5, "serious"), (6.9, "serious"), (7, "error"), (9, "error")],
+    # 18-HANDOFF-v0.2.0.md §2: "Kp < 5 -> ok, 5 -> minor, 6 -> moderate,
+    # 7 -> strong, >= 8 -> severe" (supersedes D-053's 4-step scale).
+    [(None, None), (0, "ok"), (4.9, "ok"), (5, "minor"), (5.9, "minor"), (6, "moderate"), (7, "strong"), (8, "severe"), (9, "severe")],
 )
 def test_kp_severity_buckets(kp, expected):
     assert charts.kp_severity(kp) == expected
@@ -45,6 +47,11 @@ MAG_MANIFEST = {
     "parameters": [{"name": "bt", "units": "nT"}],
     "exchange": {"hapi": True, "feed": False},
     "_module": "swpc", "_path": "modules/swpc/manifests/rtsw_mag.yaml",
+    # 18-HANDOFF-v0.2.0.md §2: the product page's "Qué muestra"/"Ficha del
+    # producto" read these from the Product row, synced from exactly this
+    # shape (core/swxkit.py _sync_product).
+    "description": {"es": "Descripción de prueba.", "en": "Test description."},
+    "facts": {"license": {"es": "Dominio público (NOAA)", "en": "Public domain (NOAA)"}},
 }
 
 KP_MANIFEST = {
@@ -121,18 +128,28 @@ def test_series_endpoint_breaks_a_real_gap(monkeypatch, client):
 
 @pytest.mark.django_db
 def test_home_panels_cover_every_product_in_order(client):
+    # 18-HANDOFF-v0.2.0.md §2: "Removed from home: the Kp, Dst, X-ray and
+    # proton panels and the v0.1.2 'now' row" -- only the solar-wind stack
+    # (mag + wind) remains; those four products' panels moved to their own
+    # product pages (see test_xray_panel_has_fixed_axis_and_envelope_flags).
     response = client.get(reverse("web:home"))
     panels = response.context["panels"]
     product_ids = [p["product_id"] for p in panels]
     assert product_ids == [
         "noaa.rtsw.mag", "noaa.rtsw.mag",
         "noaa.rtsw.wind", "noaa.rtsw.wind", "noaa.rtsw.wind",
-        "noaa.kp", "noaa.dst", "noaa.goes.xray", "noaa.goes.protons",
     ]
     bz_panel = next(p for p in panels if p["key"] == "bz")
     assert bz_panel["zero_line"] is True
     assert {s["field"] for s in bz_panel["series"]} == {"bt", "bz_gsm"}
 
+
+@pytest.mark.django_db
+def test_kp_panel_lives_on_its_own_product_page(monkeypatch, client):
+    monkeypatch.setattr(swxkit, "get_manifest", lambda pid: dict(KP_MANIFEST))
+    swxkit.publish_timeseries("noaa.kp", [{"time_tag": _minute(5), "kp": 2.0}])
+    response = client.get(reverse("web:product_detail", args=["noaa.kp"]))
+    panels = response.context["panels"]
     kp_panel = next(p for p in panels if p["key"] == "kp")
     assert kp_panel["kind"] == "bars"
     assert kp_panel["kp_bucket"] is True

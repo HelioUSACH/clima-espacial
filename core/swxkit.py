@@ -31,6 +31,7 @@ def _sync_product(product_id: str) -> Product:
         raise PublishError(str(exc)) from exc
 
     exchange = manifest.get("exchange", {})
+    description = manifest.get("description", {})
     product, _created = Product.objects.update_or_create(
         id=product_id,
         defaults={
@@ -50,6 +51,9 @@ def _sync_product(product_id: str) -> Product:
             "manifest_path": manifest["_path"],
             "module": manifest["_module"],
             "current_version": manifest["version"],
+            "description_es": description.get("es", ""),
+            "description_en": description.get("en", ""),
+            "facts": manifest.get("facts", {}),
         },
     )
     ProductVersion.objects.update_or_create(

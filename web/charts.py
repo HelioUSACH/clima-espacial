@@ -18,7 +18,10 @@ from dataclasses import dataclass
 # Categorical slots 1-3 of the dataviz skill's validated 8-hue default order
 # (references/palette.md) validate *every* pairing, not just adjacent ones —
 # the safe set for a chart where all series can be visible together.
-SLOT_COLOR_VARS = {1: "--chart-s1", 2: "--chart-s2", 3: "--chart-s3"}
+# 0 is the mockup's muted "context" slot (--bt: a secondary series whose
+# panel is really about a *different*, more important one -- Bt alongside
+# the mandatory Bz, 18-HANDOFF §1).
+SLOT_COLOR_VARS = {0: "--bt", 1: "--chart-s1", 2: "--chart-s2", 3: "--chart-s3", 4: "--chart-s4", 5: "--chart-s5", 6: "--chart-s6"}
 
 # CSS custom properties, not literal hex (D-053, 12-HANDOFF §2 theme
 # contract): "every colour comes from CSS custom properties", so a status
@@ -52,6 +55,43 @@ SCALE_COLORS = {
     "serious": "var(--status-serious)",
     "error": STATUS_COLORS["error"],
 }
+
+# Shared severity scale for the header strip's chips (18-HANDOFF-v0.2.0.md
+# §2) — distinct from STATUS_COLORS/SCALE_STATUS above, which are about
+# *our* collectors being healthy, not how severe the space weather itself
+# is. Reserved steps, CSS vars only (D-053 contract): --severity-ok, etc.
+SEVERITY_COLORS = {
+    "ok": "var(--severity-ok)",
+    "minor": "var(--severity-minor)",
+    "moderate": "var(--severity-moderate)",
+    "strong": "var(--severity-strong)",
+    "severe": "var(--severity-severe)",
+}
+SEVERITY_LABELS = {
+    "ok": {"es": "sin alerta", "en": "no alert"},
+    "minor": {"es": "menor", "en": "minor"},
+    "moderate": {"es": "moderada", "en": "moderate"},
+    "strong": {"es": "fuerte", "en": "strong"},
+    "severe": {"es": "severa", "en": "severe"},
+}
+
+# NOAA R/S/G level (0-5) -> the shared severity scale (§2: "0 -> ok, 1 ->
+# minor, 2 -> moderate, 3 -> strong, 4-5 -> severe").
+SCALE_SEVERITY = {0: "ok", 1: "minor", 2: "moderate", 3: "strong", 4: "severe", 5: "severe"}
+
+
+def dst_severity(value: float | None) -> str | None:
+    """Dst (nT) -> severity (§2: "> -50 ok, -50..-100 moderate, -100..-250
+    strong, < -250 severe" — Dst has no "minor" bucket)."""
+    if value is None:
+        return None
+    if value > -50:
+        return "ok"
+    if value > -100:
+        return "moderate"
+    if value > -250:
+        return "strong"
+    return "severe"
 
 # Q3 (10-STATUS-AND-NEXT.md): NOAA's own `noaa-scales.json` "Text" field is
 # always English ("none", "Minor", …) — translate the handful of known
@@ -88,8 +128,8 @@ RANGE_CHOICES = [
     ("7d", "7 días", "7 days", 7),
 ]
 RANGE_DAYS = {key: days for key, _es, _en, days in RANGE_CHOICES}
-DEFAULT_RANGE_HOME = "1d"
-DEFAULT_RANGE_PRODUCT = "3d"  # 12-HANDOFF §4: "default 3d on product pages, 1d on home"
+DEFAULT_RANGE_HOME = "3d"  # 18-HANDOFF-v0.2.0.md §2: "Default range 3 d" for the home solar-wind stack
+DEFAULT_RANGE_PRODUCT = "3d"
 
 # Server-side bucket size per range (D-056): `serie.json` aggregates in SQL
 # with PostgreSQL's `date_bin` to one mean/min/max per bucket, so a 7-day
@@ -161,7 +201,7 @@ PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
         # panel) replaces that rule instead of fighting it.
         Panel(
             key="bz", title_es="Bt / Bz (IMF)", title_en="Bt / Bz (IMF)", unit="nT",
-            series=(Series("bt", "Bt", "Bt", 1), Series("bz_gsm", "Bz (GSM)", "Bz (GSM)", 2)),
+            series=(Series("bt", "Bt", "Bt", 0), Series("bz_gsm", "Bz (GSM)", "Bz (GSM)", 1)),
             zero_line=True, show_source=True, envelope=True,
         ),
         Panel(
@@ -221,15 +261,16 @@ PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
     ),
 }
 
-HOME_PRODUCT_ORDER = (
-    "noaa.rtsw.mag", "noaa.rtsw.wind", "noaa.kp", "noaa.dst", "noaa.goes.xray", "noaa.goes.protons",
-)
+# 18-HANDOFF §2: "Removed from home: the Kp, Dst, X-ray and proton panels
+# and the v0.1.2 'now' row. The strip and readout replace them; their
+# product pages stay." -- only the solar-wind stack remains on home.
+HOME_PRODUCT_ORDER = ("noaa.rtsw.mag", "noaa.rtsw.wind")
 
-# Kp -> G-scale severity bucket (NOAA: G1=Kp5, G2=Kp6, G3=Kp7, G4=Kp8,
-# G5=Kp9); folded onto the same 4-step status vocabulary as the rest of the
-# portal (ok/stale/serious/error) rather than inventing a 5th scale.
-KP_SEVERITY_THRESHOLDS = (4, 5, 7)  # < 4 -> ok, < 5 -> stale, < 7 -> serious, else error
-KP_SEVERITY_STATUSES = ("ok", "stale", "serious", "error")
+# Kp -> the shared severity scale, through its G level (18-HANDOFF §2:
+# "Kp < 5 -> ok, 5 -> minor, 6 -> moderate, 7 -> strong, >= 8 -> severe" --
+# NOAA: G1=Kp5, G2=Kp6, G3=Kp7, G4-G5=Kp8-9).
+KP_SEVERITY_THRESHOLDS = (5, 6, 7, 8)
+KP_SEVERITY_STATUSES = ("ok", "minor", "moderate", "strong", "severe")
 
 
 def kp_severity(value: float | None) -> str | None:

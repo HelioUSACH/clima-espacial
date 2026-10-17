@@ -15,3 +15,12 @@ parameters:
   - {name: proton_density, units: "1/cm3"}
   - {name: proton_temperature, units: K}
 exchange: {hapi: true, feed: false}
+description:
+  es: "Velocidad, densidad y temperatura del plasma del viento solar medidas en L1, el mismo punto y las mismas naves que el campo magnético interplanetario. Un viento rápido y denso es el que más energía puede entregar a la magnetósfera; la temperatura se muestra en escala logarítmica porque varía en varios órdenes de magnitud."
+  en: "Solar wind plasma speed, density and temperature measured at L1, the same point and spacecraft as the interplanetary magnetic field. A fast, dense wind is the one most able to drive energy into the magnetosphere; temperature is shown on a log scale because it spans several orders of magnitude."
+facts:
+  source: {es: "NOAA SWPC, Real-Time Solar Wind", en: "NOAA SWPC, Real-Time Solar Wind"}
+  spacecraft: {es: "La activa en cada momento (SOLAR1, DSCOVR, ACE)", en: "Whichever is active (SOLAR1, DSCOVR, ACE)"}
+  cadence: {es: "1 minuto", en: "1 minute"}
+  license: {es: "Dominio público (NOAA)", en: "Public domain (NOAA)"}
+  used_by: {es: "Modelo dB/dt global (en desarrollo)", en: "Global dB/dt model (in development)"}

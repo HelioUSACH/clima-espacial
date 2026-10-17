@@ -2,6 +2,7 @@
 {% load i18n %}
 {% block title %}{% trans "Estado" %}{% endblock %}
 {% block content %}
+<div class="wrap page">
 <h1>{% trans "Estado de fuentes y productos" %}</h1>
 <p class="lede">{% trans "Un producto 'desactualizado' o 'sin datos' no detiene el resto del portal — cada producto se degrada por separado." %}</p>
 <table class="status-table">
@@ -29,4 +30,5 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

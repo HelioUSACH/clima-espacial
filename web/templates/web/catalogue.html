@@ -2,6 +2,7 @@
 {% load i18n %}
 {% block title %}{% trans "Productos y modelos" %}{% endblock %}
 {% block content %}
+<div class="wrap page">
 <h1>{% trans "Productos y modelos" %}</h1>
 <p class="lede">{% trans "Catálogo con madurez y estado. Los detalles de impactos por sector, SUVI, magnetómetros, SUPIM y D-RAP viven en la Plataforma Nacional." %}</p>
 
@@ -28,5 +29,6 @@
   {% empty %}
   <p>{% trans "Todavía no hay productos recolectados en este ambiente." %}</p>
   {% endfor %}
+</div>
 </div>
 {% endblock %}

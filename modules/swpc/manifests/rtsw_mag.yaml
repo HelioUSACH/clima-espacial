@@ -16,3 +16,13 @@ parameters:
   - {name: by_gsm, units: nT}
   - {name: bz_gsm, units: nT}
 exchange: {hapi: true, feed: false}
+description:
+  es: "El campo magnético del viento solar medido en el punto de Lagrange L1, a unos 1,5 millones de km de la Tierra, entre 30 y 60 minutos antes de que llegue a la magnetósfera. Bz negativo sostenido (hacia el sur) es la condición que más favorece una tormenta geomagnética. La banda clara alrededor de cada línea es el rango mínimo–máximo de cada intervalo, así los cambios bruscos no se pierden al promediar. La línea discontinua marca un cambio de la nave que entrega los datos."
+  en: "The solar wind's magnetic field, measured at the L1 Lagrange point about 1.5 million km from Earth, 30–60 minutes before it reaches the magnetosphere. A sustained southward (negative) Bz is the condition most favourable to a geomagnetic storm. The light band around each line is that interval's minimum–maximum range, so sharp swings survive the averaging. The dashed line marks a change of the spacecraft delivering the data."
+facts:
+  source: {es: "NOAA SWPC, Real-Time Solar Wind", en: "NOAA SWPC, Real-Time Solar Wind"}
+  spacecraft: {es: "La activa en cada momento (SOLAR1, DSCOVR, ACE)", en: "Whichever is active (SOLAR1, DSCOVR, ACE)"}
+  cadence: {es: "1 minuto", en: "1 minute"}
+  coordinates: {es: "GSM", en: "GSM"}
+  license: {es: "Dominio público (NOAA)", en: "Public domain (NOAA)"}
+  used_by: {es: "Modelo dB/dt global (en desarrollo)", en: "Global dB/dt model (in development)"}

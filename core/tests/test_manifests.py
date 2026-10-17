@@ -79,3 +79,34 @@ def test_load_manifest_rejects_unknown_field(tmp_path):
     path = _write(tmp_path, data)
     with pytest.raises(ManifestError):
         load_manifest(path)
+
+
+# 18-HANDOFF-v0.2.0.md §2/§3: the product page's "Qué muestra" (description)
+# and "Ficha del producto" (facts) -- optional, validated when present.
+def test_load_manifest_with_description_and_facts(tmp_path):
+    data = dict(VALID_MANIFEST)
+    data["description"] = {"es": "Descripción.", "en": "Description."}
+    data["facts"] = {
+        "source": {"es": "Proveedor", "en": "Provider"},
+        "license": {"es": "Dominio público", "en": "Public domain"},
+    }
+    path = _write(tmp_path, data)
+    manifest = load_manifest(path)
+    assert manifest["description"]["en"] == "Description."
+    assert manifest["facts"]["license"]["es"] == "Dominio público"
+
+
+def test_load_manifest_facts_rejects_unknown_key(tmp_path):
+    data = dict(VALID_MANIFEST)
+    data["facts"] = {"not_a_recognised_fact": {"es": "x", "en": "y"}}
+    path = _write(tmp_path, data)
+    with pytest.raises(ManifestError):
+        load_manifest(path)
+
+
+def test_load_manifest_description_requires_both_languages(tmp_path):
+    data = dict(VALID_MANIFEST)
+    data["description"] = {"es": "Solo español"}
+    path = _write(tmp_path, data)
+    with pytest.raises(ManifestError):
+        load_manifest(path)
