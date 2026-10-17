@@ -5,4 +5,7 @@ After=postgresql.service
 [Service]
 Type=oneshot
 User=root
-ExecStart=/opt/swx/deploy/swx-dump.sh
+# Through bash, not exec'd directly: deploy.sh installs /opt/swx with
+# --chmod=D755,F644, so no repo script is executable there and a direct
+# ExecStart fails with 203/EXEC (D-070; core/tests/test_systemd_units.py).
+ExecStart=/bin/bash /opt/swx/deploy/swx-dump.sh
