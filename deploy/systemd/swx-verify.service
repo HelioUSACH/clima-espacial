@@ -1,0 +1,21 @@
+# One oneshot run of `manage.py verify_forecasts` (D-075): scores every
+# forecast product against its observed target. Triggered by swx-verify.timer.
+[Unit]
+Description=Clima Espacial USACH: verify forecasts
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=swx
+Group=swx
+WorkingDirectory=/opt/swx
+EnvironmentFile=/etc/swx/swx.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/swx/venv/bin/python manage.py verify_forecasts
+TimeoutStartSec=600
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

@@ -733,18 +733,25 @@
         stack.load(root.dataset.range);
       });
     }
+    wireZoomAndPng(stack);
+  }
+
+  // "Restablecer zoom" + PNG export, shared by the panel stack and the
+  // forecast chart: `chart` is anything with a `.root` and a live `.ec`.
+  function wireZoomAndPng(chart) {
+    var root = chart.root;
     var resetBtn = root.querySelector("[data-reset-zoom]");
     if (resetBtn) {
       resetBtn.addEventListener("click", function () {
-        if (stack.ec) stack.ec.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
+        if (chart.ec) chart.ec.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
       });
     }
     var pngBtn = root.querySelector("[data-png-export]");
     if (pngBtn) {
       pngBtn.addEventListener("click", function () {
-        if (!stack.ec) return;
+        if (!chart.ec) return;
         var P = readPalette();
-        var url = stack.ec.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: P["--raised"] });
+        var url = chart.ec.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: P["--raised"] });
         var a = document.createElement("a");
         a.href = url;
         a.download = (root.dataset.syncKey || "chart") + ".png";
@@ -754,6 +761,322 @@
       });
     }
   }
+
+  // ---- forecast chart (v0.4.0 §5) ------------------------------------------
+  //
+  // One grid, fed by forecast.json (web/forecasts.py). Issue view: the
+  // observed target (Kp keeps its severity-coloured bars, D-062), the
+  // forecast line with its uncertainty band, the future lightly shaded and
+  // a dashed "now" line. Verification view (a lead button): that lead's
+  // forecasts against what was then observed, over 7 or 30 days.
+
+  var FORECAST_PAD_MS = 3600 * 1000;
+
+  function forecastHeight() {
+    return window.innerWidth < 680 ? 240 : 320;
+  }
+
+  function buildForecastOption(fc, d, P) {
+    var cfg = fc.cfg, i18n = fc.i18n, g = geom(true), H = forecastHeight();
+    var MONO = "JetBrains Mono, ui-monospace, monospace";
+    var UI = "Poppins, system-ui, sans-serif";
+    var s1 = P["--chart-s1"], series = [];
+    var isLead = d.view === "lead";
+    var xs = isLead ? d.pairs.valid_at : d.rows.valid_at;
+    var fcValues = isLead ? d.pairs.forecast : d.rows.value;
+    var lower = isLead ? d.pairs.lower : d.rows.lower;
+    var upper = isLead ? d.pairs.upper : d.rows.upper;
+
+    var obsTimes = isLead ? d.pairs.valid_at : ((d.observed && d.observed.time) || []);
+    var obsValues = isLead ? d.pairs.observed : ((d.observed && d.observed.series[cfg.field]) || []);
+    var nowMs = Date.now();
+    var tmin, tmax;
+    if (isLead) {
+      tmin = xs.length ? xs[0] * 1000 : nowMs - 7 * 86400000;
+      tmax = xs.length ? xs[xs.length - 1] * 1000 : nowMs;
+    } else {
+      tmin = obsTimes.length ? obsTimes[0] * 1000 : (d.issued_at ? d.issued_at * 1000 : nowMs) - 3 * 86400000;
+      tmax = Math.max(nowMs, xs.length ? xs[xs.length - 1] * 1000 : nowMs) + FORECAST_PAD_MS;
+    }
+    fc.spanSeconds = (tmax - tmin) / 1000; // read by .github/scripts/screenshots.py
+
+    // Observed: Kp-style severity bars, or a plain line in the Bt ink.
+    if (cfg.bars && !isLead) {
+      series.push({
+        id: "observed", name: i18n.observed, type: "bar", barMaxWidth: 10, large: true, silent: true, z: 2,
+        data: obsTimes.map(function (t, i) {
+          var v = obsValues[i];
+          return { value: [t * 1000, v], itemStyle: v == null ? undefined : { color: cfg.kp_bucket ? P[kpSeverityVar(v)] : P["--bt"] } };
+        }),
+      });
+    } else {
+      series.push({
+        id: "observed", name: i18n.observed, type: "line", showSymbol: isLead, symbol: "circle", symbolSize: 4,
+        connectNulls: false, lineStyle: { width: 1.5, color: P["--bt"] }, itemStyle: { color: P["--bt"] }, z: 2,
+        emphasis: { disabled: true },
+        data: obsTimes.map(function (t, i) { return [t * 1000, obsValues[i]]; }),
+      });
+    }
+    if (cfg.bounds) {
+      series.push({
+        id: "band-lo", type: "line", stack: "fcband", symbol: "none", silent: true, lineStyle: { opacity: 0 }, z: 1,
+        data: xs.map(function (t, i) { return [t * 1000, lower[i]]; }),
+      });
+      series.push({
+        id: "band-hi", type: "line", stack: "fcband", symbol: "none", silent: true, lineStyle: { opacity: 0 }, z: 1,
+        areaStyle: { color: withAlpha(s1, 0.18) },
+        data: xs.map(function (t, i) { return [t * 1000, (upper[i] == null || lower[i] == null) ? null : upper[i] - lower[i]]; }),
+      });
+    }
+    var forecastSeries = {
+      id: "forecast", name: i18n.forecast, type: "line", showSymbol: true, symbol: "circle",
+      symbolSize: isLead ? 3 : 7, connectNulls: false, z: 3, emphasis: { disabled: true },
+      lineStyle: { width: 2, color: s1 }, itemStyle: { color: s1 },
+      data: xs.map(function (t, i) { return [t * 1000, fcValues[i]]; }),
+    };
+    series.push(forecastSeries);
+
+    var ml = (cfg.ref_lines || []).map(function (r) {
+      return {
+        yAxis: r.value, lineStyle: { color: P["--ref"], width: 1, type: "dashed" },
+        label: { show: true, formatter: r.label, color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "insideEndTop" },
+      };
+    });
+    if (!isLead) {
+      ml.push({
+        xAxis: nowMs, lineStyle: { color: P["--ink-soft"], width: 1, type: "dashed" },
+        label: { show: true, formatter: i18n.now, color: P["--ink-soft"], fontFamily: MONO, fontSize: 9, position: "insideEndTop" },
+      });
+      forecastSeries.markArea = {
+        silent: true, data: [[{ xAxis: nowMs, itemStyle: { color: withAlpha(P["--ink-faint"], 0.08) } }, { xAxis: tmax }]],
+      };
+    }
+    if (ml.length) forecastSeries.markLine = { silent: true, symbol: "none", animation: false, data: ml };
+
+    var yAxis = {
+      type: "value", scale: true, splitNumber: 4,
+      axisLine: { show: false }, axisTick: { show: false },
+      axisLabel: { color: P["--ink-faint"], fontFamily: MONO, fontSize: 10, formatter: function (v) { return String(v); } },
+      splitLine: { show: true, lineStyle: { color: P["--grid"] } },
+    };
+    if (cfg.y_range) { yAxis.min = cfg.y_range[0]; yAxis.max = cfg.y_range[1]; }
+
+    return {
+      useUTC: true, animation: false, textStyle: { fontFamily: MONO },
+      title: [{
+        text: cfg.title + (cfg.unit ? "  ·  " + cfg.unit : ""), left: g.left + 8, top: g.top + 5,
+        textStyle: { fontFamily: UI, fontSize: 10, fontWeight: 500, color: P["--ink-faint"] },
+      }],
+      grid: [{ left: g.left, right: g.right, top: g.top, height: H, show: true, borderColor: P["--line"], borderWidth: 1 }],
+      xAxis: [{
+        type: "time", min: tmin, max: tmax,
+        axisLine: { show: false }, axisTick: { lineStyle: { color: P["--line"] } },
+        axisLabel: {
+          color: P["--ink-faint"], fontFamily: MONO, fontSize: 10, hideOverlap: true,
+          alignMaxLabel: "right", alignMinLabel: "left",
+          formatter: function (v) {
+            var dd = new Date(v);
+            return (dd.getUTCHours() === 0 && dd.getUTCMinutes() === 0) ? "{d|" + fmtDate(dd, i18n) + "}" : fmtTime(dd);
+          },
+          rich: { d: { fontWeight: 600, color: P["--ink-soft"], fontFamily: MONO, fontSize: 10 } },
+        },
+        splitLine: { show: true, lineStyle: { color: P["--grid"] } },
+        name: i18n.time_axis_label, nameLocation: "end", nameGap: 4,
+        nameTextStyle: { color: P["--ink-faint"], fontFamily: MONO, fontSize: 9 },
+      }],
+      yAxis: [yAxis],
+      series: series,
+      axisPointer: { lineStyle: { color: P["--ref"], type: "dashed" }, label: { show: false } },
+      tooltip: { trigger: "axis", showContent: false, axisPointer: { type: "line" } },
+      dataZoom: [{ type: "inside", xAxisIndex: [0], filterMode: "none" }],
+    };
+  }
+
+  function nearestIndex(times, tsSec, maxDist) {
+    var idx = -1, best = Infinity;
+    for (var i = 0; i < times.length; i++) {
+      var diff = Math.abs(times[i] - tsSec);
+      if (diff < best) { best = diff; idx = i; }
+    }
+    return best <= maxDist ? idx : -1;
+  }
+
+  function ForecastChart(root) {
+    this.root = root;
+    this.cfg = JSON.parse(document.getElementById(root.dataset.configId).textContent);
+    this.i18n = JSON.parse(document.getElementById(root.dataset.i18nId).textContent);
+    this.plotEl = root.querySelector("[data-stack-plot]");
+    this.readEl = root.querySelector("[data-fc-read]");
+    this.metaEl = root.querySelector("[data-fc-meta]");
+    this.snapEl = root.querySelector("[data-fc-snap]");
+    this.ec = null;
+    this.data = null;
+    this.cache = new Map(); // query -> {data, fetchedAt}
+    this.controller = null;
+    this.view = "issue";
+    this.lead = null;
+    this.ranges = { issue: root.dataset.range, lead: "7d" };
+    this.statusEl = document.createElement("p");
+    this.statusEl.className = "swx-stack-status";
+    this.statusEl.hidden = true;
+    this.plotEl.appendChild(this.statusEl);
+    root.__swxForecast = this; // read by .github/scripts/screenshots.py
+  }
+
+  ForecastChart.prototype.query = function () {
+    if (this.view === "lead") return "?lead=" + encodeURIComponent(this.lead) + "&range=" + encodeURIComponent(this.ranges.lead);
+    return "?range=" + encodeURIComponent(this.ranges.issue);
+  };
+
+  ForecastChart.prototype.load = function () {
+    var self = this, q = this.query();
+    this.root.dataset.query = q;
+    var hit = this.cache.get(q);
+    if (this.controller) this.controller.abort();
+    if (hit && Date.now() - hit.fetchedAt < CACHE_TTL_MS) { this.render(hit.data); return; }
+    var mine = (this.controller = window.AbortController ? new AbortController() : null);
+    fetch(this.cfg.endpoint + q, { signal: mine ? mine.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        if (self.root.dataset.query !== q) return; // a newer click owns the chart
+        self.cache.set(q, { data: data, fetchedAt: Date.now() });
+        self.render(data);
+      }, function (err) {
+        if (err && err.name === "AbortError") return;
+        if (self.root.dataset.query !== q) return;
+        self.render(null);
+      });
+  };
+
+  ForecastChart.prototype.render = function (data) {
+    this.data = data;
+    var P = readPalette(), g = geom(true), H = forecastHeight();
+    this.plotEl.style.height = (g.top + H + g.bottom) + "px";
+    this.statusEl.style.top = g.top + "px";
+    this.statusEl.style.height = H + "px";
+    var empty = !data || (data.view === "issue" ? !data.rows.valid_at.length : !data.pairs.valid_at.length);
+    this.statusEl.hidden = !empty;
+    this.statusEl.textContent = !data ? this.i18n.error_message : (data.view === "issue" ? this.i18n.no_issue : this.i18n.no_data_message);
+    if (!this.ec) this.ec = echarts.init(this.plotEl, null, { renderer: "canvas" }); // eslint-disable-line no-undef
+    if (data) this.ec.setOption(buildForecastOption(this, data, P), { notMerge: true });
+    this.plotEl.dataset.echartsReady = "true";
+    this.renderMeta();
+    this.setReadout(null);
+    var self = this;
+    this.ec.off("updateAxisPointer");
+    this.ec.on("updateAxisPointer", function (e) {
+      var info = e.axesInfo && e.axesInfo[0];
+      self.setReadout(info ? Math.round(info.value / 1000) : null);
+    });
+    this.ec.getZr().off("globalout");
+    this.ec.getZr().on("globalout", function () { self.setReadout(null); });
+  };
+
+  ForecastChart.prototype.renderMeta = function () {
+    var d = this.data, i18n = this.i18n, bits = [];
+    if (d && d.view === "issue" && d.issued_at) bits.push(i18n.issued + " " + fmtUT(d.issued_at, i18n));
+    if (d && d.view === "lead") bits.push(i18n.lead_label + " " + Math.round(d.lead_seconds / 3600) + " h");
+    if (d && d.model_version) bits.push("v" + d.model_version);
+    if (this.metaEl) this.metaEl.textContent = bits.join(" · ");
+    if (this.snapEl) {
+      var legend = [];
+      if (d && d.view === "issue" && d.issued_at) {
+        if (this.cfg.bounds) legend.push(i18n.band_note);
+        legend.push(i18n.future_note);
+      }
+      this.snapEl.textContent = legend.join(" · ");
+    }
+    this.plotEl.setAttribute("aria-label", (this.root.dataset.ariaLabel || "") + (bits.length ? ": " + bits.join(", ") : ""));
+  };
+
+  // Readout: observed, forecast and its interval at the cursor, or (no
+  // cursor) the issue's first lead / the newest verified pair.
+  ForecastChart.prototype.setReadout = function (tsSec) {
+    var d = this.data, i18n = this.i18n, lang = i18n.lang;
+    if (!this.readEl) return;
+    var obs = null, fcv = null, lo = null, hi = null, when = null;
+    if (d) {
+      var isLead = d.view === "lead";
+      var xs = isLead ? d.pairs.valid_at : d.rows.valid_at;
+      var fi = tsSec == null ? (isLead ? xs.length - 1 : 0) : nearestIndex(xs, tsSec, isLead ? 5400 : 3 * 3600);
+      if (fi >= 0 && fi < xs.length) {
+        fcv = isLead ? d.pairs.forecast[fi] : d.rows.value[fi];
+        lo = isLead ? d.pairs.lower[fi] : d.rows.lower[fi];
+        hi = isLead ? d.pairs.upper[fi] : d.rows.upper[fi];
+        when = xs[fi];
+        if (isLead) obs = d.pairs.observed[fi];
+      }
+      if (!isLead && d.observed) {
+        var ot = d.observed.time || [], ov = d.observed.series[this.cfg.field] || [];
+        var oi = tsSec == null ? lastIndexWithValue(ov) : nearestIndex(ot, tsSec, 3 * 3600);
+        obs = oi >= 0 ? ov[oi] : null;
+      }
+    }
+    var html = '<div class="rrow fc-read">';
+    html += '<div><span class="k"><span class="sw" style="background:' + readPalette()["--bt"] + '"></span>' + escapeHtml(i18n.observed) + "</span><b>" + fmtNum(obs, lang) + "</b></div>";
+    html += '<div><span class="k"><span class="sw" style="background:' + readPalette()["--chart-s1"] + '"></span>' + escapeHtml(i18n.forecast) + "</span><b>" + fmtNum(fcv, lang) + "</b></div>";
+    if (this.cfg.bounds) {
+      html += "<div><span class=\"k\">" + escapeHtml(i18n.band) + "</span><b>" + (lo == null ? "—" : fmtNum(lo, lang) + "–" + fmtNum(hi, lang)) + "</b></div>";
+    }
+    if (when != null) html += '<div><span class="unit">' + escapeHtml(i18n.valid_label + " " + fmtUT(when, i18n)) + "</span></div>";
+    html += "</div>";
+    this.readEl.innerHTML = html;
+  };
+
+  ForecastChart.prototype.resize = function () {
+    if (!this.ec) return;
+    var g = geom(true);
+    this.plotEl.style.height = (g.top + forecastHeight() + g.bottom) + "px";
+    this.ec.resize();
+  };
+
+  function initForecast(root) {
+    var fc = new ForecastChart(root);
+    var viewRow = root.querySelector("[data-fc-views]");
+    var rangeRows = root.querySelectorAll("[data-fc-ranges]");
+    function press(row, btn) {
+      row.querySelectorAll("button").forEach(function (b) {
+        var on = b === btn;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    if (viewRow) {
+      viewRow.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-fc-view]");
+        if (!btn) return;
+        press(viewRow, btn);
+        fc.view = btn.dataset.fcView;
+        fc.lead = btn.dataset.fcLead || null;
+        root.dataset.view = fc.view;
+        rangeRows.forEach(function (row) { row.hidden = row.dataset.fcRanges !== fc.view; });
+        fc.load();
+      });
+    }
+    rangeRows.forEach(function (row) {
+      row.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-fc-range]");
+        if (!btn) return;
+        press(row, btn);
+        fc.ranges[row.dataset.fcRanges] = btn.dataset.fcRange;
+        fc.load();
+      });
+    });
+    wireZoomAndPng(fc);
+    liveForecasts.push(fc);
+    if (window.ResizeObserver) {
+      var lastWidth = root.clientWidth;
+      new ResizeObserver(function () {
+        var w = root.clientWidth;
+        if (w === lastWidth) return;
+        lastWidth = w;
+        fc.resize();
+      }).observe(root);
+    }
+    fc.load();
+  }
+
+  var liveForecasts = [];
 
   function initStack(root) {
     var stack = new Stack(root);
@@ -779,6 +1102,7 @@
 
   function initAll() {
     document.querySelectorAll(".swx-stack").forEach(initStack);
+    document.querySelectorAll(".swx-forecast").forEach(initForecast);
   }
 
   if (document.readyState === "loading") {
@@ -791,6 +1115,10 @@
       if (stack.ec) { stack.ec.dispose(); stack.ec = null; }
       stack.readBuilt = false;
       stack.rebuild();
+    });
+    liveForecasts.forEach(function (fc) {
+      if (fc.ec) { fc.ec.dispose(); fc.ec = null; }
+      fc.render(fc.data);
     });
   });
 })();

@@ -355,6 +355,7 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-h
 .seg button { font-family: var(--font-ui); font-size: 12.5px; border: 0; background: transparent; color: var(--ink-soft); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
 .seg button.on { background: var(--ink); color: var(--bg); }
 .seg button[aria-disabled='true'] { opacity: .45; cursor: not-allowed; }
+.seg[hidden] { display: none; }
 .sbtn {
   font-family: var(--font-ui); font-size: 12.5px; border: 1px solid var(--line); background: transparent; color: var(--ink);
   border-radius: 999px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
@@ -486,3 +487,17 @@ button.primary { font: inherit; background: var(--accent); color: var(--accent-i
 .offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
 .offer-card { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1.25rem; }
 .offer-card h3 { margin-top: 0; }
+
+/* ---------- forecast product page (v0.4.0 §5-§6) ---------- */
+/* The readout is one block (observed / forecast / interval), not one row
+ * per panel, so it sizes to its content instead of a panel's height. */
+.rrow.fc-read { height: auto; padding-top: 8px; padding-bottom: 8px; }
+.perf { padding-top: 32px; padding-bottom: 8px; }
+.perf h2 { font-family: var(--font-ui); font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+.perf .meta { max-width: 80ch; margin: 0 0 12px; }
+.table-scroll { overflow-x: auto; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); }
+.perf-table { font-family: var(--font-mono); font-size: 12.5px; }
+.perf-table th { font-family: var(--font-ui); font-size: 11.5px; font-weight: 600; color: var(--ink-faint); white-space: nowrap; }
+.perf-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.perf-table tbody tr:last-child td { border-bottom: 0; }
+.perf-table abbr { text-decoration: none; }

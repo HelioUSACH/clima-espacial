@@ -469,3 +469,93 @@ msgstr "Back to HelioFísica USACH"
 
 msgid "Nodo USACH · Red Chilena de Clima Espacial"
 msgstr "USACH node · Chilean Space Weather Network"
+
+msgid "pronóstico"
+msgstr "forecast"
+
+msgid "Vista"
+msgstr "View"
+
+msgid "Último pronóstico"
+msgstr "Latest forecast"
+
+msgid "Verificación a esta anticipación"
+msgstr "Verification at this lead time"
+
+msgid "Desempeño"
+msgstr "Performance"
+
+#, python-format
+msgid "Verificado contra «%(target)s» (%(provider)s), casi en tiempo real y tal como se almacenó: las revisiones posteriores del proveedor no se ven. Habilidad = 1 − ECM / ECM de la persistencia; 0 = igual a la persistencia, positivo = mejor."
+msgstr "Verified against “%(target)s” (%(provider)s), near-real-time and as first stored: later revisions by the provider are not seen. Skill = 1 − MSE / persistence MSE; 0 = same as persistence, positive = better."
+
+msgid "versión del modelo"
+msgstr "model version"
+
+msgid "Anticipación"
+msgstr "Lead time"
+
+msgid "Ventana"
+msgstr "Window"
+
+msgid "error absoluto medio"
+msgstr "mean absolute error"
+
+msgid "raíz del error cuadrático medio"
+msgstr "root mean square error"
+
+msgid "Sesgo"
+msgstr "Bias"
+
+msgid "Habilidad"
+msgstr "Skill"
+
+msgid "Cobertura / nominal"
+msgstr "Coverage / nominal"
+
+msgid "Aún no hay suficientes pronósticos verificados."
+msgstr "Not enough verified forecasts yet."
+
+msgid "Ficha del modelo"
+msgstr "Model card"
+
+msgid "Variable pronosticada"
+msgstr "Forecast variable"
+
+msgid "días"
+msgstr "days"
+
+msgid "día"
+msgstr "day"
+
+msgid "Observado"
+msgstr "Observed"
+
+msgid "Pronóstico"
+msgstr "Forecast"
+
+#, python-format
+msgid "Intervalo %(pct)s %%"
+msgstr "%(pct)s %% interval"
+
+msgid "emitido"
+msgstr "issued"
+
+msgid "ahora"
+msgstr "now"
+
+msgid "anticipación"
+msgstr "lead time"
+
+msgid "válido"
+msgstr "valid"
+
+msgid "Todavía no hay pronósticos emitidos."
+msgstr "No forecasts issued yet."
+
+#, python-format
+msgid "Banda: intervalo central de %(pct)s %%"
+msgstr "Band: central %(pct)s %% interval"
+
+msgid "zona sombreada: después de ahora"
+msgstr "shaded area: after now"

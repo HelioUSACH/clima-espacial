@@ -1,0 +1,12 @@
+[Unit]
+Description=Clima Espacial USACH: issue usach.kp.persistence hourly (manifest cadence 1h)
+
+# Five minutes past the hour: the collector floors issued_at to the hour
+# (swxkit.floor_issue_time), and a few minutes' margin lets a just-closed Kp
+# interval reach the store first.
+[Timer]
+OnCalendar=*-*-* *:05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

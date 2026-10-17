@@ -1,0 +1,120 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+{{ forecast_config|json_script:config_id }}
+{{ forecast_i18n|json_script:i18n_id }}
+<div class="wrap">
+  <div class="crumb"><a href="{% url 'web:catalogue' %}">{% trans "Productos y modelos" %}</a> / {{ title }}</div>
+  <div class="head">
+    <div>
+      <h1>{{ title }}</h1>
+      <div class="badges">
+        <span class="pill{% if status.status == 'ok' %} ok{% endif %}"><span class="dot" style="background:{{ status.color }}"></span>{{ status.label }}</span>
+        <span class="pill">{{ product.get_maturity_display }}</span>
+        <span class="pill">{% trans "pronóstico" %}</span>
+      </div>
+    </div>
+    {% if headline_values %}
+    <div class="now">
+      {% for h in headline_values %}
+      <div><small>{{ h.label }}</small><b>{% if h.value %}{{ h.value }}{% if h.unit %} <span>{{ h.unit }}</span>{% endif %}{% else %}—{% endif %}</b></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% comment %}
+  Forecast panel (v0.4.0 §5, web/static/web/js/charts.js ForecastChart):
+  the latest issue against the observed target, or, from the lead selector,
+  one lead's forecasts against what was then observed (verification view).
+  {% endcomment %}
+  <section class="card swx-forecast" data-sync-key="{{ stack_id }}" data-config-id="{{ config_id }}" data-i18n-id="{{ i18n_id }}"
+           data-range="{{ default_issue_range }}" data-view="issue" data-aria-label="{{ title }}">
+    <div class="card-top">
+      <div class="meta" data-fc-meta></div>
+      <div class="ctl">
+        <div class="seg" role="group" aria-label="{% trans 'Vista' %}" data-fc-views>
+          <button type="button" class="on" aria-pressed="true" data-fc-view="issue">{% trans "Último pronóstico" %}</button>
+          {% for l in leads %}
+          <button type="button" aria-pressed="false" data-fc-view="lead" data-fc-lead="{{ l.key }}" title="{% trans 'Verificación a esta anticipación' %}">{{ l.label }}</button>
+          {% endfor %}
+        </div>
+        <div class="seg" role="group" aria-label="{% trans 'Rango' %}" data-fc-ranges="issue">
+          {% for r in issue_ranges %}
+          <button type="button" class="{% if r.key == default_issue_range %}on{% endif %}" aria-pressed="{% if r.key == default_issue_range %}true{% else %}false{% endif %}" data-fc-range="{{ r.key }}">{{ r.label }}</button>
+          {% endfor %}
+        </div>
+        <div class="seg" role="group" aria-label="{% trans 'Rango' %}" data-fc-ranges="lead" hidden>
+          {% for r in lead_ranges %}
+          <button type="button" class="{% if forloop.first %}on{% endif %}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}" data-fc-range="{{ r.key }}">{{ r.label }}</button>
+          {% endfor %}
+        </div>
+        <button class="sbtn" type="button" data-reset-zoom>{% trans "Restablecer zoom" %}</button>
+        <button class="sbtn" type="button" data-png-export>PNG</button>
+      </div>
+    </div>
+    <div class="figwrap">
+      <div class="stage">
+        <div class="plot" data-stack-plot role="img" aria-label="{{ title }}"></div>
+        <div class="read" data-fc-read></div>
+      </div>
+      <div class="snap meta" data-fc-snap></div>
+    </div>
+  </section>
+
+  <section class="sec perf" aria-labelledby="perf-h">
+    <h2 id="perf-h">{% trans "Desempeño" %}</h2>
+    <p class="meta">{% blocktrans with target=target_title provider=target_provider %}Verificado contra «{{ target }}» ({{ provider }}), casi en tiempo real y tal como se almacenó: las revisiones posteriores del proveedor no se ven. Habilidad = 1 − ECM / ECM de la persistencia; 0 = igual a la persistencia, positivo = mejor.{% endblocktrans %}{% if score_version %} · {% trans "versión del modelo" %} {{ score_version }}{% endif %}</p>
+    {% if score_rows %}
+    <div class="table-scroll">
+      <table class="status-table perf-table">
+        <thead>
+          <tr>
+            <th scope="col">{% trans "Anticipación" %}</th>
+            <th scope="col">{% trans "Ventana" %}</th>
+            <th scope="col" class="num">n</th>
+            <th scope="col" class="num"><abbr title="{% trans 'error absoluto medio' %}">MAE</abbr></th>
+            <th scope="col" class="num"><abbr title="{% trans 'raíz del error cuadrático medio' %}">RMSE</abbr></th>
+            <th scope="col" class="num">{% trans "Sesgo" %}</th>
+            <th scope="col" class="num">{% trans "Habilidad" %}</th>
+            <th scope="col" class="num">{% trans "Cobertura / nominal" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in score_rows %}
+          <tr>
+            <td>{{ r.lead }}</td><td>{{ r.window }}</td><td class="num">{{ r.n }}</td>
+            <td class="num">{{ r.mae|default:"—" }}</td><td class="num">{{ r.rmse|default:"—" }}</td>
+            <td class="num">{{ r.bias|default:"—" }}</td><td class="num">{{ r.skill|default:"—" }}</td>
+            <td class="num">{{ r.coverage|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p>{% trans "Aún no hay suficientes pronósticos verificados." %}</p>
+    {% endif %}
+  </section>
+
+  <div class="below">
+    <section>
+      <h2>{% trans "Qué muestra" %}</h2>
+      {% if description %}<p>{{ description }}</p>{% endif %}
+      {% if product.model_card_path %}<p class="meta">{% trans "Ficha del modelo" %}: <code>{{ product.model_card_path }}</code></p>{% endif %}
+    </section>
+    {% if facts %}
+    <section>
+      <h2>{% trans "Ficha del producto" %}</h2>
+      <dl>
+        <dt>{% trans "Variable pronosticada" %}</dt><dd>{{ target_title }}</dd>
+        {% for f in facts %}
+        <dt>{{ f.label }}</dt><dd>{{ f.value }}</dd>
+        {% endfor %}
+      </dl>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

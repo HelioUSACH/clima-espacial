@@ -15,8 +15,17 @@
         "es": {"type": "string", "minLength": 1},
         "en": {"type": "string", "minLength": 1}
       }
-    }
+    },
+    "duration": {"type": "string", "pattern": "^[0-9]+(s|m|h|d)$"}
   },
+  "allOf": [
+    {
+      "description": "D-071: a forecast declares its forecast block and a model card; nothing else may carry a forecast block.",
+      "if": {"properties": {"kind": {"const": "forecast"}}, "required": ["kind"]},
+      "then": {"required": ["forecast", "model_card"]},
+      "else": {"not": {"required": ["forecast"]}}
+    }
+  ],
   "properties": {
     "id": {
       "type": "string",
@@ -24,7 +33,7 @@
       "description": "namespace.domain.name, e.g. usach.flare.nrt"
     },
     "version": {"type": "integer", "minimum": 1},
-    "kind": {"enum": ["timeseries", "event", "image", "bulletin", "index", "status"]},
+    "kind": {"enum": ["timeseries", "event", "image", "bulletin", "index", "status", "forecast"]},
     "title": {
       "type": "object",
       "required": ["es", "en"],
@@ -82,6 +91,38 @@
       }
     },
     "model_card": {"type": "string"},
+    "forecast": {
+      "type": "object",
+      "description": "D-071: kind forecast only. The model id is the product id; the model version is passed per issue to swxkit.publish_forecast; `cadence` is the issue cadence.",
+      "required": ["target", "horizons", "uncertainty", "sites"],
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "object",
+          "description": "An existing observed product (kind timeseries or index) and one of its parameters; checked across manifests by validate_manifests.",
+          "required": ["product", "field"],
+          "additionalProperties": false,
+          "properties": {
+            "product": {"type": "string", "minLength": 1},
+            "field": {"type": "string", "minLength": 1}
+          }
+        },
+        "horizons": {"type": "array", "items": {"$ref": "#/$defs/duration"}, "minItems": 1, "uniqueItems": true},
+        "uncertainty": {
+          "type": "object",
+          "description": "none, or bounds: a central interval at nominal coverage `level`. quantiles is reserved: the schema accepts it, publish_forecast rejects it in 0.4.",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"enum": ["none", "bounds", "quantiles"]},
+            "level": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1}
+          },
+          "if": {"properties": {"type": {"const": "bounds"}}},
+          "then": {"required": ["level"]}
+        },
+        "sites": {"type": "boolean", "description": "true if rows carry a site code (stations, grid cells); false for a global index."}
+      }
+    },
     "description": {
       "$ref": "#/$defs/bilingual",
       "description": "18-HANDOFF-v0.2.0.md §2: the product page's 'Qué muestra' text."
