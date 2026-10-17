@@ -274,7 +274,11 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-h
 .read { display: grid; align-content: start; font-family: var(--font-mono); font-size: 12.5px; }
 .rrow { border-left: 1px solid var(--line); padding-left: 12px; display: grid; align-content: center; gap: 3px; }
 .rrow div { display: flex; justify-content: space-between; gap: 8px; }
-.rrow b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* No wrapping (19-HANDOFF-v0.2.1.md §1.4): the X-ray readout combines a
+ * class letter and a flux in one cell ("B6.2 · 6.2×10⁻⁷") and must stay on
+ * one line even at the readout column's fixed 168px width -- the label
+ * (`.k`) shrinks/wraps first instead. */
+.rrow b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
 .k { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-soft); }
 .sw { width: 12px; height: 2px; border-radius: 1px; display: inline-block; }
 .unit { color: var(--ink-faint); font-size: 11px; }

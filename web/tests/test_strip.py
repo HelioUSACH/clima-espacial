@@ -95,3 +95,23 @@ def test_strip_renders_on_a_non_home_page_too(client):
     body = client.get(reverse("web:about")).content.decode()
     assert '<div class="strip">' in body
     assert 'class="scale"' in body
+
+
+@pytest.mark.django_db
+def test_kp_chip_uses_thirds_notation_with_precise_title(monkeypatch, client):
+    # 19-HANDOFF-v0.2.1.md §1.4: the chip's own text is Kp's thirds
+    # notation, the precise decimal kept in `title` for screen readers.
+    monkeypatch.setattr(swxkit, "get_manifest", lambda pid: dict(KP_MANIFEST))
+    swxkit.publish_timeseries("noaa.kp", [{"time_tag": "2026-10-16T12:00:00Z", "kp": 5.33}])
+    body = client.get(reverse("web:home")).content.decode()
+    assert 'title="Kp 5,33"' in body
+    assert ">5+</i>" in body
+
+
+@pytest.mark.django_db
+def test_dst_chip_uses_a_true_minus(monkeypatch, client):
+    monkeypatch.setattr(swxkit, "get_manifest", lambda pid: dict(DST_MANIFEST))
+    swxkit.publish_timeseries("noaa.dst", [{"time_tag": "2026-10-16T12:00:00Z", "dst": -120}])
+    body = client.get(reverse("web:home")).content.decode()
+    assert ">−120 nT<" in body
+    assert ">-120" not in body

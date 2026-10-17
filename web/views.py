@@ -14,6 +14,7 @@ from core.models import Event, Heartbeat, Product, TimeSeriesPoint
 
 from . import charts, series
 from .forms import RegistrationForm
+from .numfmt import fmt_number
 
 FLARE_PRODUCT_ID = "usach.flare.nrt"
 SCALES_PRODUCT_ID = "noaa.scales"
@@ -284,7 +285,10 @@ def catalogue(request):
 
 
 def _headline_value(label_es, label_en, value, unit, lang):
-    display = f"{value:.1f}" if isinstance(value, (int, float)) else value
+    # 19-HANDOFF-v0.2.1.md §1.4: the same ES-comma/EN-point, true-minus
+    # formatting as the strip and the chart readout (web/numfmt.py) -- a
+    # raw f"{value:.1f}" here read "-120" next to the chart's own "−120".
+    display = fmt_number(value, lang, decimals=1) if isinstance(value, (int, float)) else value
     return {"label": label_en if lang == "en" else label_es, "value": display, "unit": unit}
 
 

@@ -282,6 +282,21 @@ def kp_severity(value: float | None) -> str | None:
     return KP_SEVERITY_STATUSES[-1]
 
 
+def kp_thirds(value: float | None) -> str | None:
+    """Kp's own standard notation (19-HANDOFF-v0.2.1.md §1.4): each integer
+    step has three thirds, e.g. 2+, 3-, 3o, 3+, 4- in increasing order --
+    "-"/"o"/"+" for the lower/exact/upper third of the nearest integer, "-"
+    rendered with a true minus (U+2212) like every other negative-looking
+    sign in the UI. The precise decimal stays in the strip chip's title/
+    aria-label; this is only the compact display text."""
+    if value is None:
+        return None
+    nearest = round(value)
+    third = round((value - nearest) * 3)  # -1, 0 or 1: the value is at most 1/3 from its nearest integer
+    suffix = {-1: "−", 0: "o", 1: "+"}.get(third, "o")
+    return f"{nearest}{suffix}"
+
+
 def product_fields(product_id: str) -> list[str]:
     return [s.field for panel in PRODUCT_PANELS.get(product_id, ()) for s in panel.series]
 

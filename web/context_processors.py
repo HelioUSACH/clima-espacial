@@ -9,6 +9,7 @@ from django.utils.translation import get_language, gettext
 from core.models import Event, TimeSeriesPoint
 
 from . import charts
+from .numfmt import fmt_number
 
 SITE_NAME = "Clima Espacial USACH"
 SITE_BYLINE = "HelioUSACH"
@@ -109,13 +110,18 @@ def strip(request):
     # Pre-formatted here, not with the template's `floatformat` (locale-aware
     # -- a comma decimal on an es page would mismatch the charts' own
     # plain-period JS formatting; found and fixed the same way in D-053).
+    # 19-HANDOFF-v0.2.1.md §1.4: Kp shows in its own thirds notation (2+, 3-,
+    # 3o...), the precise decimal kept for `title`/`aria-label`; Dst and
+    # every other chip number goes through the same ES-comma/EN-point, true-
+    # minus formatting as the chart readout (`web/numfmt.py`).
     kp_chip = {
-        "value": f"{raw['kp']:.1f}" if raw["kp"] is not None else None,
+        "value": charts.kp_thirds(raw["kp"]),
+        "title_value": fmt_number(raw["kp"], lang, decimals=2) if raw["kp"] is not None else None,
         "severity": charts.kp_severity(raw["kp"]) if raw["kp"] is not None else None,
         "url": reverse("web:product_detail", args=["noaa.kp"]),
     }
     dst_chip = {
-        "value": f"{raw['dst']:.0f}" if raw["dst"] is not None else None,
+        "value": fmt_number(raw["dst"], lang, decimals=0, grouping=True),
         "severity": charts.dst_severity(raw["dst"]) if raw["dst"] is not None else None,
         "url": reverse("web:product_detail", args=["noaa.dst"]),
     }

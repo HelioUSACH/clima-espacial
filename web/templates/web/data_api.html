@@ -12,7 +12,7 @@
 <h2>{% trans "Aviso de privacidad" %}</h2>
 <p class="lede">
   {% trans "Qué recopilamos: nombre, correo, institución, sector y el uso previsto que describas. Por qué: para habilitar el acceso a datos/API y para reportar uso agregado por sector al proyecto FONDEF/FIU. Quién lo ve: el equipo del proyecto; nunca se vende ni se comparte con terceros. Cuánto se conserva: mientras el registro esté activo. Cómo pedir la eliminación de tus datos: escríbenos." %}
-  <a href="mailto:{{ site_contact_email }}">{{ site_contact_email }}</a>.
+  {% if site_contact_email %}<a href="mailto:{{ site_contact_email }}">{{ site_contact_email }}</a>.{% else %}{% trans "el correo de contacto se publicará pronto" %}.{% endif %}
 </p>
 
 <form method="post" novalidate>
