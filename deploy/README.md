@@ -55,6 +55,7 @@ fewer processes also means fewer cold caches.
 | `nginx-clima-espacial.conf` | `/clima-espacial/` location snippet for the existing `helio` vhost |
 | `systemd/swx-web.service` | gunicorn |
 | `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest |
+| `systemd/swx-verify.service` + `.timer` | daily 03:15 UT `manage.py verify_forecasts`: scores every forecast product (D-075); enabled by `deploy.sh` |
 | `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle incl. analytics (local; pulled off-machine, see below) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |
 | `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051) |
@@ -68,3 +69,8 @@ Add its manifest under `modules/<name>/manifests/`, register a collector in
 `systemd/swx-collect@<product-id>.timer` here with `OnUnitActiveSec` set to
 the manifest's `cadence` — `deploy.sh` installs every `*.timer` file it finds
 in this directory, so the next deploy picks it up automatically.
+
+A forecast product's timer is the same, but use `OnCalendar` aligned to the
+issue cadence (e.g. `*-*-* *:05:00` for hourly issues) rather than
+`OnUnitActiveSec`, so the run lands just after the boundary its `issued_at`
+is floored to (see `swx-collect@usach.kp.persistence.timer`).

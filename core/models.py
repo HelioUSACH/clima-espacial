@@ -22,6 +22,7 @@ class Product(models.Model):
         ("bulletin", "bulletin"),
         ("index", "index"),
         ("status", "status"),
+        ("forecast", "forecast"),
     ]
     # Q3 (10-STATUS-AND-NEXT.md): labels are translatable — the value stays
     # English (matches the manifest's literal `maturity:` string), the label
@@ -176,3 +177,70 @@ class Event(models.Model):
 
     def __str__(self):
         return f"{self.product_id}@{self.issued:%Y-%m-%dT%H:%M}"
+
+
+class Forecast(models.Model):
+    """One forecast value: one (issue, valid time, site) of a `kind: forecast`
+    product (D-072). The product id is the model id; `model_version` is what
+    the producer's running code reports per issue.
+
+    Backed by `core_forecast`, partitioned by month on `issued_at` like
+    `core_timeseries` (D-032), with partitions created lazily by
+    `core.swxkit._ensure_partition`. Hand-written DDL in migration 0005;
+    `managed = False` keeps it out of `makemigrations`. Write it only through
+    `swxkit.publish_forecast`.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, db_column="product_id", related_name="+")
+    model_version = models.CharField(max_length=64)
+    issued_at = models.DateTimeField()
+    valid_at = models.DateTimeField()
+    lead_seconds = models.IntegerField()
+    site = models.CharField(max_length=64, blank=True, default="")
+    # {field: {"value": ..., "lower": ..., "upper": ...}}, the exchange
+    # format's own keys (docs/models/INTEGRATION.md).
+    values = models.JSONField()
+    provenance = models.JSONField()
+    inserted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        managed = False
+        db_table = "core_forecast"
+        ordering = ["-issued_at", "valid_at"]
+
+    def __str__(self):
+        return f"{self.product_id}@{self.issued_at:%Y-%m-%dT%H:%M}+{self.lead_seconds}s"
+
+
+class ForecastScore(models.Model):
+    """Verification of one (product, model_version, lead, site) over the last
+    `window_days` (D-075), upserted by `manage.py verify_forecasts`. Every
+    metric is null when there was nothing to verify."""
+
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="forecast_scores")
+    model_version = models.CharField(max_length=64)
+    lead_seconds = models.IntegerField()
+    site = models.CharField(max_length=64, blank=True, default="")
+    window_days = models.PositiveSmallIntegerField()
+    n = models.PositiveIntegerField(default=0, help_text="Forecast/observation pairs verified.")
+    n_unverified = models.PositiveIntegerField(default=0, help_text="Forecasts due in the window with no matching observation.")
+    mae = models.FloatField(null=True, blank=True)
+    rmse = models.FloatField(null=True, blank=True)
+    bias = models.FloatField(null=True, blank=True, help_text="Mean of forecast - observed.")
+    skill = models.FloatField(null=True, blank=True, help_text="1 - MSE/MSE_persistence; null if n < 20 or MSE_persistence = 0.")
+    coverage = models.FloatField(null=True, blank=True, help_text="Fraction of observations within [lower, upper].")
+    nominal_coverage = models.FloatField(null=True, blank=True)
+    computed_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["product", "model_version", "lead_seconds", "site", "window_days"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "model_version", "lead_seconds", "site", "window_days"],
+                name="unique_forecast_score",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.product_id} {self.model_version} +{self.lead_seconds}s {self.window_days}d"

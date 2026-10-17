@@ -52,7 +52,7 @@ venv/bin/python manage.py collectstatic --noinput --clear -v 0
 echo "==> systemd units"
 install -o root -g root -m 644 "$DESTINO"/deploy/systemd/*.service "$DESTINO"/deploy/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --quiet --now swx-web swx-dump.timer
+systemctl enable --quiet --now swx-web swx-dump.timer swx-verify.timer
 for timer in "$DESTINO"/deploy/systemd/swx-collect@*.timer; do
     systemctl enable --quiet --now "$(basename "$timer")"
 done

@@ -1,0 +1,33 @@
+# The benchmark every Kp model must beat (D-073/D-074): tomorrow's Kp is
+# the last complete Kp. Its skill against persistence is 0 by construction.
+# The model id is this product id; the model version is passed per issue
+# (modules/baselines/persistence.py MODEL_VERSION).
+id: usach.kp.persistence
+version: 1
+kind: forecast
+title: {es: "Pronóstico de Kp por persistencia (referencia)", en: "Kp persistence forecast (baseline)"}
+maturity: experimental
+cadence: 1h            # the issue cadence: one issue per hour, issued_at on the hour
+stale_after: 3h
+producer: {type: collector, unit: "swx-collect@usach.kp.persistence.timer", repo: "HelioUSACH/clima-espacial"}
+source:
+  provider: "HelioUSACH (USACH)"
+  inputs: ["noaa.kp"]
+  license: "CC-BY-4.0"
+parameters:
+  - {name: kp, units: "1", range: [0, 9]}
+exchange: {hapi: false, feed: false}
+model_card: docs/products/usach.kp.persistence.md
+forecast:
+  target: {product: noaa.kp, field: kp}
+  horizons: [3h, 6h, 12h, 24h]
+  uncertainty: {type: bounds, level: 0.8}
+  sites: false
+description:
+  es: "Pronóstico de referencia: supone que el Kp de las próximas 3 a 24 horas será igual al último intervalo de Kp completo. No es un modelo físico, sino la vara con que se mide cualquier modelo: un pronóstico que no supera a la persistencia no aporta información. La banda cubre el 80 % central de los errores de la persistencia en los últimos 30 días."
+  en: "Reference forecast: it assumes Kp over the next 3 to 24 hours will equal the last complete Kp interval. It isn't a physical model but the yardstick every model is measured against: a forecast that can't beat persistence adds no information. The band covers the central 80% of persistence errors over the last 30 days."
+facts:
+  source: {es: "Kp casi en tiempo real de NOAA SWPC, tal como se almacenó", en: "NOAA SWPC near-real-time Kp, as stored"}
+  cadence: {es: "Una emisión por hora; horizontes de 3, 6, 12 y 24 h", en: "One issue per hour; 3, 6, 12 and 24 h horizons"}
+  license: {es: "CC BY 4.0", en: "CC BY 4.0"}
+  used_by: {es: "Referencia de habilidad de todos los modelos de Kp del portal", en: "The skill reference for every Kp model on the portal"}

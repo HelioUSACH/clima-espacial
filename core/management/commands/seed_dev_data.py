@@ -10,6 +10,7 @@ a real 40-minute outage, sparse Kp (3 h) and Dst (1 h), and energy channels
 interleaved one row per channel per timestamp."""
 
 import datetime as dt
+import importlib
 import math
 import random
 
@@ -18,9 +19,13 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from core import swxkit
-from core.models import Event, TimeSeriesPoint
+from core.management.commands.verify_forecasts import verify_product
+from core.manifests.loader import get_manifest
+from core.models import Event, Forecast, Product, TimeSeriesPoint
 
 FILL = -9999
+# Forecast products replayed hour by hour over the seeded Kp (v0.4.0 §7).
+FORECAST_PRODUCTS = ("usach.kp.persistence",)
 PROTON_CHANNELS = {
     ">=1 MeV": 2.0, ">=5 MeV": 0.6, ">=10 MeV": 0.35, ">=30 MeV": 0.2,
     ">=50 MeV": 0.15, ">=60 MeV": 0.13, ">=100 MeV": 0.09, ">=500 MeV": 0.03,
@@ -119,4 +124,19 @@ class Command(BaseCommand):
                  "R": {"Scale": "1", "Text": "Minor"}, "S": {"Scale": "0", "Text": "none"},
                  "G": {"Scale": "0", "Text": "none"}}
         swxkit.publish_event("noaa.scales", {"days": {"0": today}}, valid_from=end, issued=end)
+
+        # A week of baseline issues, through the product's own collector (so
+        # through swxkit.publish_forecast), then scored like the nightly job.
+        observations = swxkit.read_series("noaa.kp", "kp", start - dt.timedelta(days=1))
+        for product_id in FORECAST_PRODUCTS:
+            manifest = get_manifest(product_id)
+            collect = importlib.import_module(f"modules.{manifest['_module']}.collectors").COLLECTORS[product_id]
+            Forecast.objects.filter(product_id=product_id).delete()
+            issued_at = swxkit.floor_issue_time(product_id, start + dt.timedelta(hours=3))
+            rows = 0
+            while issued_at <= end:
+                rows += collect(issued_at=issued_at, observations=observations)
+                issued_at += dt.timedelta(hours=1)
+            scores = verify_product(Product.objects.get(id=product_id), timezone.now())
+            self.stdout.write(f"{product_id}: {rows} forecast rows, {scores} score rows")
         self.stdout.write(self.style.SUCCESS(f"seeded {options['days']:g} day(s) ending {end:%Y-%m-%d %H:%M} UT"))

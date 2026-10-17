@@ -1,6 +1,11 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from core.manifests.loader import ManifestError, discover_manifest_paths, load_manifest
+from core.manifests.loader import (
+    ManifestError,
+    discover_manifest_paths,
+    forecast_target_errors,
+    load_manifest,
+)
 
 
 class Command(BaseCommand):
@@ -13,6 +18,7 @@ class Command(BaseCommand):
             return
 
         seen_ids: dict[str, str] = {}
+        loaded: dict[str, dict] = {}
         failures = 0
         for path in paths:
             try:
@@ -32,7 +38,14 @@ class Command(BaseCommand):
                 )
                 continue
             seen_ids[product_id] = str(path)
+            loaded[product_id] = manifest
             self.stdout.write(self.style.SUCCESS(f"ok   {path}  ({product_id} v{manifest['version']})"))
+
+        # Across manifests (D-071): a forecast's target must exist and be observed.
+        for manifest in loaded.values():
+            for error in forecast_target_errors(manifest, loaded):
+                failures += 1
+                self.stderr.write(self.style.ERROR(f"FAIL {manifest['_path']}: {error}"))
 
         if failures:
             raise CommandError(f"{failures} manifest(s) failed validation.")

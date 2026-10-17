@@ -2,7 +2,7 @@ import datetime as dt
 import json
 
 from django.core.cache import cache
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -10,9 +10,10 @@ from django.utils.cache import patch_cache_control
 from django.utils.translation import get_language, gettext
 from django.views.decorators.http import require_http_methods
 
-from core.models import Event, Heartbeat, Product, TimeSeriesPoint
+from core.manifests.loader import get_manifest
+from core.models import Event, Forecast, ForecastScore, Heartbeat, Product, TimeSeriesPoint
 
-from . import charts, series
+from . import charts, forecasts, series
 from .forms import RegistrationForm
 from .numfmt import fmt_number
 
@@ -349,6 +350,9 @@ def product_detail(request, product_id):
         if event and product_id == SCALES_PRODUCT_ID:
             context["scales_badges"] = _scales_badges(event, lang)
         return render(request, "web/product_detail_event.html", context)
+    if product.kind == "forecast":
+        context.update(_forecast_context(product, lang))
+        return render(request, "web/product_detail_forecast.html", context)
 
     stack_id = _dom_id(product_id)
     context.update(_range_buttons((product_id,), charts.DEFAULT_RANGE_PRODUCT, lang))
@@ -405,6 +409,129 @@ def product_series_json(request, product_id):
     response = HttpResponse(body, content_type="application/json")
     patch_cache_control(response, public=True, max_age=charts.SERIES_CACHE_SECONDS)
     return response
+
+
+def product_forecast_json(request, product_id):
+    """One issue against the observed target, or one lead's verification
+    pairs (contract in web/forecasts.py). Cached per full query for
+    SERIES_CACHE_SECONDS, server and browser, like serie.json (D-057)."""
+    params = {k: request.GET.get(k, "") for k in ("issued", "lead", "range", "site")}
+    cache_key = "swx:forecast:v1:" + product_id + ":" + "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    body = cache.get(cache_key)
+    if body is None:
+        get_object_or_404(Product, id=product_id, kind="forecast")
+        try:
+            if params["lead"]:
+                data = forecasts.lead_view(product_id, lead=params["lead"], site=params["site"],
+                                           range_key=params["range"] or forecasts.DEFAULT_LEAD_RANGE)
+            else:
+                data = forecasts.issue_view(product_id, issued=params["issued"] or "latest", site=params["site"],
+                                            range_key=params["range"] or forecasts.DEFAULT_ISSUE_RANGE)
+        except forecasts.BadRequest as exc:
+            return HttpResponseBadRequest(str(exc), content_type="text/plain; charset=utf-8")
+        body = json.dumps(data, separators=(",", ":"))
+        cache.set(cache_key, body, charts.SERIES_CACHE_SECONDS)
+    response = HttpResponse(body, content_type="application/json")
+    patch_cache_control(response, public=True, max_age=charts.SERIES_CACHE_SECONDS)
+    return response
+
+
+def _hours_label(seconds, lang):
+    hours = seconds / 3600
+    return (fmt_number(hours, lang, decimals=0) if hours == int(hours) else fmt_number(hours, lang)) + " h"
+
+
+def _score_rows(product, lang):
+    # "Desempeño / Performance" (v0.4.0 §6): lead x window, every number
+    # through the shared formatter (D-065). Only the newest model version.
+    scores = list(ForecastScore.objects.filter(product=product).order_by("-computed_at", "lead_seconds", "window_days"))
+    if not scores:
+        return None, []
+    version = max(scores, key=lambda s: s.computed_at).model_version
+    rows = []
+    for sc in sorted((s for s in scores if s.model_version == version), key=lambda s: (s.lead_seconds, s.window_days)):
+        coverage = None
+        if sc.coverage is not None:
+            nominal = f" / {fmt_number(sc.nominal_coverage * 100, lang, decimals=0)} %" if sc.nominal_coverage else ""
+            coverage = f"{fmt_number(sc.coverage * 100, lang, decimals=0)} %{nominal}"
+        rows.append({
+            "lead": _hours_label(sc.lead_seconds, lang),
+            "window": f"{sc.window_days} " + (gettext("días") if sc.window_days != 1 else gettext("día")),
+            "n": sc.n,
+            "mae": fmt_number(sc.mae, lang, decimals=2),
+            "rmse": fmt_number(sc.rmse, lang, decimals=2),
+            "bias": fmt_number(sc.bias, lang, decimals=2),
+            "skill": fmt_number(sc.skill, lang, decimals=2),
+            "coverage": coverage,
+        })
+    return version, rows
+
+
+def _forecast_context(product, lang):
+    target_id, panel = forecasts.target_panel(product.id)
+    target = get_manifest(target_id)
+    spec = get_manifest(product.id)["forecast"]
+    field = spec["target"]["field"]
+    param = next((p for p in target.get("parameters", []) if p["name"] == field), {})
+    uncertainty = spec["uncertainty"]
+    level = uncertainty.get("level")
+    stack_id = _dom_id(product.id)
+    version, score_rows = _score_rows(product, lang)
+    config = {
+        "endpoint": reverse("web:product_forecast_json", args=[product.id]),
+        "field": field,
+        "unit": param.get("units", "") if param.get("units", "") != "1" else "",
+        "y_range": param.get("range"),
+        "bars": bool(panel and panel.kind == "bars"),
+        "kp_bucket": bool(panel and panel.kp_bucket),
+        "ref_lines": [{"value": v, "label": label} for v, label in (panel.ref_lines if panel else ())],
+        "title": (panel.title_en if lang == "en" else panel.title_es) if panel else field,
+        "bounds": uncertainty["type"] == "bounds",
+    }
+    i18n = dict(
+        _chart_i18n(),
+        observed=gettext("Observado"),
+        forecast=gettext("Pronóstico"),
+        band=(gettext("Intervalo %(pct)s %%") % {"pct": fmt_number(level * 100, lang, decimals=0)}) if level else "",
+        issued=gettext("emitido"),
+        now=gettext("ahora"),
+        lead_label=gettext("anticipación"),
+        valid_label=gettext("válido"),
+        no_issue=gettext("Todavía no hay pronósticos emitidos."),
+        band_note=(gettext("Banda: intervalo central de %(pct)s %%") % {"pct": fmt_number(level * 100, lang, decimals=0)}) if level else "",
+        future_note=gettext("zona sombreada: después de ahora"),
+    )
+    return {
+        "forecast_config": config,
+        "forecast_i18n": i18n,
+        "stack_id": stack_id,
+        "config_id": stack_id + "-config",
+        "i18n_id": stack_id + "-i18n",
+        "issue_ranges": [{"key": key, "label": label_en if lang == "en" else label_es}
+                         for key, label_es, label_en, _days in charts.RANGE_CHOICES if key in forecasts.ISSUE_RANGES],
+        "lead_ranges": [{"key": "7d", "label": "7 " + gettext("días")}, {"key": "30d", "label": "30 " + gettext("días")}],
+        "leads": [{"key": key, "label": _hours_label(seconds, lang)} for key, seconds in forecasts.horizons(product.id)],
+        "default_issue_range": forecasts.DEFAULT_ISSUE_RANGE,
+        "score_version": version,
+        "score_rows": score_rows,
+        "target_title": target["title"]["en" if lang == "en" else "es"],
+        "target_provider": target["source"]["provider"],
+        "description": product.description(lang),
+        "facts": _facts_list(product, lang),
+        "headline_values": _forecast_headline(product, field, lang),
+    }
+
+
+def _forecast_headline(product, field, lang):
+    # The latest issue's shortest lead, e.g. "Kp en 3 h".
+    row = (Forecast.objects.filter(product=product).order_by("-issued_at", "lead_seconds")
+           .values_list("lead_seconds", "values").first())
+    if row is None:
+        return [_headline_value(f"{field} +3 h", f"{field} +3 h", None, "", lang)]
+    lead, values = row
+    hours = _hours_label(lead, lang)
+    label = field.capitalize() if len(field) <= 3 else field
+    return [_headline_value(f"{label} en {hours}", f"{label} in {hours}", (values.get(field) or {}).get("value"), "", lang)]
 
 
 def que_ofrecemos(request):

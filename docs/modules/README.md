@@ -35,8 +35,10 @@ L1 solar wind/IMF, Kp, Dst, scales, GOES X-ray and proton flux).
 ## The parts that matter
 
 - **Talk to the store only through `core/swxkit.py`** — `publish_timeseries`,
-  `publish_event`, `heartbeat`. Never write to `Product`/`TimeSeriesPoint`/
-  `Event` directly.
+  `publish_event`, `publish_forecast`, `heartbeat`, and `read_series` to
+  read observations. Never read or write `Product`/`TimeSeriesPoint`/
+  `Event`/`Forecast` directly. `modules/baselines/` is the worked example of
+  a module that reads one product and publishes a forecast.
 - **Separate "fetch" from "parse."** `client.py` does network I/O;
   `adapters.py` is pure (dict in, dict out) so a test can feed it a fixture
   without a live source. This is also what makes "degrade, don't break"

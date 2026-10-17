@@ -83,7 +83,8 @@ jobs:
         run: python manage.py check --deploy --fail-level WARNING
 
   # D-058 / 13-AUDIT §5 B.2: what the browser actually shows, on every PR —
-  # home + one product page × 1440/390 px × day/night × ES/EN, uploaded as
+  # home + one product page + the forecast baseline page × 1440/390 px ×
+  # day/night × ES/EN, uploaded as
   # artifacts for review. Fails on a wrong chart count, a visible panel
   # error/empty state, a JS error, or a regression of the range-click race
   # (16-PERF B1) / client cache (B2). See .github/scripts/screenshots.py.

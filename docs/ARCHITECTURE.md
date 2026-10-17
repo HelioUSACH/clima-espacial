@@ -65,7 +65,7 @@ Espacial**, delivering products to it through a versioned interface, and
 ```yaml
 id: usach.flare.nrt            # namespace.domain.name
 version: 3                     # bump on schema change; old versions stay readable
-kind: event                    # timeseries | event | image | bulletin | index | status
+kind: event                    # timeseries | event | image | bulletin | index | status | forecast
 title: {es: "Detección de fulguraciones (NRT)", en: "Flare detection (NRT)"}
 maturity: beta                 # experimental | beta | operational
 cadence: 180s
@@ -84,6 +84,21 @@ facts:                                # optional: the product page's "Ficha del 
                                        # any row it doesn't set, never shows one empty
 ```
 
+A `kind: forecast` product (D-071) also carries a `forecast` block, and
+`model_card` becomes required. `cadence` is the issue cadence, the model id
+is the product id, and the model version is passed per issue (§4.2):
+
+```yaml
+forecast:
+  target: {product: noaa.kp, field: kp}   # an observed product (timeseries/index) + one of its parameters
+  horizons: [3h, 6h, 12h, 24h]
+  uncertainty: {type: bounds, level: 0.8} # none | bounds (central interval, nominal coverage); quantiles reserved
+  sites: false                            # true if rows carry a site code (stations, grid cells)
+```
+
+The block is forbidden on every other kind. `validate_manifests` also checks
+across manifests that the target exists, is observed, and has that field.
+
 Validated against `core/manifests/schema.json` by `manage.py
 validate_manifests` (also run in CI). See `docs/modules/README.md` for how a
 module ships its manifests.
@@ -94,8 +109,21 @@ module ships its manifests.
   `rows` is an iterable of plain dicts, one key per manifest parameter plus
   `time_tag`; no pandas dependency.
 - `publish_event(product, payload, *, valid_from, valid_to=None, quality=None, provenance=None)`.
+- `publish_forecast(product, *, issued_at, model_version, rows, provenance)`
+  — one issue of a `kind: forecast` product into `core_forecast` (D-072,
+  D-073). `issued_at` is floored to the manifest cadence
+  (`floor_issue_time`), so an issue is deterministic and write-once per
+  model version; a re-run inserts nothing. Contract and worked example in
+  `docs/models/INTEGRATION.md`.
 - `heartbeat(product, status, *, detail=None)` — `status` is one of `ok`,
   `stale`, `error`, `no_data`; fed into `/estado/`.
+- `read_series(product, field, since, until=None, *, site="")` — the read
+  side: `[(time_tag, value)]` of one numeric field. A module reads
+  observations through this, never by querying `core_timeseries`.
+
+Forecasts are verified daily by `manage.py verify_forecasts`
+(`swx-verify.timer`, D-075), against the matching rule and persistence
+reference in `core/forecasting.py` (D-074).
 
 All three resolve the product's current manifest version, validate the
 payload shape against it, and raise instead of silently writing malformed
@@ -119,6 +147,10 @@ doesn't build it yet).
   "links": {"self": "https://…/api/v1/messages/b3f1…", "product": "https://…/productos/usach.flare.nrt"}
 }
 ```
+
+`type` is the product's `kind` (`event`, `timeseries`, `forecast`, …). A
+forecast's payload is one record of the forecast exchange format
+(`docs/models/INTEGRATION.md`, D-076).
 
 ### 4.4 Outbound exchange (M2, D-013)
 
@@ -152,7 +184,7 @@ nginx
 /opt/swx/            code (root-owned, read-only to the service user)
 /srv/swx/data/       rolling product files (images, downloads) with retention
 /etc/swx/swx.env     secrets
-systemd: swx-web, swx-collect@<product>.timer, swx-dump.timer
+systemd: swx-web, swx-collect@<product>.timer, swx-dump.timer, swx-verify.timer
           (+ the flare repo's own units, started independently)
 ```
 

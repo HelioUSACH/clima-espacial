@@ -4,7 +4,8 @@ supersedes the uPlot-era version, D-058).
     python .github/scripts/screenshots.py http://127.0.0.1:8000 shots/
 
 Against a running portal with seeded data (`manage.py seed_dev_data`), for
-home and one product page x 1440/390 px x day/night x ES/EN:
+home, one product page and the forecast baseline's page x 1440/390 px x
+day/night x ES/EN:
 
 - waits for exactly one ECharts canvas group per stack and saves a
   full-page screenshot (to sit next to the matching mockup artboard in the
@@ -24,10 +25,13 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 PAGES = {
-    # name: (path, expected stack count -- one ECharts instance per stack,
-    # not one per panel: home's 5-panel solar-wind stack is ONE instance).
-    "home": ("/", 1),
-    "noaa.rtsw.mag": ("/productos/noaa.rtsw.mag/", 1),
+    # name: (path, expected chart count -- one ECharts instance per stack,
+    # not one per panel: home's 5-panel solar-wind stack is ONE instance --
+    # and which interaction checks run on it, once, in ES/day/desktop).
+    "home": ("/", 1, "stack"),
+    "noaa.rtsw.mag": ("/productos/noaa.rtsw.mag/", 1, "stack"),
+    # v0.4.0 §7: the forecast page (seed_dev_data issues a week of it).
+    "usach.kp.persistence": ("/productos/usach.kp.persistence/", 1, "forecast"),
 }
 WIDTHS = {"desktop": 1440, "mobile": 390}
 THEMES = ("day", "night")
@@ -83,13 +87,37 @@ def check_range_race(page, failures, label):
         failures.append(f"{label}: going back to 6h refetched {len(sixh)} serie.json (B2 cache miss)")
 
 
+def check_forecast_views(page, failures, label):
+    """The lead selector switches to the verification view and back, and
+    'reset zoom' works on the forecast chart too."""
+    fc = "document.querySelector('.swx-forecast').__swxForecast"
+    page.click('[data-fc-lead="3h"]')
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(300)
+    view = page.evaluate(f"{fc}.data && {fc}.data.view")
+    pairs = page.evaluate(f"{fc}.data && {fc}.data.pairs ? {fc}.data.pairs.valid_at.length : 0")
+    if view != "lead" or not pairs:
+        failures.append(f"{label}: the 3 h lead button showed view={view!r} with {pairs} pair(s)")
+    page.click('[data-fc-view="issue"]')
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(300)
+    if page.evaluate(f"{fc}.data && {fc}.data.view") != "issue":
+        failures.append(f"{label}: 'Último pronóstico' did not return to the issue view")
+    page.evaluate(f"{fc}.ec.dispatchAction({{type: 'dataZoom', start: 20, end: 40}})")
+    page.click("[data-reset-zoom]")
+    page.wait_for_timeout(200)
+    dz = page.evaluate(f"{fc}.ec.getOption().dataZoom[0]")
+    if not (dz["start"] == 0 and dz["end"] == 100):
+        failures.append(f"{label}: 'Restablecer zoom' left dataZoom at {dz['start']}-{dz['end']}, not 0-100")
+
+
 def main(base_url, out_dir):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     failures = []
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        for page_name, (path, expected) in PAGES.items():
+        for page_name, (path, expected, checks) in PAGES.items():
             for lang, prefix in LANGS.items():
                 for theme in THEMES:
                     for size, width in WIDTHS.items():
@@ -119,8 +147,11 @@ def main(base_url, out_dir):
                             failures.append(f"{label}: JS errors: {errors}")
                         page.screenshot(path=str(out / f"{label}.png"), full_page=True)
                         if lang == "es" and theme == "day" and size == "desktop":
-                            check_zoom_reset(page, failures, label)
-                            check_range_race(page, failures, label)
+                            if checks == "stack":
+                                check_zoom_reset(page, failures, label)
+                                check_range_race(page, failures, label)
+                            elif checks == "forecast":
+                                check_forecast_views(page, failures, label)
                         context.close()
         browser.close()
     for f in failures:
