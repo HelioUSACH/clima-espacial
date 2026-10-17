@@ -1,3 +1,5 @@
+# gthread, 2 workers x 4 threads (22-HANDOFF-v0.3.0.md §2.2, deploy/README.md):
+# ~60 MB less RSS than 3 sync workers and 8 concurrent requests, not 3.
 [Unit]
 Description=Clima Espacial USACH (gunicorn)
 After=network.target postgresql.service
@@ -11,7 +13,8 @@ WorkingDirectory=/opt/swx
 EnvironmentFile=/etc/swx/swx.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/swx/venv/bin/gunicorn climaespacial.wsgi:application \
-    --bind 127.0.0.1:8100 --workers 3 --access-logfile - --error-logfile -
+    --bind 127.0.0.1:8100 --workers 2 --threads 4 --worker-class gthread \
+    --access-logfile - --error-logfile -
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=5

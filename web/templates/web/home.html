@@ -3,6 +3,7 @@
 {% block title %}{% trans "Inicio" %}{% endblock %}
 {% block content %}
 
+<div class="heroband">
 <section class="wrap hero" id="inicio">
   <div>
     <div class="eyebrow">{% trans "Nodo USACH · Plataforma Nacional de Meteorología Espacial" %}</div>
@@ -11,7 +12,7 @@
     <div class="ctas">
       <a class="btn pri" href="{% url 'web:catalogue' %}">{% trans "Ver productos y modelos" %}
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-      <a class="btn" href="{% url 'web:data_api' %}">{% trans "Datos y API" %}</a>
+      <a class="btn" href="{{ national_platform_url }}" rel="nofollow">{% trans "Plataforma Nacional de Meteorología Espacial" %} <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
     </div>
   </div>
   <div class="offer">
@@ -24,8 +25,9 @@
     {% endfor %}
   </div>
 </section>
+</div>
 
-<section class="wrap sec" aria-labelledby="l1-h">
+<section class="wrap sec sec-live" aria-labelledby="l1-h">
   <div class="sec-head">
     <div>
       <div class="eyebrow">{% trans "En vivo" %}</div>
@@ -35,13 +37,15 @@
   {% include "web/_panel_stack.html" %}
 </section>
 
+<div class="tintband">
 <section class="wrap sec" aria-labelledby="mas-h">
   <div class="sec-head"><div><div class="eyebrow">{% trans "Más condiciones" %}</div><h2 id="mas-h">{% trans "En la red chilena" %}</h2></div></div>
   <div class="more">
     <a class="mcard" href="{% url 'web:product_detail' 'noaa.goes.xray' %}"><em>{% trans "Este portal" %}</em><b>{% trans "Rayos X y protones (GOES)" %}</b><span>{% trans "Flujo de rayos X con clases A–X y protones con umbral S1." %}</span></a>
-    <a class="mcard" href="https://meteorologiaespacial.cl/impactos" rel="nofollow"><em>{% trans "Plataforma Nacional" %} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></em><b>{% trans "Kp, Dst e impactos" %}</b><span>{% trans "Escalas NOAA y efectos posibles por sector en Chile." %}</span></a>
-    <a class="mcard" href="https://meteorologiaespacial.cl/productos/magnetometro" rel="nofollow"><em>{% trans "Plataforma Nacional" %} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></em><b>{% trans "Magnetómetros chilenos" %}</b><span>{% trans "Red de estaciones con datos descargables." %}</span></a>
+    <a class="mcard" href="{{ national_platform_url }}impactos" rel="nofollow"><em>{% trans "Plataforma Nacional" %} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></em><b>{% trans "Kp, Dst e impactos" %}</b><span>{% trans "Escalas NOAA y efectos posibles por sector en Chile." %}</span></a>
+    <a class="mcard" href="{{ national_platform_url }}productos/magnetometro" rel="nofollow"><em>{% trans "Plataforma Nacional" %} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></em><b>{% trans "Magnetómetros chilenos" %}</b><span>{% trans "Red de estaciones con datos descargables." %}</span></a>
     <a class="mcard" href="https://ccc.ciencias.uchile.cl/climaespacial/modelos/index.php" rel="nofollow"><em>{% trans "Universidad de Chile" %} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></em><b>{% trans "Pronósticos Dst y AU/AL" %}</b><span>{% trans "Modelos del Laboratorio de Clima Espacial." %}</span></a>
   </div>
 </section>
+</div>
 {% endblock %}

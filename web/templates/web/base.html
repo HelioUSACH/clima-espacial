@@ -41,10 +41,25 @@
 </head>
 <body>
   <a class="skip-link" href="#main">{% trans "Saltar al contenido" %}</a>
+  {% comment %}
+  Utility bar (22-HANDOFF-v0.3.0.md §1.1): the portal is a sub-page of the
+  group site, so every page links back to it (its EN home when on EN).
+  {% endcomment %}
+  <div class="ubar">
+    <div class="wrap ubar-in">
+      <a href="{{ group_site_home }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>{% trans "Volver a HelioFísica USACH" %}</a>
+      <span>{% trans "Nodo USACH · Red Chilena de Clima Espacial" %}</span>
+    </div>
+  </div>
   <header class="hdr">
     <div class="wrap hdr-in">
-      <a class="brand" href="{% url 'web:home' %}"><b>{% trans "Clima Espacial" %}</b><span>HelioFÍSICA USACH</span></a>
+      <a class="brand-row" href="{% url 'web:home' %}">
+        <img class="em-day" src="{% static 'web/img/emblem.png' %}" width="38" height="38" alt="">
+        <img class="em-night" src="{% static 'web/img/emblem-white.png' %}" width="38" height="38" alt="">
+        <span class="brand"><b>{% trans "Clima Espacial" %}</b><span>HelioFÍSICA USACH</span></span>
+      </a>
       <nav class="nav" id="main-nav" aria-label="{% trans 'Navegación principal' %}">
+        <a class="nav-natl" href="{{ national_platform_url }}" rel="nofollow">{% trans "Plataforma Nacional" %} <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
         <a href="{% url 'web:home' %}">{% trans "Inicio" %}</a>
         <a href="{% url 'web:catalogue' %}">{% trans "Productos y modelos" %}</a>
         <a href="{% url 'web:que_ofrecemos' %}">{% trans "Qué ofrecemos" %}</a>
@@ -53,6 +68,7 @@
         <a href="{% url 'web:about' %}">{% trans "Acerca" %}</a>
       </nav>
       <div class="tools">
+        <a class="natl natl-nav" href="{{ national_platform_url }}" rel="nofollow"><span class="dot"></span>{% trans "Plataforma Nacional" %} <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
         <div class="lang-switch">
           {% comment %}
           Plain links to the counterpart URL (12-HANDOFF item 2, D-053):
@@ -114,7 +130,7 @@
       <div>
         <h4>{% trans "Red chilena" %}</h4>
         <ul>
-          <li><a href="https://meteorologiaespacial.cl/" rel="nofollow">{% trans "Plataforma Nacional" %}</a></li>
+          <li><a href="{{ national_platform_url }}" rel="nofollow">{% trans "Plataforma Nacional" %}</a></li>
           <li><a href="https://ccc.ciencias.uchile.cl/climaespacial/index.php" rel="nofollow">{% trans "Universidad de Chile" %}</a></li>
           <li><a href="{{ group_site_home }}">HelioUSACH</a></li>
         </ul>

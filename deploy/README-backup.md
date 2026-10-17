@@ -4,12 +4,20 @@ helio cannot reach the backup host (donnager, icaria as fallback) on port
 22 (VM preflight, 2026-10-15) — so the backup host **pulls**, over a key
 that can only read `/srv/swx/backups/` and nothing else on helio. Nightly
 content of that directory is produced by `swx-dump.service`/`.timer`
-(`deploy/swx-dump.sh`): a `pg_dump` + a config bundle, 14-day local retention.
+(`deploy/swx-dump.sh`), 14-day local retention:
+
+| File | Contents |
+|---|---|
+| `swx-<stamp>.dump.gz` | `pg_dump --format=custom` of the `swx` database |
+| `swx-config-<stamp>.tar.gz` | `etc/swx/swx.env`, `modules/` (every deployed manifest), and since v0.3.0 the analytics: `goatcounter-db.sqlite3` (GoatCounter's database, copied with SQLite's online backup API so it's consistent while GoatCounter runs) and `etc/swx/goatcounter-import.env` (its import token) |
+
+If analytics isn't set up yet, the dump logs a warning and the bundle simply
+leaves those two out.
 
 **Treat the backup host as sensitive.** The config bundle in every night's
 backup contains `/etc/swx/swx.env` — `SECRET_KEY` and the database
-credentials — not just public data. Back it up and restrict access to it
-the same way you would the VM itself.
+credentials — and the GoatCounter API token, not just public data. Back it
+up and restrict access to it the same way you would the VM itself.
 
 ## One-time setup
 
@@ -81,6 +89,17 @@ A simple daily cron entry on the backup host is enough:
 30 4 * * *  /path/to/clima-espacial-deploy-copy/backup-pull.sh
 ```
 (or a systemd user timer, same idea as `swx-dump.timer` on helio).
+
+## Restoring analytics
+
+```
+sudo systemctl stop goatcounter-import goatcounter
+sudo rm -f /srv/swx/goatcounter/db.sqlite3-wal /srv/swx/goatcounter/db.sqlite3-shm   # stale WAL must not replay onto the restored file
+tar xzf swx-config-<stamp>.tar.gz goatcounter-db.sqlite3 etc/swx/goatcounter-import.env
+sudo install -o swx -g swx -m 640 goatcounter-db.sqlite3 /srv/swx/goatcounter/db.sqlite3
+sudo install -o root -g swx -m 640 etc/swx/goatcounter-import.env /etc/swx/goatcounter-import.env
+sudo systemctl start goatcounter goatcounter-import
+```
 
 ## Restore drill
 

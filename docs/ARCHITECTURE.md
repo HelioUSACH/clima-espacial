@@ -156,7 +156,7 @@ systemd: swx-web, swx-collect@<product>.timer, swx-dump.timer
           (+ the flare repo's own units, started independently)
 ```
 
-Indicative RAM budget (15 GiB): PostgreSQL 2–3 GB · gunicorn 3 workers ~0.6 GB
+Indicative RAM budget (15 GiB): PostgreSQL 2–3 GB · gunicorn 2 gthread workers × 4 threads (D-069)
 · flare loop (CPU) 2–3 GB · collectors <0.5 GB · OS/cache rest. Disk (96 GB
 –4 GB swap): keep a rolling window of heavy files on the VM; long-term
 archive is a separate concern (D-015/D-038), out of scope for M1.
@@ -183,7 +183,8 @@ national platform's — link to them, don't rebuild (D-001, D-037).
 - `/estado/` is fed by heartbeats; a stale product shows as such.
 - Model cards and, once there is enough live history, a skill score for every
   ML product.
-- Nightly `pg_dump` + config, pulled by an off-machine backup host (D-039).
+- Nightly `pg_dump` + config bundle (incl. analytics, D-068), pulled by an
+  off-machine backup host (D-039).
 
 ## 9. Repository layout (D-010, D-016)
 
