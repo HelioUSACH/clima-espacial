@@ -186,6 +186,10 @@ class Panel:
     kp_bucket: bool = False  # bars colored by the Kp->G severity bucket, not a fixed slot
     y_range: tuple[float, float] | None = None  # fixed y-axis limits instead of auto-scaling
     envelope: bool = False  # draw each series' per-bucket min-max as a faint band around the mean line
+    # "now": the range ends now. "latest": it ends at the product's latest
+    # datum, for a delayed product (kyoto.ae, D-082) whose every range
+    # would otherwise show an empty chart.
+    anchor: str = "now"
 
 
 # Energy-channel products (X-ray, protons) interleave one row per channel
@@ -231,7 +235,7 @@ PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
             ref_lines=((5, "G1"),), kp_bucket=True,
         ),
     ),
-    "noaa.dst": (
+    "kyoto.dst": (
         Panel(
             key="dst", title_es="Dst", title_en="Dst", unit="nT",
             series=(Series("dst", "Dst", "Dst", 1),), ref_lines=((-50, "-50 nT"), (-100, "-100 nT")),
@@ -246,6 +250,17 @@ PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
             ),
             log_bands=((1e-8, "A"), (1e-7, "B"), (1e-6, "C"), (1e-5, "M"), (1e-4, "X")),
             y_range=(1e-9, 1e-2),  # fixed, NOAA-style: the class letters never move between ranges
+        ),
+    ),
+    "kyoto.ae": (
+        Panel(
+            key="aual", title_es="AU / AL", title_en="AU / AL", unit="nT",
+            series=(Series("au", "AU", "AU", 1, decimals=0), Series("al", "AL", "AL", 2, decimals=0)),
+            zero_line=True, envelope=True, anchor="latest",
+        ),
+        Panel(
+            key="ae", title_es="AE", title_en="AE", unit="nT",
+            series=(Series("ae", "AE", "AE", 3, decimals=0),), envelope=True, anchor="latest",
         ),
     ),
     "noaa.goes.protons": (
@@ -295,6 +310,11 @@ def kp_thirds(value: float | None) -> str | None:
     third = round((value - nearest) * 3)  # -1, 0 or 1: the value is at most 1/3 from its nearest integer
     suffix = {-1: "−", 0: "o", 1: "+"}.get(third, "o")
     return f"{nearest}{suffix}"
+
+
+def product_anchor(product_id: str) -> str:
+    """"latest" if any of the product's panels is anchored at its latest datum."""
+    return "latest" if any(p.anchor == "latest" for p in PRODUCT_PANELS.get(product_id, ())) else "now"
 
 
 def product_fields(product_id: str) -> list[str]:

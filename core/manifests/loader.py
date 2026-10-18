@@ -98,6 +98,9 @@ def _load_manifest_uncached(path: Path) -> dict:
             except ValueError as exc:
                 errors.append(str(exc))
 
+    if not errors:
+        errors.extend(_revise_errors(data))
+
     if errors:
         raise ManifestError(path, errors)
 
@@ -108,6 +111,36 @@ def _load_manifest_uncached(path: Path) -> dict:
     data["_module"] = path.parent.parent.name  # modules/<name>/manifests/x.yaml
     data["_path"] = str(relative_path)
     return data
+
+
+# Parameters that make several rows share one time_tag (D-056's energy
+# channels): row identity is then (time_tag, key), which `revise` can't
+# handle yet.
+CHANNEL_KEYS = ("energy",)
+
+
+def _revise_errors(data: dict) -> list[str]:
+    """D-080: what the schema can't say about `revise`."""
+    revise = data.get("revise")
+    if not revise:
+        return []
+    errors = []
+    try:
+        parse_duration(revise["window"])
+    except ValueError as exc:
+        errors.append(str(exc))
+    names = [p["name"] for p in data.get("parameters", [])]
+    if "version_field" in revise and revise["version_field"] not in names:
+        errors.append(f"revise.version_field {revise['version_field']!r} is not a parameter {names}")
+    channels = [k for k in CHANNEL_KEYS if k in names]
+    if "key" in revise:
+        errors.append("revise.key is reserved: revising a product with several rows per time_tag isn't supported yet")
+    elif channels:
+        errors.append(
+            f"revise on a product with several rows per time_tag (parameter {channels[0]!r}) "
+            f"needs revise.key: [{channels[0]}], which isn't supported yet"
+        )
+    return errors
 
 
 def discover_manifests(base_dir: Path | None = None) -> dict[str, dict]:

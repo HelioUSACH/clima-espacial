@@ -150,6 +150,7 @@ class TimeSeriesPoint(models.Model):
     quality = models.JSONField(null=True, blank=True)
     provenance = models.JSONField(null=True, blank=True)
     inserted_at = models.DateTimeField(default=timezone.now)
+    revised_at = models.DateTimeField(null=True, blank=True)  # D-080: last in-place revision
 
     class Meta:
         managed = False

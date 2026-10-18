@@ -12,7 +12,7 @@ from django.utils.html import format_html
 from django.utils.translation import get_language, gettext
 from django.views.decorators.http import require_http_methods
 
-from core.manifests.loader import get_manifest
+from core.manifests.loader import discover_manifests, get_manifest
 from core.models import Event, Forecast, ForecastScore, Heartbeat, Product, TimeSeriesPoint
 
 from . import charts, forecasts, series
@@ -143,6 +143,7 @@ def _panel_json(product_id, panel, lang):
         "kp_bucket": panel.kp_bucket,
         "envelope": panel.envelope,
         "y_range": list(panel.y_range) if panel.y_range else None,
+        "anchor": panel.anchor,
     }
 
 
@@ -166,6 +167,8 @@ def _chart_i18n():
         "trend_flat": gettext("estable"),
         "active_source_label": gettext("Nave activa"),
         "last_datum_label": gettext("Último dato"),
+        "data_until_label": gettext("datos hasta"),
+        "delayed_suffix": gettext("(con retraso)"),
         "source_mark_note": gettext("Línea discontinua: cambio de nave activa"),
         "averages_label": gettext("promedios de"),
         "minutes_unit": gettext("min"),
@@ -272,7 +275,7 @@ def catalogue(request):
     # row exists for it (as soon as modules/flare's collector runs once),
     # the generic grid below would otherwise show it a second time.
     products = (
-        Product.objects.select_related("heartbeat")
+        _current_products().select_related("heartbeat")
         .exclude(id=FLARE_PRODUCT_ID)
         .order_by("module", "id")
     )
@@ -317,9 +320,14 @@ def _headline_values(product_id, lang):
     if product_id == "noaa.kp":
         row = _latest_row(product_id)
         return [_headline_value("Kp", "Kp", row.payload.get("kp") if row else None, "", lang)]
-    if product_id == "noaa.dst":
+    if product_id == "kyoto.dst":
         row = _latest_row(product_id)
         return [_headline_value("Dst", "Dst", row.payload.get("dst") if row else None, "nT", lang)]
+    if product_id == "kyoto.ae":
+        row = _latest_row(product_id)
+        payload = row.payload if row else {}
+        return [_headline_value("AE", "AE", payload.get("ae"), "nT", lang),
+                _headline_value("AL", "AL", payload.get("al"), "nT", lang)]
     if product_id == "noaa.goes.xray":
         row = _latest_row(product_id, energy="0.1-0.8nm")
         value = charts.xray_class(row.payload.get("flux")) if row else None
@@ -330,7 +338,20 @@ def _headline_values(product_id, lang):
     return []
 
 
+# D-081: a retired product's page moves to its successor for good. Its
+# rows stay in the store (history) and its serie.json still answers.
+RETIRED_PRODUCTS = {"noaa.dst": "kyoto.dst"}
+
+
+def _current_products():
+    # A product whose manifest is gone is retired: kept in the database
+    # with its history, but no longer listed (catalogue, status).
+    return Product.objects.filter(id__in=list(discover_manifests()))
+
+
 def product_detail(request, product_id):
+    if product_id in RETIRED_PRODUCTS:
+        return redirect("web:product_detail", RETIRED_PRODUCTS[product_id], permanent=True)
     lang = _lang(request)
     product = get_object_or_404(Product, id=product_id)
     hb = getattr(product, "heartbeat", None)
@@ -385,6 +406,7 @@ _FACT_ROWS = (
     ("cadence", "Cadencia original", "Original cadence"),
     ("coordinates", "Coordenadas", "Coordinates"),
     ("license", "Licencia", "Licence"),
+    ("citation", "Cita", "Citation"),
     ("used_by", "Lo usan", "Used by"),
 )
 
@@ -557,7 +579,7 @@ def que_ofrecemos(request):
 
 def status(request):
     lang = _lang(request)
-    products = Product.objects.select_related("heartbeat").order_by("module", "id")
+    products = _current_products().select_related("heartbeat").order_by("module", "id")
     rows = [
         {
             "product": p,

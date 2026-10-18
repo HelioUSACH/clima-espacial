@@ -24,11 +24,6 @@ def collect_kp() -> int:
     return swxkit.publish_timeseries("noaa.kp", adapters.parse_kp(raw))
 
 
-def collect_dst() -> int:
-    raw = client.fetch_json("products/kyoto-dst.json")
-    return swxkit.publish_timeseries("noaa.dst", adapters.parse_dst(raw))
-
-
 def collect_goes_xray() -> int:
     raw = client.fetch_json("json/goes/primary/xrays-1-day.json")
     return swxkit.publish_timeseries("noaa.goes.xray", adapters.parse_goes_xray(raw))
@@ -54,7 +49,6 @@ COLLECTORS = {
     "noaa.rtsw.mag": collect_rtsw_mag,
     "noaa.rtsw.wind": collect_rtsw_wind,
     "noaa.kp": collect_kp,
-    "noaa.dst": collect_dst,
     "noaa.goes.xray": collect_goes_xray,
     "noaa.goes.protons": collect_goes_protons,
     "noaa.scales": collect_scales,

@@ -1,0 +1,11 @@
+[Unit]
+Description=Clima Espacial USACH: collect kyoto.ae daily (delayed product, D-082)
+
+# Daily: Kyoto's HAPI copy of AE runs weeks behind, so more often adds
+# nothing. 04:10 UT is clear of the 03:15 verify and 03:30 dump runs.
+[Timer]
+OnCalendar=*-*-* 04:10:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

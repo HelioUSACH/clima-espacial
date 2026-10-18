@@ -82,6 +82,19 @@ install -d -o root -g root -m 755 "$STATIC_ROOT"
 venv/bin/python manage.py collectstatic --noinput --clear -v 0
 
 echo "==> systemd units"
+# A timer this release no longer ships (a retired product: noaa.dst in
+# 0.4.2, D-081) is stopped and removed; otherwise it keeps running a
+# collector that no longer exists. Only swx-* timers: goatcounter* units
+# belong to provision.sh.
+for unit in "$UNIT_DIR"/swx-*.timer; do
+    [[ -e $unit ]] || continue
+    name="$(basename "$unit")"
+    if [[ ! -e "$DESTINO/deploy/systemd/$name" ]]; then
+        echo "    retiring $name (not in $TAG)"
+        systemctl disable --quiet --now "$name" || true
+        rm -f "$unit"
+    fi
+done
 install -o root -g root -m 644 "$DESTINO"/deploy/systemd/*.service "$DESTINO"/deploy/systemd/*.timer "$UNIT_DIR"/
 systemctl daemon-reload
 systemctl enable --quiet --now swx-web

@@ -6,8 +6,10 @@ Goes through `core.swxkit` like any producer (never writes the product
 tables directly). The shapes match what `modules/swpc/adapters.py` emits
 from the real recorded fixtures, including the awkward parts the charts
 must cope with: NOAA's `-9999` fill value, a change of active L1 spacecraft,
-a real 40-minute outage, sparse Kp (3 h) and Dst (1 h), and energy channels
-interleaved one row per channel per timestamp."""
+a real 40-minute outage, sparse Kp (3 h) and Dst (1 h, its last hours from
+NOAA's mirror as when Kyoto's route fails), energy channels interleaved one
+row per channel per timestamp, and AE that ends two weeks before now, like
+Kyoto's delayed HAPI copy (D-082)."""
 
 import datetime as dt
 import importlib
@@ -24,6 +26,7 @@ from core.manifests.loader import get_manifest
 from core.models import Event, Forecast, Product, TimeSeriesPoint
 
 FILL = -9999
+AE_DELAY = dt.timedelta(days=13)
 # Forecast products replayed hour by hour over the seeded Kp (v0.4.0 §7).
 FORECAST_PRODUCTS = ("usach.kp.persistence",)
 PROTON_CHANNELS = {
@@ -40,7 +43,7 @@ def _times(start, end, step_seconds):
 
 
 class Command(BaseCommand):
-    help = "Replace the stored rows of the NOAA products with N days of synthetic data (dev/CI only)."
+    help = "Replace the stored rows of the NOAA and Kyoto products with N days of synthetic data (dev/CI only)."
 
     def add_arguments(self, parser):
         parser.add_argument("--days", type=float, default=7.0)
@@ -86,10 +89,24 @@ class Command(BaseCommand):
             value = max(0.0, min(9.0, 2.5 + 2.5 * math.sin(2 * math.pi * phase(t) / 2.5) + rnd.gauss(0, 0.6)))
             kp.append({"time_tag": t, "kp": round(value * 3) / 3, "a_running": int(value * 5), "station_count": 8})
 
-        dst = [
-            {"time_tag": t, "dst": int(-15 - 40 * max(0, math.sin(2 * math.pi * phase(t) / 2.5)) + rnd.gauss(0, 4))}
-            for t in _times(start.replace(minute=0), end, 3600)
-        ]
+        dst = []
+        for t in _times(start.replace(minute=0), end, 3600):
+            fallback = t > end - dt.timedelta(hours=3)
+            dst.append({"time_tag": t, "dst": int(-15 - 40 * max(0, math.sin(2 * math.pi * phase(t) / 2.5)) + rnd.gauss(0, 4)),
+                        "version": -1 if fallback else 0, "source": "NOAA-MIRROR" if fallback else "KYOTO-HAPI"})
+
+        # AE, 1-minute, ending AE_DELAY before now: a few substorms a day.
+        ae = []
+        ae_end = end - AE_DELAY
+        ae_start = ae_end - (end - start)
+        substorms = [ae_start + dt.timedelta(hours=rnd.uniform(0, options["days"] * 24)) for _ in range(int(options["days"] * 3))]
+        for t in _times(ae_start, ae_end, 60):
+            drive = sum(math.exp(-((t - s).total_seconds() / 3600 - 0.5) ** 2 / 0.15)
+                        for s in substorms if -2 * 3600 < (t - s).total_seconds() < 4 * 3600)
+            au = int(40 + 60 * drive + rnd.gauss(0, 8))
+            al = int(-30 - 420 * drive + rnd.gauss(0, 12))
+            ae.append({"time_tag": t, "source": "KYOTO-HAPI", "ae": au - al, "al": al, "au": au,
+                       "ao": (au + al) // 2, "version": 0 if t > ae_end - dt.timedelta(days=2) else 10})
 
         xray, protons = [], []
         # (peak time, peak long-channel flux): one B/C/M/X-class mix
@@ -112,8 +129,8 @@ class Command(BaseCommand):
                     protons.append({"time_tag": t, "energy": energy, "flux": flux, "satellite": 18})
 
         for product_id, rows in (
-            ("noaa.rtsw.mag", mag), ("noaa.rtsw.wind", wind), ("noaa.kp", kp), ("noaa.dst", dst),
-            ("noaa.goes.xray", xray), ("noaa.goes.protons", protons),
+            ("noaa.rtsw.mag", mag), ("noaa.rtsw.wind", wind), ("noaa.kp", kp), ("kyoto.dst", dst),
+            ("noaa.goes.xray", xray), ("noaa.goes.protons", protons), ("kyoto.ae", ae),
         ):
             TimeSeriesPoint.objects.filter(product_id=product_id).delete()
             n = swxkit.publish_timeseries(product_id, rows)

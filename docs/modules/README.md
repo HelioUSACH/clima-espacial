@@ -29,8 +29,10 @@ modules/<name>/
     test_adapters.py      adapters tested against the fixture
 ```
 
-`modules/swpc/` is a complete worked example (seven NOAA SWPC products:
-L1 solar wind/IMF, Kp, Dst, scales, GOES X-ray and proton flux).
+`modules/swpc/` is a complete worked example (six NOAA SWPC products:
+L1 solar wind/IMF, Kp, scales, GOES X-ray and proton flux). `modules/kyoto/`
+is the worked example of a HAPI source with a fallback route and revisable
+values (Dst, AE).
 
 ## The parts that matter
 
@@ -51,6 +53,25 @@ L1 solar wind/IMF, Kp, Dst, scales, GOES X-ray and proton flux).
 - **`manage.py collect <product_id>`** should run end to end against a local
   database once a collector is wired up; this is also what a systemd timer
   calls in production (`deploy/swx-collect@.service`).
+
+## Revisable sources
+
+Some providers publish an interval while it is still filling, or replace a
+value later (WDC Kyoto: the current Dst hour grows, then realtime →
+provisional → final). By default `publish_timeseries` stores a `time_tag`
+once and never again (D-049), which would freeze such a series at its first,
+partial value. Declare it in the manifest instead (D-080):
+
+```yaml
+revise: {window: 6h, version_field: version}
+```
+
+Re-fetch a window that overlaps what's stored (for example the last 8 h for
+a 6 h window) and publish it every run: unchanged rows are no-ops, changed
+ones are updated with `revised_at` set. Put the provider's processing level
+in `version_field` when it has one, so an older level can never overwrite a
+newer one. A one-off backfill that should also repair older rows passes
+`revise_since=`.
 
 ## Recording a fixture
 

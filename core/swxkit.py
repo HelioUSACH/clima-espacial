@@ -14,7 +14,7 @@ import json
 import logging
 from collections.abc import Iterable, Mapping
 
-from django.db import connection, models
+from django.db import connection, models, transaction
 from django.utils import timezone
 
 from core.manifests.loader import ManifestError, get_manifest, parse_duration
@@ -114,6 +114,7 @@ def publish_timeseries(
     *,
     quality: dict | None = None,
     provenance: dict | None = None,
+    revise_since: dt.datetime | None = None,
 ) -> int:
     """`rows`: an iterable of plain dicts, each with a `time_tag` (ISO string
     or datetime), an optional `source`, and one key per manifest parameter.
@@ -125,46 +126,116 @@ def publish_timeseries(
     "last N days" files) on every run can call this unconditionally without
     piling up duplicates. This is cheap re-run idempotency, not a backfill
     tool: it can't be used to fill an older gap in an otherwise-current
-    series (see docs/ARCHITECTURE.md §4.2)."""
-    product = _sync_product(product_id)
+    series (see docs/ARCHITECTURE.md §4.2).
+
+    **Revisable products (D-080)**, whose manifest has `revise: {window}`:
+    a row with `time_tag >= latest - window` that differs from the stored
+    one updates it in place (payload, source, `revised_at`); one missing
+    from the store inside the window is inserted. With `revise.version_field`,
+    a lower incoming version never overwrites a higher stored one.
+    `revise_since` widens the window to everything from that time on, for a
+    one-off backfill/repair command. One transaction per call, so a reader
+    never sees half a revision. Returns new + revised rows."""
+    manifest = _manifest_or_publish_error(product_id)
+    product = _sync_product(product_id, manifest)
     rows = list(rows)
     if not rows:
         # An adapter that always comes back empty is a bug, not a quiet
         # source: surface it as "no_data" rather than rubber-stamping "ok".
         # (A non-empty fetch with nothing *new* — the common steady-state
         # case for a slow-cadence product polled often — is "ok": see below.)
-        heartbeat(product_id, "no_data", detail="collector ran but returned 0 rows")
+        _set_heartbeat(product, "no_data", "collector ran but returned 0 rows")
         return 0
+    revise = manifest.get("revise")
+    if revise_since is not None and not revise:
+        raise PublishError(f"{product_id}: revise_since needs a manifest with `revise` (D-080)")
 
-    latest = TimeSeriesPoint.objects.filter(product=product).aggregate(models.Max("time_tag"))["time_tag__max"]
-    objects = []
-    for row in rows:
-        row = dict(row)
-        try:
-            time_tag = row.pop("time_tag")
-        except KeyError:
-            raise PublishError(f"{product_id}: row missing required 'time_tag': {row!r}") from None
-        time_tag = _as_aware_datetime(time_tag)
-        if latest is not None and time_tag <= latest:
-            continue
-        source = row.pop("source", "") or ""
-        _ensure_partition("core_timeseries", time_tag)
-        objects.append(
-            TimeSeriesPoint(
-                product=product,
-                time_tag=time_tag,
-                source=source,
-                payload=row,
-                quality=quality,
-                provenance=provenance,
+    with transaction.atomic():
+        latest = TimeSeriesPoint.objects.filter(product=product).aggregate(models.Max("time_tag"))["time_tag__max"]
+        revisable_from = None
+        if revise and latest is not None:
+            revisable_from = latest - dt.timedelta(seconds=parse_duration(revise["window"]))
+            if revise_since is not None:
+                revisable_from = min(revisable_from, _as_aware_datetime(revise_since))
+        stored = {}
+        if revisable_from is not None:
+            for point in TimeSeriesPoint.objects.filter(product=product, time_tag__gte=revisable_from).only(
+                    "id", "time_tag", "source", "payload"):
+                stored[point.time_tag] = point
+        version_field = (revise or {}).get("version_field")
+
+        objects, updates, seen = [], [], set()
+        for row in rows:
+            row = dict(row)
+            try:
+                time_tag = row.pop("time_tag")
+            except KeyError:
+                raise PublishError(f"{product_id}: row missing required 'time_tag': {row!r}") from None
+            time_tag = _as_aware_datetime(time_tag)
+            source = row.pop("source", "") or ""
+            if revise:
+                # Row identity is (product, time_tag): two rows for one
+                # time_tag would make "which one is current" a guess.
+                if time_tag in seen:
+                    raise PublishError(f"{product_id}: two rows for time_tag {time_tag.isoformat()} in one publish")
+                seen.add(time_tag)
+            if latest is None or time_tag > latest:
+                pass  # new: insert
+            elif revisable_from is not None and time_tag >= revisable_from:
+                current = stored.get(time_tag)
+                if current is not None:
+                    if current.payload == row and current.source == source:
+                        continue
+                    if version_field and _version(row.get(version_field)) < _version(current.payload.get(version_field)):
+                        continue
+                    updates.append((current, source, row))
+                    continue
+                # A hole inside the window: fill it.
+            else:
+                continue
+            _ensure_partition("core_timeseries", time_tag)
+            objects.append(
+                TimeSeriesPoint(
+                    product=product,
+                    time_tag=time_tag,
+                    source=source,
+                    payload=row,
+                    quality=quality,
+                    provenance=provenance,
+                )
             )
-        )
-    if objects:
-        TimeSeriesPoint.objects.bulk_create(objects)
-        heartbeat(product_id, "ok", detail=f"published {len(objects)} new point(s) of {len(rows)} fetched")
-    else:
-        heartbeat(product_id, "ok", detail="no new points since last publish (source unchanged)")
-    return len(objects)
+        if objects:
+            TimeSeriesPoint.objects.bulk_create(objects)
+        now = timezone.now()
+        for point, source, payload in updates:
+            TimeSeriesPoint.objects.filter(pk=point.pk, time_tag=point.time_tag).update(
+                source=source, payload=payload, quality=quality, provenance=provenance, revised_at=now)
+
+        if objects or updates:
+            detail = f"published {len(objects)} new point(s) of {len(rows)} fetched"
+            if revise:
+                detail = f"{len(objects)} new, {len(updates)} revised of {len(rows)} fetched"
+        else:
+            detail = "no new points since last publish (source unchanged)"
+        _set_heartbeat(product, "ok", detail)
+    return len(objects) + len(updates)
+
+
+def _version(value) -> float:
+    # A missing or non-numeric version ranks below every real one.
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return float("-inf")
+    try:
+        return float(int(value))
+    except (TypeError, ValueError):
+        return float("-inf")
+
+
+def _manifest_or_publish_error(product_id: str) -> dict:
+    try:
+        return get_manifest(product_id)
+    except ManifestError as exc:
+        raise PublishError(str(exc)) from exc
 
 
 def publish_event(
