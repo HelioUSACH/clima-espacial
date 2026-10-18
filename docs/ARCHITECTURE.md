@@ -81,13 +81,26 @@ parameters:
   - {name: probability, units: "1", range: [0, 1]}
   - {name: state, enum: [QUIET, RISING, POST_IMPULSIVE]}
 exchange: {hapi: true, feed: true, push: [national-platform]}   # what may leave the portal
+revise: {window: 6h, version_field: version}   # optional, D-080: a revisable series (below)
 model_card: docs/products/usach.flare.nrt.md
 description: {es: "...", en: "..."}   # optional: the product page's "Qué muestra" text
 facts:                                # optional: the product page's "Ficha del producto" <dl>
   source: {es: "...", en: "..."}      # recognised keys: source, spacecraft, cadence,
-  license: {es: "...", en: "..."}     # coordinates, license, used_by -- a product skips
+  license: {es: "...", en: "..."}     # coordinates, license, citation, used_by -- a product skips
                                        # any row it doesn't set, never shows one empty
 ```
+
+`revise` (D-080) is for a provider that publishes an interval while it is
+still filling, or revises values later (Kyoto's Dst: the current hour grows,
+then realtime → provisional → final). Without it, `publish_timeseries`
+skips every row at or before the latest stored `time_tag` (D-049), so such a
+series would stay frozen at its first, partial value. With it, a row with
+`time_tag >= latest − window` that differs from the stored one is updated in
+place (payload, `source`, `revised_at`), and a hole inside the window is
+filled. With `version_field`, a lower incoming version never overwrites a
+higher one. Row identity is `(product, time_tag)`, so `revise` is refused
+on a product with several rows per `time_tag` (the `energy` channels, D-056);
+`revise.key` is reserved for that and not supported yet.
 
 `source.links` (D-078) turns the provider into a link on the product page
 (the provider pill links to the first entry; "Ficha del producto" lists them
@@ -118,9 +131,11 @@ module ships its manifests.
 
 ### 4.2 Publishing API for producers (`core/swxkit.py`)
 
-- `publish_timeseries(product, rows, *, quality=None, provenance=None)` —
+- `publish_timeseries(product, rows, *, quality=None, provenance=None, revise_since=None)` —
   `rows` is an iterable of plain dicts, one key per manifest parameter plus
-  `time_tag`; no pandas dependency.
+  `time_tag`; no pandas dependency. Skip-if-not-newer (D-049), or, for a
+  `revise` product, update-in-window in one transaction (D-080).
+  `revise_since` widens the window for a one-off backfill/repair command.
 - `publish_event(product, payload, *, valid_from, valid_to=None, quality=None, provenance=None)`.
 - `publish_forecast(product, *, issued_at, model_version, rows, provenance)`
   — one issue of a `kind: forecast` product into `core_forecast` (D-072,

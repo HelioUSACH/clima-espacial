@@ -34,7 +34,23 @@ deploy after it.
 After installing the units, the script enables every `systemd/*.timer` (no
 hand-kept list), then fails the deploy if any of them is not enabled and
 active, and prints `systemctl list-timers 'swx-*'` with the next and last
-runs.
+runs. Before that, an installed `swx-*.timer` that the release no longer
+ships (a retired product, e.g. `swx-collect@noaa.dst.timer` in 0.4.2) is
+disabled and removed (D-081).
+
+## One-off steps after a deploy
+
+Some releases need a command run once after `deploy.sh`, as the service
+user with the production environment:
+
+```bash
+cd /opt/swx && sudo -u swx bash -c 'set -a; . /etc/swx/swx.env; set +a; venv/bin/python manage.py <command>'
+```
+
+| release | command | what |
+|---|---|---|
+| 0.4.2 | `backfill_kyoto_dst --days 30` | 30 days of Kyoto's realtime Dst into `kyoto.dst` (D-081). Safe to re-run: it also repairs hours Kyoto has revised. |
+| 0.4.2 | `backfill_kyoto_ae --since 2026-01-01` | `kyoto.ae` history, a month per request, ~1440 rows a day (D-082). Takes a few minutes. Safe to re-run. |
 
 ## Caching and compression (D-055, D-057)
 
@@ -74,7 +90,7 @@ fewer processes also means fewer cold caches.
 | `deploy.sh` | Install one tagged release; run again for every release |
 | `nginx-clima-espacial.conf` | `/clima-espacial/` location snippet for the existing `helio` vhost |
 | `systemd/swx-web.service` | gunicorn |
-| `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest |
+| `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest (`kyoto.ae`: daily 04:10 UT) |
 | `systemd/swx-verify.service` + `.timer` | daily 03:15 UT `manage.py verify_forecasts`: scores every forecast product (D-075) |
 | `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle incl. analytics (local; pulled off-machine, see below) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |

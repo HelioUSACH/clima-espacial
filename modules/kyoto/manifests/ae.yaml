@@ -1,0 +1,37 @@
+# AE/AL/AU/AO from WDC Kyoto's HAPI `min_ae` (best available per minute:
+# final > provisional > realtime). The HAPI copy runs weeks behind Kyoto's
+# quicklook page, so this is a delayed product: history and model training,
+# not a live input (D-082). Not on home, not in the strip.
+id: kyoto.ae
+version: 1
+kind: index
+title: {es: "Índices aurorales AE/AL/AU (Kyoto)", en: "Auroral indices AE/AL/AU (Kyoto)"}
+maturity: experimental
+cadence: 1d
+# Not red while it is simply behind: Kyoto's HAPI lags by weeks.
+stale_after: 30d
+producer: {type: collector, unit: "swx-collect@kyoto.ae.timer"}
+source:
+  provider: "WDC Kyoto"
+  inputs: ["hapi: min_ae"]
+  license: "Non-commercial use; WDC Kyoto data"
+  links:
+    - {name: "WDC Kyoto", url: "https://wdc.kugi.kyoto-u.ac.jp/aedir/index.html"}
+    - {name: "WDC Kyoto HAPI", url: "https://wdc.kugi.kyoto-u.ac.jp/hapi/"}
+parameters:
+  - {name: ae, units: nT}
+  - {name: al, units: nT}
+  - {name: au, units: nT}
+  - {name: ao, units: nT}
+  - {name: version, units: "1"}
+revise: {window: 40d, version_field: version}
+exchange: {hapi: false, feed: false}
+description:
+  es: "Los índices del electrochorro auroral miden la actividad de las corrientes del óvalo auroral a partir de observatorios del hemisferio norte: AU es la mayor perturbación positiva, AL la mayor negativa (las subtormentas la hunden) y AE = AU − AL. Son datos con retraso: el servidor HAPI de Kyoto va semanas detrás de su página de visualización rápida, así que el gráfico termina en el último dato disponible, no en el presente."
+  en: "The auroral electrojet indices measure the activity of the auroral-oval currents from northern-hemisphere observatories: AU is the largest positive disturbance, AL the largest negative one (substorms drive it down), and AE = AU − AL. The data are delayed: Kyoto's HAPI server runs weeks behind its quicklook page, so the chart ends at the latest available datum, not at the present."
+facts:
+  source: {es: "WDC Kyoto (servidor HAPI, mejor versión disponible)", en: "WDC Kyoto (HAPI server, best available version)"}
+  cadence: {es: "1 minuto; se actualiza a diario, con semanas de retraso", en: "1 minute; updated daily, weeks behind"}
+  license: {es: "Uso no comercial (WDC Kyoto)", en: "Non-commercial use (WDC Kyoto)"}
+  citation: {es: "World Data Center for Geomagnetism, Kyoto, M. Nose, T. Iyemori, M. Sugiura, T. Kamei, A. Matsuoka, S. Imajo, and T. Kotani (2015), Geomagnetic AE index, doi:10.17593/15031-54800", en: "World Data Center for Geomagnetism, Kyoto, M. Nose, T. Iyemori, M. Sugiura, T. Kamei, A. Matsuoka, S. Imajo, and T. Kotani (2015), Geomagnetic AE index, doi:10.17593/15031-54800"}
+  used_by: {es: "Historia y entrenamiento de modelos", en: "History and model training"}

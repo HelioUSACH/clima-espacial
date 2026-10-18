@@ -571,3 +571,6 @@ msgstr "Official alerts:"
 
 msgid "datos hasta"
 msgstr "data up to"
+
+msgid "(con retraso)"
+msgstr "(delayed)"

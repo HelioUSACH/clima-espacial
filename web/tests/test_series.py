@@ -178,7 +178,8 @@ def test_rounding_per_unit(client, manifests):
 @pytest.mark.django_db
 def test_response_shape(client, week_of_mag):
     payload = _series(client, "noaa.rtsw.mag", "3d").json()
-    assert set(payload) == {"time", "series", "min", "max", "source", "bucket_seconds"}
+    assert set(payload) == {"time", "series", "min", "max", "source", "bucket_seconds", "anchor"}
+    assert payload["anchor"] == "now"
     assert set(payload["series"]) == set(payload["min"]) == set(payload["max"]) == {"bt", "bz_gsm", "bx_gsm", "by_gsm"}
     assert payload["source"][-1] == "SOLAR1"
 

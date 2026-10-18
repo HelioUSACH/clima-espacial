@@ -1,0 +1,40 @@
+# Dst from WDC Kyoto's own HAPI server, with NOAA SWPC's mirror of it as
+# the fallback route (D-081). Replaces noaa.dst. Each row's `source` says
+# which route it came from (KYOTO-HAPI / NOAA-MIRROR), like the L1
+# spacecraft (D-040); a NOAA row carries version -1, so Kyoto's value for
+# the same hour always wins.
+id: kyoto.dst
+version: 1
+kind: index
+title: {es: "Índice Dst (Kyoto)", en: "Dst index (Kyoto)"}
+maturity: operational
+cadence: 15m
+stale_after: 3h
+producer: {type: collector, unit: "swx-collect@kyoto.dst.timer"}
+source:
+  provider: "WDC Kyoto"
+  inputs: ["hapi: hour_dst_realtime", "NOAA SWPC products/kyoto-dst.json (fallback)"]
+  license: "Non-commercial use; quicklook data (WDC Kyoto)"
+  links:
+    - {name: "WDC Kyoto", url: "https://wdc.kugi.kyoto-u.ac.jp/dst_realtime/index.html"}
+    - {name: "WDC Kyoto HAPI", url: "https://wdc.kugi.kyoto-u.ac.jp/hapi/"}
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/"}
+parameters:
+  - {name: dst, units: nT}
+  - {name: version, units: "1"}
+# Kyoto publishes the current hour while it is still filling, then revises
+# realtime -> provisional -> final (D-080).
+revise: {window: 6h, version_field: version}
+# WDC Kyoto's real-time Dst is "only for non-commercial purpose" and "only for
+# monitoring, diagnostics, and forecasting". The portal shows it; it never
+# redistributes it (D-028, D-078).
+exchange: {hapi: false, feed: false}
+description:
+  es: "El índice Dst mide la depresión del campo magnético horizontal en el ecuador, producida por la corriente de anillo durante una tormenta geomagnética. Mientras más negativo, más intensa la tormenta: por debajo de −50 nT ya se considera una tormenta; por debajo de −250 nT, extrema. Son valores preliminares (quicklook), que Kyoto reemplaza más tarde por los provisorios y los definitivos; la hora en curso se actualiza mientras se completa."
+  en: "The Dst index measures the depression of the horizontal magnetic field at the equator caused by the ring current during a geomagnetic storm. More negative means a stronger storm: below −50 nT is already a storm; below −250 nT, extreme. These are quicklook values, which Kyoto later replaces with provisional and then final ones; the current hour is updated as it fills."
+facts:
+  source: {es: "WDC Kyoto (servidor HAPI), con NOAA SWPC como respaldo", en: "WDC Kyoto (HAPI server), with NOAA SWPC as fallback"}
+  cadence: {es: "1 hora (datos en tiempo casi real)", en: "1 hour (near-real-time data)"}
+  license: {es: "Uso no comercial; datos preliminares (WDC Kyoto)", en: "Non-commercial use; quicklook data (WDC Kyoto)"}
+  citation: {es: "World Data Center for Geomagnetism, Kyoto, M. Nose, T. Iyemori, M. Sugiura, T. Kamei, A. Matsuoka, S. Imajo, and T. Kotani (2015), Geomagnetic Dst index, doi:10.17593/14515-74000", en: "World Data Center for Geomagnetism, Kyoto, M. Nose, T. Iyemori, M. Sugiura, T. Kamei, A. Matsuoka, S. Imajo, and T. Kotani (2015), Geomagnetic Dst index, doi:10.17593/14515-74000"}
+  used_by: {es: "Franja de estado del portal", en: "The portal's status strip"}

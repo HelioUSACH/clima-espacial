@@ -79,7 +79,7 @@ def _strip_raw():
         scale_levels[letter] = int(level_str) if level_str not in (None, "") else 0
 
     kp_row = TimeSeriesPoint.objects.filter(product_id="noaa.kp").order_by("-time_tag").first()
-    dst_row = TimeSeriesPoint.objects.filter(product_id="noaa.dst").order_by("-time_tag").first()
+    dst_row = TimeSeriesPoint.objects.filter(product_id="kyoto.dst").order_by("-time_tag").first()
     mag_row = TimeSeriesPoint.objects.filter(product_id="noaa.rtsw.mag").order_by("-time_tag").first()
 
     raw = {
@@ -128,7 +128,7 @@ def strip(request):
     dst_chip = {
         "value": fmt_number(raw["dst"], lang, decimals=0, grouping=True),
         "severity": charts.dst_severity(raw["dst"]) if raw["dst"] is not None else None,
-        "url": reverse("web:product_detail", args=["noaa.dst"]),
+        "url": reverse("web:product_detail", args=["kyoto.dst"]),
     }
     return {
         "strip_scales": scales,

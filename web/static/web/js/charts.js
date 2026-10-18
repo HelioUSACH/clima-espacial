@@ -648,7 +648,13 @@
     if (this.metaEl) {
       var bits = [];
       if (activeSource) bits.push(this.i18n.active_source_label + " " + activeSource);
-      if (latestTs != null) bits.push(this.i18n.last_datum_label + " " + fmtUT(latestTs, this.i18n));
+      // D-082: a delayed product's range ends at its latest datum, and says so.
+      var delayed = this.panels.some(function (p) { return p.anchor === "latest"; });
+      if (latestTs != null) {
+        bits.push(delayed
+          ? this.i18n.data_until_label + " " + fmtUT(latestTs, this.i18n) + " " + this.i18n.delayed_suffix
+          : this.i18n.last_datum_label + " " + fmtUT(latestTs, this.i18n));
+      }
       if (bucketSeconds) bits.push(fmtBucket(bucketSeconds, this.i18n));
       this.metaEl.innerHTML = bits.map(escapeHtml).join(" · ");
     }

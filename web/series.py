@@ -13,7 +13,12 @@ Response contract (D-056):
      "series": {field: [mean, ...]},     # the plotted line
      "min": {field: [...]}, "max": {field: [...]},
      "source": [last non-empty source in the bucket, or null, ...],
-     "bucket_seconds": N}
+     "bucket_seconds": N,
+     "anchor": "now" | "latest"}         # D-082: where the range ends
+
+A delayed product (`anchor="latest"` in its panels, kyoto.ae) measures the
+range back from its latest stored datum instead of from now, so "7 días"
+shows the last 7 days that exist, not 7 empty ones.
 
 A bucket with no valid value is `null` in every list. That is how a real
 gap stays a gap: the chart engine never draws a segment across a `null`
@@ -140,8 +145,17 @@ def _cadence_seconds(times: list[int], bucket: int) -> int:
     return max(bucket, deltas[len(deltas) // 2])
 
 
+def _latest_time_tag(product_id: str) -> dt.datetime | None:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT max(time_tag) FROM core_timeseries WHERE product_id = %s", [product_id])
+        return cursor.fetchone()[0]
+
+
 def bucketed_series(product_id: str, range_key: str, now: dt.datetime | None = None) -> dict:
     specs = _series_specs(product_id)
+    anchor = charts.product_anchor(product_id)
+    if now is None and anchor == "latest":
+        now = _latest_time_tag(product_id)
     since, bucket = _window(range_key, now or timezone.now())
     if product_id in charts.ENERGY_CHANNEL_PRODUCTS:
         buckets = _query_channels(product_id, specs, since, bucket)
@@ -169,6 +183,7 @@ def bucketed_series(product_id: str, range_key: str, now: dt.datetime | None = N
         "series": {}, "min": {}, "max": {},
         "source": [source for _b, _v, source in filled],
         "bucket_seconds": bucket,
+        "anchor": anchor,
     }
     for s, _floor in specs:
         triples = [values.get(s.field, (None, None, None)) for _b, values, _s in filled]

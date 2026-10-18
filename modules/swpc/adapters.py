@@ -56,10 +56,6 @@ def parse_kp(records: list[dict]) -> list[dict]:
     ]
 
 
-def parse_dst(records: list[dict]) -> list[dict]:
-    return [{"time_tag": r["time_tag"], "dst": r["dst"]} for r in records]
-
-
 def parse_goes_xray(records: list[dict]) -> list[dict]:
     return [
         {

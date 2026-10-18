@@ -37,13 +37,6 @@ def test_parse_kp():
     assert all(0 <= r["kp"] <= 9 for r in rows)
 
 
-def test_parse_dst():
-    raw = _load("kyoto_dst.json")
-    rows = adapters.parse_dst(raw)
-    assert len(rows) == len(raw)
-    assert all({"time_tag", "dst"} == set(r) for r in rows)
-
-
 def test_parse_goes_xray_covers_both_energy_channels():
     raw = _load("xray_flux_1_day.json")
     rows = adapters.parse_goes_xray(raw)

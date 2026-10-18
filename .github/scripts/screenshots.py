@@ -32,6 +32,10 @@ PAGES = {
     "noaa.rtsw.mag": ("/productos/noaa.rtsw.mag/", 1, "stack"),
     # v0.4.0 §7: the forecast page (seed_dev_data issues a week of it).
     "usach.kp.persistence": ("/productos/usach.kp.persistence/", 1, "forecast"),
+    # v0.4.2: Dst from Kyoto (D-081), and AE, a delayed product whose range
+    # ends at its latest datum, not now (D-082).
+    "kyoto.dst": ("/productos/kyoto.dst/", 1, None),
+    "kyoto.ae": ("/productos/kyoto.ae/", 1, "delayed"),
 }
 WIDTHS = {"desktop": 1440, "mobile": 390}
 THEMES = ("day", "night")
@@ -49,6 +53,22 @@ VISIBLE_STATUS = """
   .map(el => el.textContent.trim())
 """
 SPAN_SECONDS = "document.querySelector('.swx-stack').__swxStack.spanSeconds"
+
+
+def check_delayed(page, failures, label):
+    """D-082: a delayed product draws its data (not an empty "now" window)
+    and says it is delayed, for every range."""
+    for range_key in ("1d", "7d"):
+        page.click(f'[data-chart-range="{range_key}"]')
+        page.wait_for_function(f"document.querySelector('.swx-stack').dataset.range === '{range_key}'")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(300)
+        meta = page.evaluate("document.querySelector('[data-stack-meta]').textContent")
+        if "(con retraso)" not in meta:
+            failures.append(f"{label} {range_key}: meta doesn't say delayed: {meta!r}")
+        span = page.evaluate(SPAN_SECONDS)
+        if not span or span < 0.5 * 86400:
+            failures.append(f"{label} {range_key}: delayed chart spans {span} s, expected its data")
 
 
 def wait_for_charts(page, expected):
@@ -152,6 +172,8 @@ def main(base_url, out_dir):
                                 check_range_race(page, failures, label)
                             elif checks == "forecast":
                                 check_forecast_views(page, failures, label)
+                            elif checks == "delayed":
+                                check_delayed(page, failures, label)
                         context.close()
         browser.close()
     for f in failures:

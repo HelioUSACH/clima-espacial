@@ -29,17 +29,6 @@ KP_MANIFEST = {
     "_module": "swpc", "_path": "modules/swpc/manifests/kp.yaml",
 }
 
-DST_MANIFEST = {
-    "id": "noaa.dst", "version": 1, "kind": "index",
-    "title": {"es": "Índice Dst (Kyoto)", "en": "Dst index (Kyoto)"},
-    "maturity": "operational", "cadence": "15m", "stale_after": "3h",
-    "producer": {"type": "collector"}, "source": {"provider": "NOAA SWPC (Kyoto WDC)"},
-    "parameters": [{"name": "dst", "units": "nT"}],
-    "exchange": {"hapi": True, "feed": False},
-    "_module": "swpc", "_path": "modules/swpc/manifests/dst.yaml",
-}
-
-
 @pytest.fixture(autouse=True)
 def _clear_strip_cache():
     # web.context_processors._strip_raw() caches for 30s (own cache key,
@@ -65,8 +54,7 @@ def test_kp_chip_severity_class(monkeypatch, client, kp, expected_class):
     [(-120, "sv-strong"), (-30, "sv-ok"), (-75, "sv-moderate"), (-300, "sv-severe")],
 )
 def test_dst_chip_severity_class(monkeypatch, client, dst, expected_class):
-    monkeypatch.setattr(swxkit, "get_manifest", lambda pid: dict(DST_MANIFEST))
-    swxkit.publish_timeseries("noaa.dst", [{"time_tag": "2026-10-16T12:00:00Z", "dst": dst}])
+    swxkit.publish_timeseries("kyoto.dst", [{"time_tag": "2026-10-16T12:00:00Z", "dst": dst}])
     body = client.get(reverse("web:home")).content.decode()
     assert f'Dst <i class="{expected_class}">' in body
 
@@ -110,8 +98,16 @@ def test_kp_chip_uses_thirds_notation_with_precise_title(monkeypatch, client):
 
 @pytest.mark.django_db
 def test_dst_chip_uses_a_true_minus(monkeypatch, client):
-    monkeypatch.setattr(swxkit, "get_manifest", lambda pid: dict(DST_MANIFEST))
-    swxkit.publish_timeseries("noaa.dst", [{"time_tag": "2026-10-16T12:00:00Z", "dst": -120}])
+    swxkit.publish_timeseries("kyoto.dst", [{"time_tag": "2026-10-16T12:00:00Z", "dst": -120}])
     body = client.get(reverse("web:home")).content.decode()
     assert ">−120 nT<" in body
     assert ">-120" not in body
+
+
+@pytest.mark.django_db
+def test_dst_chip_reads_and_links_kyoto_dst(client):
+    # D-081: the strip's Dst is kyoto.dst; noaa.dst rows (history) are ignored.
+    swxkit.publish_timeseries("kyoto.dst", [{"time_tag": "2026-10-16T12:00:00Z", "dst": -42, "version": 0}])
+    body = client.get(reverse("web:home")).content.decode()
+    chip = body[body.index('<a class="scale" href="/productos/kyoto.dst/">Dst'):]
+    assert chip.startswith('<a class="scale" href="/productos/kyoto.dst/">Dst <i class="sv-ok">−42 nT</i>')

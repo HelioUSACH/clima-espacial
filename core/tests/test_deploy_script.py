@@ -146,6 +146,21 @@ def test_every_timer_is_enabled_and_checked(sandbox):
     assert "systemctl list-timers swx-* --no-pager" in result.calls
 
 
+def test_a_timer_the_release_no_longer_ships_is_retired(sandbox, tmp_path):
+    # D-081: noaa.dst's timer was removed in 0.4.2; the installed copy must go too.
+    release, run = sandbox
+    release("v9.9.9", marker="cloned")
+    units = tmp_path / "root/etc/systemd/system"
+    units.mkdir(parents=True)
+    for name in ("swx-collect@noaa.dst.timer", "swx-verify.timer", "goatcounter-import.timer"):
+        (units / name).write_text("")
+    result = run("v9.9.9")
+    assert result.returncode == 0, result.stderr
+    assert "systemctl disable --quiet --now swx-collect@noaa.dst.timer" in result.calls
+    assert sorted(p.name for p in units.iterdir()) == ["goatcounter-import.timer", "swx-verify.timer"]
+    assert not any("disable" in c and "swx-verify" in c for c in result.calls)
+
+
 def test_a_timer_that_is_not_active_fails_the_deploy(sandbox):
     release, run = sandbox
     release("v9.9.9", marker="cloned")

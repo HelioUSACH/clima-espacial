@@ -94,6 +94,17 @@
         }
       }
     },
+    "revise": {
+      "type": "object",
+      "description": "D-080: a revisable series. Rows with time_tag >= (latest stored - window) are updated when the provider's value changes; without it, D-049's skip-if-not-newer rule applies.",
+      "required": ["window"],
+      "additionalProperties": false,
+      "properties": {
+        "window": {"$ref": "#/$defs/duration"},
+        "version_field": {"type": "string", "description": "A parameter compared as an integer: a lower incoming version never overwrites a higher stored one."},
+        "key": {"type": "array", "items": {"type": "string"}, "description": "Reserved: the row key besides time_tag for products with several rows per time_tag (energy channels). Not supported yet."}
+      }
+    },
     "exchange": {
       "type": "object",
       "additionalProperties": false,
@@ -151,6 +162,7 @@
         "cadence": {"$ref": "#/$defs/bilingual"},
         "coordinates": {"$ref": "#/$defs/bilingual"},
         "license": {"$ref": "#/$defs/bilingual"},
+        "citation": {"$ref": "#/$defs/bilingual"},
         "used_by": {"$ref": "#/$defs/bilingual"}
       }
     }
