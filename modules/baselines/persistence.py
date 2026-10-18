@@ -77,8 +77,11 @@ def issue(observations, issued_at: dt.datetime, horizons_seconds, field: str = "
             upper = max(value, _clip(value + forecasting.percentile(errors, UPPER_Q)))
         else:
             lower, upper = KP_RANGE
+        # Rounded bounds must still contain the unrounded value: Kp 2.333...
+        # with a zero error percentile would otherwise get upper 2.333 < value,
+        # which publish_forecast rejects (the whole issue would be lost).
         rows.append({
             "valid_at": issued_at + dt.timedelta(seconds=lead),
-            field: {"value": value, "lower": round(lower, 3), "upper": round(upper, 3)},
+            field: {"value": value, "lower": min(value, round(lower, 3)), "upper": max(value, round(upper, 3))},
         })
     return rows, ref[0]
