@@ -63,7 +63,20 @@
       "properties": {
         "provider": {"type": "string", "minLength": 1},
         "inputs": {"type": "array", "items": {"type": "string"}},
-        "license": {"type": "string"}
+        "license": {"type": "string"},
+        "links": {
+          "type": "array",
+          "description": "D-078: the provider's own page(s) for this product, primary first. `name` is a short proper name, not translated.",
+          "items": {
+            "type": "object",
+            "required": ["name", "url"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "url": {"type": "string", "pattern": "^https://"}
+            }
+          }
+        }
       }
     },
     "parameters": {
@@ -120,7 +133,8 @@
           "if": {"properties": {"type": {"const": "bounds"}}},
           "then": {"required": ["level"]}
         },
-        "sites": {"type": "boolean", "description": "true if rows carry a site code (stations, grid cells); false for a global index."}
+        "sites": {"type": "boolean", "description": "true if rows carry a site code (stations, grid cells); false for a global index."},
+        "baseline": {"enum": ["persistence"], "description": "D-079: this product is the persistence reference itself; verify_forecasts warns when its issued values stop matching the reconstructed reference."}
       }
     },
     "description": {

@@ -5,6 +5,7 @@ from core.manifests.loader import (
     discover_manifest_paths,
     forecast_target_errors,
     load_manifest,
+    manifest_warnings,
 )
 
 
@@ -40,6 +41,8 @@ class Command(BaseCommand):
             seen_ids[product_id] = str(path)
             loaded[product_id] = manifest
             self.stdout.write(self.style.SUCCESS(f"ok   {path}  ({product_id} v{manifest['version']})"))
+            for warning in manifest_warnings(manifest):
+                self.stdout.write(self.style.WARNING(f"warn {path}: {warning}"))
 
         # Across manifests (D-071): a forecast's target must exist and be observed.
         for manifest in loaded.values():

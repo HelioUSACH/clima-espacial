@@ -1,11 +1,13 @@
 [Unit]
 Description=Clima Espacial USACH: issue usach.kp.persistence hourly (manifest cadence 1h)
 
-# Five minutes past the hour: the collector floors issued_at to the hour
-# (swxkit.floor_issue_time), and a few minutes' margin lets a just-closed Kp
-# interval reach the store first.
+# 35 minutes past the hour: the collector floors issued_at to the hour
+# (swxkit.floor_issue_time). A Kp interval closes on a 3-hour boundary but
+# reaches the store 5-16 min later (NOAA's posting plus one 15-min noaa.kp
+# poll, measured on helio), so a run at :05 persisted the interval before the
+# one that had just closed (D-079).
 [Timer]
-OnCalendar=*-*-* *:05:00
+OnCalendar=*-*-* *:35:00
 Persistent=true
 
 [Install]

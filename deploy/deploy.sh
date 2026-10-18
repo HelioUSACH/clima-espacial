@@ -13,18 +13,47 @@
 set -euo pipefail
 
 TAG="${1:?Usage: deploy.sh <git-tag>}"
-REPO_URL="https://github.com/HelioUSACH/clima-espacial.git"
-DESTINO=/opt/swx
-ARCHIVO_ENV=/etc/swx/swx.env
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+REPO_URL="${SWX_DEPLOY_REPO:-https://github.com/HelioUSACH/clima-espacial.git}"
+# SWX_DEPLOY_SANDBOX is for core/tests/test_deploy_script.py only: it puts
+# every path below under a scratch directory and skips the root check, with
+# stub commands on PATH. sudo resets the environment, so a real deploy never
+# sees it.
+SANDBOX="${SWX_DEPLOY_SANDBOX:-}"
+DESTINO=$SANDBOX/opt/swx
+ARCHIVO_ENV=$SANDBOX/etc/swx/swx.env
+UNIT_DIR=$SANDBOX/etc/systemd/system
+SNIPPET_LIVE=$SANDBOX/etc/nginx/snippets/clima-espacial.conf
 
-[[ $EUID -eq 0 ]] || { echo "Run with sudo." >&2; exit 1; }
+[[ -n $SANDBOX || $EUID -eq 0 ]] || { echo "Run with sudo." >&2; exit 1; }
 [[ -f $ARCHIVO_ENV ]] || { echo "$ARCHIVO_ENV is missing: run provision.sh first." >&2; exit 1; }
 id swx >/dev/null 2>&1 || { echo "User 'swx' is missing: run provision.sh first." >&2; exit 1; }
 
-echo "==> Fetching $TAG"
-git clone --quiet --depth 1 --branch "$TAG" "$REPO_URL" "$WORK/src"
+# D-077: the script Victor starts is the *previous* release's
+# /opt/swx/deploy/deploy.sh. The rsync below replaces that file, but bash
+# keeps reading the copy it opened, so every later step would be the old
+# release's logic (v0.4.0 never enabled swx-verify.timer this way). So: clone
+# the tag, then run the tag's own deploy.sh on that clone and stop here.
+#
+# The hand-over is a child process, not `exec`, so this run's EXIT trap
+# removes the clone after the child finishes. A child that knows
+# SWX_DEPLOY_WORK (0.4.1 on) reuses the clone; an older one (a rollback)
+# ignores it, clones again into its own temp dir and cleans that up itself.
+# Either way no temp dir is left behind.
+if [[ -z ${SWX_DEPLOY_REEXEC:-} ]]; then
+    WORK="$(mktemp -d)"
+    trap 'rm -rf "$WORK"' EXIT
+    echo "==> Fetching $TAG"
+    git clone --quiet --depth 1 --branch "$TAG" "$REPO_URL" "$WORK/src"
+    echo "==> Re-running $TAG's own deploy.sh"
+    rc=0
+    SWX_DEPLOY_REEXEC=1 SWX_DEPLOY_WORK="$WORK" bash "$WORK/src/deploy/deploy.sh" "$TAG" || rc=$?
+    exit "$rc"
+fi
+
+# The hand-over run: the parent owns $SWX_DEPLOY_WORK and removes it.
+WORK="${SWX_DEPLOY_WORK:?SWX_DEPLOY_REEXEC is set without SWX_DEPLOY_WORK}"
+CLONED="$(git -C "$WORK/src" describe --tags --exact-match 2>/dev/null || true)"
+[[ $CLONED == "$TAG" ]] || { echo "$WORK/src is at '${CLONED:-no tag}', not $TAG: refusing to deploy it." >&2; exit 1; }
 
 echo "==> Installing code (root-owned, read-only to the service user)"
 install -d -o root -g root -m 755 "$DESTINO"
@@ -41,7 +70,10 @@ echo "==> venv + dependencies"
 "$DESTINO/venv/bin/pip" install --quiet --disable-pip-version-check -r "$DESTINO/requirements.txt"
 
 echo "==> migrate + collectstatic"
-set -a; . "$ARCHIVO_ENV"; set +a
+set -a
+# shellcheck source=/dev/null
+. "$ARCHIVO_ENV"
+set +a
 : "${STATIC_ROOT:?STATIC_ROOT is not set in $ARCHIVO_ENV}" "${ALLOWED_HOSTS:?ALLOWED_HOSTS is not set in $ARCHIVO_ENV}"
 export PYTHONDONTWRITEBYTECODE=1
 cd "$DESTINO"
@@ -50,12 +82,20 @@ install -d -o root -g root -m 755 "$STATIC_ROOT"
 venv/bin/python manage.py collectstatic --noinput --clear -v 0
 
 echo "==> systemd units"
-install -o root -g root -m 644 "$DESTINO"/deploy/systemd/*.service "$DESTINO"/deploy/systemd/*.timer /etc/systemd/system/
+install -o root -g root -m 644 "$DESTINO"/deploy/systemd/*.service "$DESTINO"/deploy/systemd/*.timer "$UNIT_DIR"/
 systemctl daemon-reload
-systemctl enable --quiet --now swx-web swx-dump.timer swx-verify.timer
-for timer in "$DESTINO"/deploy/systemd/swx-collect@*.timer; do
-    systemctl enable --quiet --now "$(basename "$timer")"
+systemctl enable --quiet --now swx-web
+# Every timer this release ships is enabled; there is no list to forget to
+# update (D-077). A timer that must ship disabled goes in SKIP_TIMERS, with
+# a comment saying why. Services that deploy.sh doesn't enable (goatcounter*,
+# set up by provision.sh) aren't timers, so they're unaffected.
+SKIP_TIMERS=()
+TIMERS=()
+for unit in "$DESTINO"/deploy/systemd/*.timer; do
+    name="$(basename "$unit")"
+    [[ " ${SKIP_TIMERS[*]} " == *" $name "* ]] || TIMERS+=("$name")
 done
+systemctl enable --quiet --now "${TIMERS[@]}"
 systemctl restart swx-web
 
 echo "==> Smoke test (straight to gunicorn, pretending to be nginx)"
@@ -88,13 +128,23 @@ case "$SERIE_STATUS" in
     404) echo "Smoke test: noaa.rtsw.mag has no data yet (first deploy?) — serie.json not checked." ;;
     *) echo "Smoke test: serie.json returned HTTP $SERIE_STATUS." >&2; exit 1 ;;
 esac
+
+# A timer that isn't running must fail the deploy, not pass quietly (D-077).
+DOWN=()
+for name in "${TIMERS[@]}"; do
+    systemctl is-enabled --quiet "$name" && systemctl is-active --quiet "$name" || DOWN+=("$name")
+done
+if (( ${#DOWN[@]} )); then
+    echo "Timers not enabled and active: ${DOWN[*]}" >&2
+    exit 1
+fi
+systemctl list-timers 'swx-*' --no-pager
 echo "Deployed $TAG. Now hard-refresh / and one product page in both themes (CONTRIBUTING.md)."
 
 # 22-HANDOFF-v0.3.0.md §2.3: nginx config is a manual step (it edits the
 # shared helio vhost), so a changed snippet is easy to miss -- v0.1.3's sat
 # uninstalled for two releases. Only remind; never touch nginx from here.
 SNIPPET_REPO="$DESTINO/deploy/nginx-clima-espacial.conf"
-SNIPPET_LIVE=/etc/nginx/snippets/clima-espacial.conf
 if ! cmp --silent "$SNIPPET_REPO" "$SNIPPET_LIVE"; then
     echo
     echo "NOTE: $SNIPPET_LIVE differs from this release's $SNIPPET_REPO"

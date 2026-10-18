@@ -10,6 +10,9 @@ source:
   provider: "NOAA SWPC"
   inputs: ["products/noaa-scales.json"]
   license: "Public domain (NOAA)"
+  links:
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/noaa-scales-explanation"}
+    - {name: "NOAA SWPC alerts", url: "https://www.spaceweather.gov/products/alerts-watches-and-warnings"}
 parameters:
   - {name: days, units: "1"}
 exchange: {hapi: false, feed: true}

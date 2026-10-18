@@ -4,9 +4,11 @@ import json
 from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.cache import patch_cache_control
+from django.utils.html import format_html
 from django.utils.translation import get_language, gettext
 from django.views.decorators.http import require_http_methods
 
@@ -337,6 +339,7 @@ def product_detail(request, product_id):
         "title": _fmt_title(product, lang),
         "status": _status_badge(product_id, hb.effective_status() if hb else "no_data", lang),
         "source_license": _license_text(product.source_license),
+        "source_links": product.source_links,
     }
     if product.kind == "event":
         event = Event.objects.filter(product=product).order_by("-issued").first()
@@ -349,6 +352,9 @@ def product_detail(request, product_id):
         # raw payload — until it has its own designed view.
         if event and product_id == SCALES_PRODUCT_ID:
             context["scales_badges"] = _scales_badges(event, lang)
+        # D-078: an event product's second link is its official alerts page.
+        if len(product.source_links) > 1:
+            context["official_alerts"] = product.source_links[1]
         return render(request, "web/product_detail_event.html", context)
     if product.kind == "forecast":
         context.update(_forecast_context(product, lang))
@@ -494,6 +500,7 @@ def _forecast_context(product, lang):
         forecast=gettext("Pronóstico"),
         band=(gettext("Intervalo %(pct)s %%") % {"pct": fmt_number(level * 100, lang, decimals=0)}) if level else "",
         issued=gettext("emitido"),
+        data_until=gettext("datos hasta"),
         now=gettext("ahora"),
         lead_label=gettext("anticipación"),
         valid_label=gettext("válido"),
@@ -515,11 +522,21 @@ def _forecast_context(product, lang):
         "score_version": version,
         "score_rows": score_rows,
         "target_title": target["title"]["en" if lang == "en" else "es"],
-        "target_provider": target["source"]["provider"],
+        "target_provider_html": _provider_link(target["source"]),
         "description": product.description(lang),
         "facts": _facts_list(product, lang),
         "headline_values": _forecast_headline(product, field, lang),
     }
+
+
+def _provider_link(source):
+    """A manifest `source`'s provider, linked to its first `links` entry
+    (D-078) when it has one. Safe HTML, so a blocktrans keeps it as is."""
+    links = source.get("links") or []
+    if not links:
+        return format_html("{}", source["provider"])
+    return format_html('<a href="{}" rel="noopener nofollow">{} {}</a>', links[0]["url"], source["provider"],
+                       render_to_string("web/_icon_ext.html"))
 
 
 def _forecast_headline(product, field, lang):

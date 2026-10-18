@@ -65,7 +65,7 @@
 
   <section class="sec perf" aria-labelledby="perf-h">
     <h2 id="perf-h">{% trans "Desempeño" %}</h2>
-    <p class="meta">{% blocktrans with target=target_title provider=target_provider %}Verificado contra «{{ target }}» ({{ provider }}), casi en tiempo real y tal como se almacenó: las revisiones posteriores del proveedor no se ven. Habilidad = 1 − ECM / ECM de la persistencia; 0 = igual a la persistencia, positivo = mejor.{% endblocktrans %}{% if score_version %} · {% trans "versión del modelo" %} {{ score_version }}{% endif %}</p>
+    <p class="meta">{% blocktrans with target=target_title provider=target_provider_html %}Verificado contra «{{ target }}» ({{ provider }}), casi en tiempo real y tal como se almacenó: las revisiones posteriores del proveedor no se ven. Habilidad = 1 − ECM / ECM de la persistencia; 0 = igual a la persistencia, positivo = mejor.{% endblocktrans %}{% if score_version %} · {% trans "versión del modelo" %} {{ score_version }}{% endif %}</p>
     {% if score_rows %}
     <div class="table-scroll">
       <table class="status-table perf-table">
@@ -112,6 +112,7 @@
         {% for f in facts %}
         <dt>{{ f.label }}</dt><dd>{{ f.value }}</dd>
         {% endfor %}
+        {% include "web/_provider_links_row.html" %}
       </dl>
     </section>
     {% endif %}
