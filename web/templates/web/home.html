@@ -19,7 +19,7 @@
     <div class="eyebrow">{% trans "Lo que ofrece USACH" %}</div>
     {% for card in offer_cards %}
     <article class="ocard">
-      <h3>{{ card.title }} <span class="pill{% if card.pill_class %} {{ card.pill_class }}{% endif %}">{{ card.pill }}</span></h3>
+      <h3>{% if card.url %}<a href="{{ card.url }}">{{ card.title }}</a>{% else %}{{ card.title }}{% endif %} <span class="pill{% if card.pill_class %} {{ card.pill_class }}{% endif %}">{{ card.pill }}</span></h3>
       <p>{{ card.text }}</p>
     </article>
     {% endfor %}

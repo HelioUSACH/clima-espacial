@@ -1,5 +1,9 @@
 # gthread, 2 workers x 4 threads (22-HANDOFF-v0.3.0.md §2.2, deploy/README.md):
 # ~60 MB less RSS than 3 sync workers and 8 concurrent requests, not 3.
+#
+# D-090: the access log records the path without its query string (%(U)s,
+# never %(r)s/%(q)s) and no referrer, so an API key sent as ?api_key=...
+# never reaches the journal. `%%` is systemd's escape for a literal `%`.
 [Unit]
 Description=Clima Espacial USACH (gunicorn)
 After=network.target postgresql.service
@@ -14,7 +18,8 @@ EnvironmentFile=/etc/swx/swx.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/swx/venv/bin/gunicorn climaespacial.wsgi:application \
     --bind 127.0.0.1:8100 --workers 2 --threads 4 --worker-class gthread \
-    --access-logfile - --error-logfile -
+    --access-logfile - --error-logfile - \
+    --access-logformat '%%(h)s %%(t)s "%%(m)s %%(U)s %%(H)s" %%(s)s %%(b)s %%(L)s "%%(a)s"'
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=5

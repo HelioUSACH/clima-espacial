@@ -14,5 +14,4 @@ urlpatterns = [
     path("estado/", views.status, name="status"),
     path("acerca/", views.about, name="about"),
     path("datos-api/", views.data_api, name="data_api"),
-    path("datos-api/gracias/", views.data_api_thanks, name="data_api_thanks"),
 ]

@@ -59,6 +59,49 @@ SWX_DATA_DIR = Path(os.environ.get("SWX_DATA_DIR") or BASE_DIR / "data")
 SITE_CONTACT_EMAIL = os.environ.get("SWX_CONTACT_EMAIL", "")
 
 
+def env_int(name, default):
+    value = os.environ.get(name, "")
+    return int(value) if value.strip() else default
+
+
+# --- Data access: API keys, limits, export caps (D-083, D-086, D-087) ---------
+# Every limit can be overridden from the environment. The per-minute and
+# keyless per-hour throttles count in Django's per-process cache, so with
+# 2 gunicorn workers they are approximate (up to 2x); the daily quotas are
+# counted in the database (api.ApiUsageDay) and are exact.
+SWX_API_RATE_PER_MINUTE = env_int("SWX_API_RATE_PER_MINUTE", 60)
+SWX_API_DAILY_REQUESTS = env_int("SWX_API_DAILY_REQUESTS", 5000)
+SWX_API_DAILY_ROWS = env_int("SWX_API_DAILY_ROWS", 2_000_000)
+SWX_API_SERVICE_MULTIPLIER = env_int("SWX_API_SERVICE_MULTIPLIER", 10)
+# Keyless preview (D-083): a span of at most this many hours, ending within
+# the last SWX_API_KEYLESS_RECENT_DAYS days, at most this many per hour per IP.
+SWX_API_KEYLESS_MAX_HOURS = env_int("SWX_API_KEYLESS_MAX_HOURS", 24)
+SWX_API_KEYLESS_RECENT_DAYS = env_int("SWX_API_KEYLESS_RECENT_DAYS", 7)
+SWX_API_KEYLESS_PER_HOUR = env_int("SWX_API_KEYLESS_PER_HOUR", 30)
+# Per-request caps (D-087): span by native cadence, and rows.
+SWX_EXPORT_MAX_DAYS_FAST = env_int("SWX_EXPORT_MAX_DAYS_FAST", 31)    # cadence <= 5 min
+SWX_EXPORT_MAX_DAYS_SLOW = env_int("SWX_EXPORT_MAX_DAYS_SLOW", 366)   # anything slower
+SWX_EXPORT_MAX_ROWS = env_int("SWX_EXPORT_MAX_ROWS", 200_000)
+SWX_FORECAST_MAX_DAYS = env_int("SWX_FORECAST_MAX_DAYS", 31)
+# Registration (D-086): at most this many new registrations per client IP per day.
+SWX_REGISTRATIONS_PER_IP_DAY = env_int("SWX_REGISTRATIONS_PER_IP_DAY", 5)
+
+# --- Email (optional, D-086) ---------------------------------------------------
+# Only used to send a new API key to its owner. Without SWX_EMAIL_HOST no
+# email is ever attempted and the key is only shown on screen.
+SWX_EMAIL_HOST = os.environ.get("SWX_EMAIL_HOST", "")
+SWX_EMAIL_ENABLED = bool(SWX_EMAIL_HOST)
+if SWX_EMAIL_ENABLED:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = SWX_EMAIL_HOST
+    EMAIL_PORT = env_int("SWX_EMAIL_PORT", 587)
+    EMAIL_HOST_USER = os.environ.get("SWX_EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.environ.get("SWX_EMAIL_HOST_PASSWORD", "")
+    EMAIL_USE_TLS = os.environ.get("SWX_EMAIL_USE_TLS", "1") == "1"
+DEFAULT_FROM_EMAIL = os.environ.get("SWX_EMAIL_FROM", "") or "noreply@localhost"
+EMAIL_TIMEOUT = 10
+
+
 # --- Django --------------------------------------------------------------------
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "")
@@ -75,6 +118,7 @@ INSTALLED_APPS = [
     "django.contrib.humanize",
     "core",
     "web",
+    "api",
 ]
 
 MIDDLEWARE = [

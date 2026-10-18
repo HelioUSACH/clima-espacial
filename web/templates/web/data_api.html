@@ -1,23 +1,114 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n humanize %}
 {% block title %}{% trans "Datos y API" %}{% endblock %}
 {% block content %}
-<div class="wrap page">
+<div class="wrap page data-access">
 <h1>{% trans "Datos y API" %}</h1>
-<p class="lede">
-  {% trans "Ver el portal es libre. Las descargas y la futura API (incl. HAPI) requieren un registro simple y gratuito, que entrega una llave de acceso. Por ahora, este formulario registra tu interés; te avisaremos cuando las llaves de acceso y el endpoint HAPI estén disponibles." %}
-</p>
-<p>{% trans "Licencia de los datos: CC BY 4.0 — ver cómo citar en cada producto del catálogo." %}</p>
+<p class="lede">{% trans "Ver el portal es libre. Las series y pronósticos también se pueden descargar: como CSV desde cada producto, desde un servidor HAPI o en el formato de intercambio de pronósticos. Con un registro gratuito obtienes una llave de API; sin llave puedes bajar tramos cortos y recientes." %}</p>
 
-<h2>{% trans "Aviso de privacidad" %}</h2>
-<p class="lede">
-  {% trans "Qué recopilamos: nombre, correo, institución, sector y el uso previsto que describas. Por qué: para habilitar el acceso a datos/API y para reportar uso agregado por sector al proyecto FONDEF/FIU. Quién lo ve: el equipo del proyecto; nunca se vende ni se comparte con terceros. Cuánto se conserva: mientras el registro esté activo. Cómo pedir la eliminación de tus datos: escríbenos." %}
+<nav class="toc" aria-label="{% trans 'En esta página' %}">
+  <a href="#acceso">{% trans "Cómo acceder" %}</a> ·
+  <a href="#series">{% trans "Series disponibles" %}</a> ·
+  <a href="#ejemplos">{% trans "Ejemplos" %}</a> ·
+  <a href="#condiciones">{% trans "Condiciones de uso" %}</a> ·
+  <a href="#registro">{% trans "Registro" %}</a>
+</nav>
+
+<h2 id="acceso">{% trans "Cómo acceder" %}</h2>
+<ul>
+  <li>{% blocktrans with url=hapi_url %}<strong>HAPI</strong>, el estándar de la comunidad heliofísica para series de tiempo: <a href="{{ url }}">{{ url }}</a>. Funciona con cualquier cliente HAPI.{% endblocktrans %}</li>
+  <li>{% trans "<strong>CSV</strong>: el botón «CSV» de cada producto descarga las últimas 24 h, 7 o 30 días, o el rango que elijas." %}</li>
+  <li>{% trans "<strong>Pronósticos</strong> en el formato de intercambio de la red, en JSON o CSV (lista más abajo)." %}</li>
+</ul>
+<p>{% trans "La llave va en el encabezado <code>X-API-Key</code> o, si tu cliente no puede enviar encabezados (los clientes HAPI), en el parámetro <code>api_key</code> de la URL. Trátala como una contraseña." %}</p>
+
+<h3>{% trans "Sin llave" %}</h3>
+<p>{% blocktrans with h=limits.keyless_hours d=limits.keyless_days n=limits.keyless_per_hour %}Sin llave puedes pedir hasta {{ h }} h de datos que terminen dentro de los últimos {{ d }} días, o la última emisión de un pronóstico, hasta {{ n }} veces por hora desde una misma conexión. Para más historia, regístrate.{% endblocktrans %}</p>
+
+<h3>{% trans "Límites por llave" %}</h3>
+<ul>
+  <li>{% blocktrans with n=limits.per_minute %}{{ n }} solicitudes por minuto (aproximado).{% endblocktrans %}</li>
+  <li>{% blocktrans with n=limits.per_day|intcomma r=limits.rows_per_day|intcomma %}{{ n }} solicitudes y {{ r }} filas por día UTC.{% endblocktrans %}</li>
+  <li>{% blocktrans with fast=limits.max_days_fast slow=limits.max_days_slow rows=limits.max_rows|intcomma %}Por solicitud: hasta {{ fast }} días de una serie de 5 minutos o menos, {{ slow }} días de una más lenta, y {{ rows }} filas. Para más, divide el rango.{% endblocktrans %}</li>
+  <li>{% trans "Si te pasas, la respuesta es HTTP 429 con <code>Retry-After</code>." %}</li>
+</ul>
+
+<h2 id="series">{% trans "Series disponibles" %}</h2>
+<div class="table-wrap">
+<table class="status-table">
+  <thead><tr><th>{% trans "Identificador (HAPI)" %}</th><th>{% trans "Serie" %}</th><th>{% trans "Cadencia" %}</th><th>{% trans "Licencia" %}</th></tr></thead>
+  <tbody>
+  {% for d in datasets %}
+    <tr>
+      <td><code>{{ d.id }}</code></td>
+      <td><a href="{% url 'web:product_detail' d.id %}">{{ d.title }}</a>{% if d.relay %}<br><small class="relay-tag">{% trans "de terceros:" %} {% if d.provider_url %}<a href="{{ d.provider_url }}" rel="noopener nofollow">{{ d.provider }} {% include "web/_icon_ext.html" %}</a>{% else %}{{ d.provider }}{% endif %}</small>{% endif %}</td>
+      <td>{{ d.cadence }}</td>
+      <td>{{ d.license }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="4">{% trans "Todavía no hay series disponibles para descarga." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if datasets %}
+<p class="note relay-note">{% trans "<strong>Series de terceros</strong>: las ofrecemos por comodidad y podemos dejar de hacerlo. Para uso operacional en tiempo real, obtenlas directamente del proveedor oficial (enlace en cada fila)." %}</p>
+{% endif %}
+
+{% if forecasts %}
+<h3>{% trans "Pronósticos" %}</h3>
+<ul>
+  {% for f in forecasts %}
+  <li><a href="{% url 'web:product_detail' f.id %}">{{ f.title }}</a> ({{ f.license }}):
+    <a href="{% url 'api:forecast_json' f.id %}">JSON</a> · <a href="{% url 'api:forecast_csv' f.id %}">CSV</a>
+    <small>— {% blocktrans with n=limits.forecast_days %}la última emisión; con llave, <code>?issued_since=…&amp;issued_until=…</code> (hasta {{ n }} días){% endblocktrans %}</small></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if not_exported %}
+<h3>{% trans "Series que mostramos pero no redistribuimos" %}</h3>
+<p>{% trans "Su licencia no permite que las reenviemos. Obtenlas del proveedor:" %}</p>
+<ul>
+  {% for m in not_exported %}
+  <li><a href="{% url 'web:product_detail' m.id %}">{{ m.title }}</a> ({{ m.license }}){% for l in m.links|slice:":1" %}: <a href="{{ l.url }}" rel="noopener nofollow">{{ l.name }} {% include "web/_icon_ext.html" %}</a>{% endfor %}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h2 id="ejemplos">{% trans "Ejemplos" %}</h2>
+<p>{% trans "Reemplaza la llave de ejemplo por la tuya." %}</p>
+<h3>{% trans "CSV con curl" %}</h3>
+<pre class="code"><code>{{ examples.curl }}</code></pre>
+<h3>{% trans "HAPI (URL directa)" %}</h3>
+<pre class="code"><code>{{ examples.hapi_url }}</code></pre>
+<h3>{% trans "Python (requests)" %}</h3>
+<pre class="code"><code>{{ examples.python }}</code></pre>
+<p>{% trans "Los tiempos son UTC (ISO 8601) y marcan el inicio de cada intervalo. Un valor faltante es <code>-1.0E31</code>." %}</p>
+
+<h2 id="condiciones">{% trans "Condiciones de uso" %}</h2>
+<ul>
+  <li>{% trans "Cada serie conserva su licencia: los productos de USACH son CC BY 4.0 (cita la fuente), los datos de la NOAA son de dominio público. Cita también al proveedor original cuando corresponda." %}</li>
+  <li>{% trans "Los datos se entregan tal cual, sin garantía. No son avisos oficiales: para alertas, consulta a los servicios oficiales." %}</li>
+  <li>{% trans "Las llaves son personales y podemos revocarlas si se usan para sobrecargar el servicio o se comparten públicamente." %}</li>
+</ul>
+
+<h2 id="registro">{% trans "Registro" %}</h2>
+<div class="privacy">
+<h3>{% trans "Aviso de privacidad" %}</h3>
+<p>
+  {% trans "Qué guardamos: tu nombre, correo, institución, sector y el uso previsto que describas; una huella (hash) de tu llave de API, nunca la llave misma; y, por cada llave, cuántas solicitudes y filas descargó cada día. Por qué: para entregarte acceso a los datos y para elaborar estadísticas de uso por sector para los informes a quienes financian el proyecto. Quién lo ve: el equipo del proyecto; nunca se vende ni se comparte con terceros, y las estadísticas que se reportan no incluyen nombres ni correos. Cuánto se conserva: mientras el registro esté activo. Cómo pedir la eliminación de tus datos: escríbenos." %}
   {% if site_contact_email %}<a href="mailto:{{ site_contact_email }}">{{ site_contact_email }}</a>.{% else %}{% trans "el correo de contacto se publicará pronto" %}.{% endif %}
 </p>
+</div>
 
-<form method="post" novalidate>
+<form method="post" novalidate class="registration">
   {% csrf_token %}
+  {{ form.non_field_errors }}
   {% for field in form %}
+  {% if field.name == "website" %}
+  <div class="hp" aria-hidden="true">{{ field.label_tag }} {{ field }}</div>
+  {% else %}
   <div class="form-field{% if field.name == 'consent_given' %} form-field--checkbox{% endif %}">
     {% if field.name == 'consent_given' %}
       <label>{{ field }} {{ field.label }}</label>
@@ -27,8 +118,9 @@
     {% endif %}
     {{ field.errors }}
   </div>
+  {% endif %}
   {% endfor %}
-  <button type="submit" class="primary">{% trans "Enviar" %}</button>
+  <button type="submit" class="primary">{% trans "Registrarme y obtener mi llave" %}</button>
 </form>
 </div>
 {% endblock %}

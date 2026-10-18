@@ -1,0 +1,21 @@
+# A made-up USACH product with exchange.hapi: true, used to prove that the
+# first real one will export through HAPI and CSV with no code change
+# (D-084, D-087). Not under modules/, so the portal never loads it.
+id: usach.test.own
+version: 1
+kind: timeseries
+title: {es: "Producto propio de prueba", en: "Own test product"}
+maturity: experimental
+cadence: 1m
+stale_after: 15m
+producer: {type: collector}
+source:
+  provider: "HelioUSACH (USACH)"
+  inputs: ["noaa.rtsw.mag"]
+  license: "CC-BY-4.0"
+parameters:
+  - {name: dbdt, units: "nT/min"}
+  - {name: probability, units: "1", range: [0, 1]}
+exchange: {hapi: true, feed: false}
+facts:
+  citation: {es: "HelioUSACH (2026), producto de prueba, doi:10.0000/test", en: "HelioUSACH (2026), test product, doi:10.0000/test"}

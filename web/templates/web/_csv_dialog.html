@@ -1,0 +1,33 @@
+{% load i18n %}
+<dialog id="csv-dialog" class="csv-dialog" aria-labelledby="csv-dialog-title"
+        data-endpoint="{{ csv_download.endpoint }}" data-product="{{ csv_download.product_id }}"
+        data-msg-need-key="{% trans 'Para más de las últimas 24 h necesitas una llave de API.' %}"
+        data-msg-bad-range="{% trans 'Elige un rango válido: la fecha final debe ser posterior a la inicial.' %}"
+        data-msg-failed="{% trans 'No se pudo descargar. Inténtalo de nuevo.' %}"
+        data-msg-busy="{% trans 'Preparando la descarga…' %}">
+  <form method="dialog">
+    <h2 id="csv-dialog-title">{% trans "Descargar CSV" %}</h2>
+    <fieldset class="csv-ranges">
+      <legend>{% trans "Rango (UT)" %}</legend>
+      <label><input type="radio" name="range" value="1" checked> {% trans "Últimas 24 h" %} <small>{% trans "sin llave" %}</small></label>
+      <label><input type="radio" name="range" value="7"> {% trans "7 días" %}</label>
+      <label><input type="radio" name="range" value="30"> {% trans "30 días" %}</label>
+      <label><input type="radio" name="range" value="custom"> {% trans "Otro rango" %}</label>
+      <div class="csv-custom" hidden>
+        <label>{% trans "Desde" %} <input type="date" name="start"></label>
+        <label>{% trans "Hasta (inclusive)" %} <input type="date" name="end"></label>
+      </div>
+    </fieldset>
+    <div class="form-field">
+      <label for="csv-key">{% trans "Llave de API" %}</label>
+      <input id="csv-key" name="key" type="text" autocomplete="off" spellcheck="false" placeholder="swx_…">
+      <label class="csv-remember"><input type="checkbox" name="remember" checked> {% trans "Recordarla en este navegador" %}</label>
+    </div>
+    <p class="csv-hint">{% trans "Sin llave puedes bajar las últimas 24 h." %} <a href="{% url 'web:data_api' %}">{% trans "Obtén una llave gratis" %}</a></p>
+    <p class="csv-error" role="alert" hidden></p>
+    <div class="csv-actions">
+      <button class="sbtn" value="cancel" formnovalidate>{% trans "Cancelar" %}</button>
+      <button class="primary" type="button" data-csv-download>{% trans "Descargar" %}</button>
+    </div>
+  </form>
+</dialog>

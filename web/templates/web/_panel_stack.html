@@ -15,7 +15,7 @@
       </div>
       <button class="sbtn" type="button" data-reset-zoom>{% trans "Restablecer zoom" %}</button>
       <button class="sbtn" type="button" data-png-export>PNG</button>
-      {% if csv_stub %}<button class="sbtn" type="button" disabled>{% trans "CSV · próximamente" %}</button>{% endif %}
+      {% if csv_download %}<button class="sbtn" type="button" data-csv-open="csv-dialog" aria-haspopup="dialog">CSV</button>{% elif provider_data_link %}<a class="sbtn" href="{{ provider_data_link.url }}" rel="noopener nofollow">{% trans "Datos en el sitio del proveedor" %} {% include "web/_icon_ext.html" %}</a>{% endif %}
     </div>
   </div>
   <div class="figwrap">

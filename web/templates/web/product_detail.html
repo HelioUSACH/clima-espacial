@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n static %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 <div class="wrap">
@@ -24,6 +24,7 @@
   </div>
 
   {% include "web/_panel_stack.html" %}
+  {% if csv_download %}{% include "web/_csv_dialog.html" %}{% endif %}
 
   <div class="below">
     <section>
@@ -44,3 +45,4 @@
   </div>
 </div>
 {% endblock %}
+{% block extra_scripts %}{% if csv_download %}<script defer src="{% static 'web/js/data-access.js' %}"></script>{% endif %}{% endblock %}

@@ -339,6 +339,8 @@ a.pill:focus-visible { border-radius: 999px; }
 .heroband .eyebrow { text-shadow: 0 0 3px var(--space), 0 0 6px var(--space); }
 .heroband .ocard { background: rgba(10, 18, 34, .72); border-color: rgba(255, 255, 255, .14); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .heroband .ocard h3 { color: #ffffff; }
+.heroband .ocard h3 a { color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .4); text-underline-offset: 3px; }
+.heroband .ocard h3 a:hover { color: var(--sun); }
 .heroband .ocard p { color: var(--space-soft); }
 .heroband .pill { color: var(--space-soft); border-color: rgba(255, 255, 255, .22); }
 .heroband .pill.beta { background: var(--sun); color: #1a1206; border-color: transparent; }
@@ -514,3 +516,29 @@ button.primary { font: inherit; background: var(--accent); color: var(--accent-i
 .perf-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .perf-table tbody tr:last-child td { border-bottom: 0; }
 .perf-table abbr { text-decoration: none; }
+
+/* Data access (v0.5.0): /datos-api/, the key page, the CSV dialog. */
+.data-access .toc { font-family: var(--font-ui); font-size: 13px; margin: 0 0 1.5rem; }
+.data-access .table-wrap { overflow-x: auto; }
+.data-access .relay-tag { color: var(--ink-faint); }
+.data-access .note { color: var(--ink-soft); }
+pre.code { background: var(--band); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px;
+  overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; white-space: pre; max-width: 100%; }
+.data-access code, pre.code code { font-family: var(--font-mono); font-size: inherit; }
+.key-box { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 1rem 0; }
+.key-box .key { flex: 1 1 22rem; min-width: 0; font-family: var(--font-mono); font-size: 14px; padding: .6em .8em;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--raised); color: var(--ink); }
+/* Honeypot: off-screen rather than display:none, which some bots skip. */
+.hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.csv-dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--raised); color: var(--ink);
+  padding: 20px; width: min(28rem, calc(100vw - 32px)); }
+.csv-dialog::backdrop { background: rgba(10, 18, 34, .55); }
+.csv-dialog h2 { margin-top: 0; }
+.csv-dialog fieldset { border: 0; padding: 0; margin: 0 0 1rem; display: grid; gap: .35rem; }
+.csv-dialog legend { font-size: .85rem; color: var(--ink-soft); margin-bottom: .35rem; }
+.csv-dialog .csv-custom { display: flex; flex-wrap: wrap; gap: 8px; }
+.csv-dialog .csv-custom[hidden] { display: none; }
+.csv-dialog .csv-remember { display: flex; gap: .4em; align-items: center; font-size: .85rem; }
+.csv-dialog .csv-hint { font-size: .85rem; color: var(--ink-soft); }
+.csv-dialog .csv-error { color: var(--severity-strong); font-size: .9rem; }
+.csv-dialog .csv-actions { display: flex; justify-content: flex-end; gap: 8px; }

@@ -586,3 +586,264 @@ msgstr "data up to %(day)s"
 
 msgid "al %(when)s"
 msgstr "as of %(when)s"
+
+msgid "Tu llave de API de Clima Espacial USACH"
+msgstr "Your Clima Espacial USACH API key"
+
+msgid "Hola %(name)s:"
+msgstr "Hello %(name)s,"
+
+msgid "Gracias por registrarte en Clima Espacial USACH. Esta es tu llave de API:"
+msgstr "Thank you for registering with Clima Espacial USACH. This is your API key:"
+
+msgid "Guárdala en un lugar seguro: no la almacenamos y no podemos recuperarla. Si la pierdes, escríbenos y te daremos una nueva."
+msgstr "Keep it somewhere safe: we don't store it and can't recover it. If you lose it, write to us and we'll give you a new one."
+
+msgid "Descargar CSV (curl):"
+msgstr "Download CSV (curl):"
+
+msgid "HAPI (URL directa):"
+msgstr "HAPI (direct URL):"
+
+msgid "Python (requests):"
+msgstr "Python (requests):"
+
+msgid "Condiciones de uso, límites y lista de series:"
+msgstr "Terms of use, limits and list of series:"
+
+msgid "Deja este campo vacío"
+msgstr "Leave this field empty"
+
+msgid "Para más de las últimas 24 h necesitas una llave de API."
+msgstr "You need an API key for more than the last 24 h."
+
+msgid "Elige un rango válido: la fecha final debe ser posterior a la inicial."
+msgstr "Choose a valid range: the end date must be after the start date."
+
+msgid "No se pudo descargar. Inténtalo de nuevo."
+msgstr "The download failed. Please try again."
+
+msgid "Preparando la descarga…"
+msgstr "Preparing the download…"
+
+msgid "Descargar CSV"
+msgstr "Download CSV"
+
+msgid "Rango (UT)"
+msgstr "Range (UT)"
+
+msgid "Últimas 24 h"
+msgstr "Last 24 h"
+
+msgid "sin llave"
+msgstr "no key needed"
+
+msgid "7 días"
+msgstr "7 days"
+
+msgid "30 días"
+msgstr "30 days"
+
+msgid "Otro rango"
+msgstr "Other range"
+
+msgid "Desde"
+msgstr "From"
+
+msgid "Hasta (inclusive)"
+msgstr "To (inclusive)"
+
+msgid "Llave de API"
+msgstr "API key"
+
+msgid "Recordarla en este navegador"
+msgstr "Remember it in this browser"
+
+msgid "Sin llave puedes bajar las últimas 24 h."
+msgstr "Without a key you can download the last 24 h."
+
+msgid "Obtén una llave gratis"
+msgstr "Get a free key"
+
+msgid "Cancelar"
+msgstr "Cancel"
+
+msgid "Descargar"
+msgstr "Download"
+
+msgid "Datos en el sitio del proveedor"
+msgstr "Data on the provider's site"
+
+msgid "Ver el portal es libre. Las series y pronósticos también se pueden descargar: como CSV desde cada producto, desde un servidor HAPI o en el formato de intercambio de pronósticos. Con un registro gratuito obtienes una llave de API; sin llave puedes bajar tramos cortos y recientes."
+msgstr "Viewing the portal is open to everyone. The series and forecasts can also be downloaded: as CSV from each product, from a HAPI server, or in the forecast exchange format. A free registration gives you an API key; without a key you can download short, recent stretches."
+
+msgid "En esta página"
+msgstr "On this page"
+
+msgid "Cómo acceder"
+msgstr "How to access"
+
+msgid "Series disponibles"
+msgstr "Available series"
+
+msgid "Ejemplos"
+msgstr "Examples"
+
+msgid "Condiciones de uso"
+msgstr "Terms of use"
+
+msgid "Registro"
+msgstr "Registration"
+
+msgid "<strong>HAPI</strong>, el estándar de la comunidad heliofísica para series de tiempo: <a href=\"%(url)s\">%(url)s</a>. Funciona con cualquier cliente HAPI."
+msgstr "<strong>HAPI</strong>, the heliophysics community's standard for time series: <a href=\"%(url)s\">%(url)s</a>. It works with any HAPI client."
+
+msgid "<strong>CSV</strong>: el botón «CSV» de cada producto descarga las últimas 24 h, 7 o 30 días, o el rango que elijas."
+msgstr "<strong>CSV</strong>: the “CSV” button on each product downloads the last 24 h, 7 or 30 days, or a range of your choice."
+
+msgid "<strong>Pronósticos</strong> en el formato de intercambio de la red, en JSON o CSV (lista más abajo)."
+msgstr "<strong>Forecasts</strong> in the network's exchange format, as JSON or CSV (list below)."
+
+msgid "La llave va en el encabezado <code>X-API-Key</code> o, si tu cliente no puede enviar encabezados (los clientes HAPI), en el parámetro <code>api_key</code> de la URL. Trátala como una contraseña."
+msgstr "Send the key in the <code>X-API-Key</code> header or, if your client can't send headers (HAPI clients), in the URL's <code>api_key</code> parameter. Treat it like a password."
+
+msgid "Sin llave"
+msgstr "Without a key"
+
+msgid "Sin llave puedes pedir hasta %(h)s h de datos que terminen dentro de los últimos %(d)s días, o la última emisión de un pronóstico, hasta %(n)s veces por hora desde una misma conexión. Para más historia, regístrate."
+msgstr "Without a key you can ask for up to %(h)s h of data ending within the last %(d)s days, or a forecast's latest issue, up to %(n)s times per hour from one connection. For more history, register."
+
+msgid "Límites por llave"
+msgstr "Limits per key"
+
+msgid "%(n)s solicitudes por minuto (aproximado)."
+msgstr "%(n)s requests per minute (approximate)."
+
+msgid "%(n)s solicitudes y %(r)s filas por día UTC."
+msgstr "%(n)s requests and %(r)s rows per UTC day."
+
+msgid "Por solicitud: hasta %(fast)s días de una serie de 5 minutos o menos, %(slow)s días de una más lenta, y %(rows)s filas. Para más, divide el rango."
+msgstr "Per request: up to %(fast)s days of a series at 5 minutes or faster, %(slow)s days of a slower one, and %(rows)s rows. For more, split the range."
+
+msgid "Si te pasas, la respuesta es HTTP 429 con <code>Retry-After</code>."
+msgstr "Over a limit, the answer is HTTP 429 with <code>Retry-After</code>."
+
+msgid "Identificador (HAPI)"
+msgstr "Identifier (HAPI)"
+
+msgid "Serie"
+msgstr "Series"
+
+msgid "Cadencia"
+msgstr "Cadence"
+
+msgid "Licencia"
+msgstr "Licence"
+
+msgid "de terceros:"
+msgstr "third-party:"
+
+msgid "Todavía no hay series disponibles para descarga."
+msgstr "No series are available for download yet."
+
+msgid "<strong>Series de terceros</strong>: las ofrecemos por comodidad y podemos dejar de hacerlo. Para uso operacional en tiempo real, obtenlas directamente del proveedor oficial (enlace en cada fila)."
+msgstr "<strong>Third-party series</strong>: we offer them for convenience and may stop doing so. For operational real-time use, get them directly from the official provider (link on each row)."
+
+msgid "Pronósticos"
+msgstr "Forecasts"
+
+msgid "la última emisión; con llave, <code>?issued_since=…&amp;issued_until=…</code> (hasta %(n)s días)"
+msgstr "the latest issue; with a key, <code>?issued_since=…&amp;issued_until=…</code> (up to %(n)s days)"
+
+msgid "Series que mostramos pero no redistribuimos"
+msgstr "Series we show but don't redistribute"
+
+msgid "Su licencia no permite que las reenviemos. Obtenlas del proveedor:"
+msgstr "Their licence doesn't let us pass them on. Get them from the provider:"
+
+msgid "Reemplaza la llave de ejemplo por la tuya."
+msgstr "Replace the example key with yours."
+
+msgid "CSV con curl"
+msgstr "CSV with curl"
+
+msgid "HAPI (URL directa)"
+msgstr "HAPI (direct URL)"
+
+msgid "Python (requests)"
+msgstr "Python (requests)"
+
+msgid "Los tiempos son UTC (ISO 8601) y marcan el inicio de cada intervalo. Un valor faltante es <code>-1.0E31</code>."
+msgstr "Times are UTC (ISO 8601) and mark the start of each interval. A missing value is <code>-1.0E31</code>."
+
+msgid "Cada serie conserva su licencia: los productos de USACH son CC BY 4.0 (cita la fuente), los datos de la NOAA son de dominio público. Cita también al proveedor original cuando corresponda."
+msgstr "Each series keeps its licence: USACH products are CC BY 4.0 (cite the source), NOAA data are in the public domain. Credit the original provider too where it applies."
+
+msgid "Los datos se entregan tal cual, sin garantía. No son avisos oficiales: para alertas, consulta a los servicios oficiales."
+msgstr "The data are provided as is, without warranty. They are not official warnings: for alerts, check the official services."
+
+msgid "Las llaves son personales y podemos revocarlas si se usan para sobrecargar el servicio o se comparten públicamente."
+msgstr "Keys are personal, and we may revoke one used to overload the service or shared publicly."
+
+msgid "Qué guardamos: tu nombre, correo, institución, sector y el uso previsto que describas; una huella (hash) de tu llave de API, nunca la llave misma; y, por cada llave, cuántas solicitudes y filas descargó cada día. Por qué: para entregarte acceso a los datos y para elaborar estadísticas de uso por sector para los informes a quienes financian el proyecto. Quién lo ve: el equipo del proyecto; nunca se vende ni se comparte con terceros, y las estadísticas que se reportan no incluyen nombres ni correos. Cuánto se conserva: mientras el registro esté activo. Cómo pedir la eliminación de tus datos: escríbenos."
+msgstr "What we store: your name, email, institution, sector and the intended use you describe; a fingerprint (hash) of your API key, never the key itself; and, for each key, how many requests and rows it downloaded each day. Why: to give you access to the data, and to compile usage statistics by sector for the reports to the project's funders. Who sees it: the project team; it is never sold or shared with third parties, and the statistics we report contain no names or emails. How long we keep it: while the registration is active. How to ask for your data to be deleted: write to us."
+
+msgid "Registrarme y obtener mi llave"
+msgstr "Register and get my key"
+
+msgid "Ya estás registrado"
+msgstr "You're already registered"
+
+msgid "Registramos este correo hace unos minutos, así que no creamos otra llave. Si no alcanzaste a copiar la tuya, escríbenos y te daremos una nueva."
+msgstr "We registered this email a few minutes ago, so we didn't create another key. If you didn't manage to copy yours, write to us and we'll give you a new one."
+
+msgid "¡Gracias! Esta es tu llave de API"
+msgstr "Thank you! This is your API key"
+
+msgid "Cópiala ahora: se muestra solo esta vez."
+msgstr "Copy it now: it is shown only this once."
+
+msgid "No la guardamos (solo una huella para reconocerla), así que no podemos recuperarla."
+msgstr "We don't store it (only a fingerprint to recognise it), so we can't recover it."
+
+msgid "Tu llave de API"
+msgstr "Your API key"
+
+msgid "Copiada"
+msgstr "Copied"
+
+msgid "Copiar"
+msgstr "Copy"
+
+msgid "También te la enviamos a %(email)s."
+msgstr "We also sent it to %(email)s."
+
+msgid "No pudimos enviarte la llave por correo: cópiala ahora."
+msgstr "We couldn't email you the key: copy it now."
+
+msgid "Primeros pasos"
+msgstr "Getting started"
+
+msgid "Copiado"
+msgstr "Copied"
+
+msgid "Límites, series y condiciones de uso"
+msgstr "Limits, series and terms of use"
+
+msgid "Última emisión:"
+msgstr "Latest issue:"
+
+msgid "más"
+msgstr "more"
+
+msgid "disponible"
+msgstr "available"
+
+msgid "Descargas CSV y un servidor HAPI, con registro gratuito. Cada serie conserva su licencia: los productos USACH son CC BY 4.0 y los datos de la NOAA, de dominio público."
+msgstr "CSV downloads and a HAPI server, with free registration. Each series keeps its licence: USACH products are CC BY 4.0, NOAA data are public domain."
+
+msgid "No pudimos procesar el registro. Inténtalo de nuevo."
+msgstr "We couldn't process the registration. Please try again."
+
+msgid "Demasiados registros desde esta conexión hoy. Inténtalo mañana o escríbenos."
+msgstr "Too many registrations from this connection today. Try again tomorrow or write to us."

@@ -10,6 +10,10 @@ class RegistrationForm(forms.ModelForm):
         required=True,
         error_messages={"required": _("Debes aceptar el aviso de privacidad para continuar.")},
     )
+    # Honeypot (D-086): hidden from people by CSS, filled in by naive bots.
+    # A registration with it set is dropped without saving anything.
+    website = forms.CharField(required=False, label=_("Deja este campo vacío"),
+                              widget=forms.TextInput(attrs={"autocomplete": "off", "tabindex": "-1"}))
 
     class Meta:
         model = RegistrationRequest

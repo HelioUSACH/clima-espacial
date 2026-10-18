@@ -43,10 +43,13 @@ echo "systemctl $*" >> "$STUB_LOG"
 [[ $1 == is-active && " $* " == *" ${STUB_DOWN:-none} "* ]] && exit 3
 exit 0
 ''',
-    # The smoke test: the home page names a hashed charts.js; serie.json is a 404 (no data yet).
+    # The smoke test: the home page names a hashed charts.js; /hapi/capabilities
+    # answers HAPI; serie.json is a 404 (no data yet).
     "curl": r'''
 echo "curl" >> "$STUB_LOG"
-if [[ " $* " == *" --output "* ]]; then printf 404; else echo '<script src="static/web/js/charts.0123456789ab.js">'; fi
+if [[ " $* " == *" --output "* ]]; then printf 404
+elif [[ " $* " == *"/hapi/capabilities"* ]]; then echo '{"HAPI": "3.3", "outputFormats": ["csv", "json"]}'
+else echo '<script src="static/web/js/charts.0123456789ab.js">'; fi
 ''',
     "install": 'echo "install $*" >> "$STUB_LOG"',
     "runuser": 'echo "runuser $*" >> "$STUB_LOG"',

@@ -113,6 +113,7 @@
         <dt>{{ f.label }}</dt><dd>{{ f.value }}</dd>
         {% endfor %}
         {% include "web/_provider_links_row.html" %}
+        <dt>{% trans "Descargar" %}</dt><dd>{% trans "Última emisión:" %} <a href="{% url 'api:forecast_json' product.id %}">JSON</a> · <a href="{% url 'api:forecast_csv' product.id %}">CSV</a> · <a href="{% url 'web:data_api' %}#series">{% trans "más" %}</a></dd>
       </dl>
     </section>
     {% endif %}

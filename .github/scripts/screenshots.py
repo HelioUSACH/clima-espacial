@@ -36,6 +36,8 @@ PAGES = {
     # ends at its latest datum, not now (D-082).
     "kyoto.dst": ("/productos/kyoto.dst/", 1, None),
     "kyoto.ae": ("/productos/kyoto.ae/", 1, "delayed"),
+    # v0.5.0: the data-access page (no chart): its code examples must show.
+    "datos-api": ("/datos-api/", 0, "code"),
 }
 WIDTHS = {"desktop": 1440, "mobile": 390}
 THEMES = ("day", "night")
@@ -69,6 +71,14 @@ def check_delayed(page, failures, label):
         span = page.evaluate(SPAN_SECONDS)
         if not span or span < 0.5 * 86400:
             failures.append(f"{label} {range_key}: delayed chart spans {span} s, expected its data")
+
+
+def check_code_blocks(page, failures, label):
+    # Every code example has visible text (a <pre> whose text collapses to
+    # zero height would look like an empty grey bar).
+    heights = page.evaluate("[...document.querySelectorAll('pre.code')].map(e => e.clientHeight)")
+    if not heights or min(heights) < 30:
+        failures.append(f"{label}: code examples not rendered (heights {heights})")
 
 
 def wait_for_charts(page, expected):
@@ -174,6 +184,8 @@ def main(base_url, out_dir):
                                 check_forecast_views(page, failures, label)
                             elif checks == "delayed":
                                 check_delayed(page, failures, label)
+                        if checks == "code":
+                            check_code_blocks(page, failures, label)
                         context.close()
         browser.close()
     for f in failures:
