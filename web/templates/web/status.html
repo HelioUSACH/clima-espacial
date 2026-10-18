@@ -18,9 +18,9 @@
     <tr>
       <td><a href="{% url 'web:product_detail' row.product.id %}">{{ row.title }}</a></td>
       <td>
-        <span class="status-badge">
+        <span class="status-badge{% if row.status.status == 'delayed' %} status-badge--delayed{% endif %}"{% if row.status.title %} title="{{ row.status.title }}"{% endif %}>
           <span class="status-badge__dot" style="background:{{ row.status.color }}"></span>
-          {{ row.status.label }}
+          {{ row.status.label }}{% if row.status.title %} <small class="status-badge__note">({{ row.status.title }})</small>{% endif %}
         </span>
       </td>
       <td>{{ row.last_seen_at|default:"—" }}</td>

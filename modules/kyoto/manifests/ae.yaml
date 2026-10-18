@@ -10,6 +10,8 @@ maturity: experimental
 cadence: 1d
 # Not red while it is simply behind: Kyoto's HAPI lags by weeks.
 stale_after: 30d
+# ...but say so: older than this, the status reads "al día · con retraso".
+delayed_after: 2d
 producer: {type: collector, unit: "swx-collect@kyoto.ae.timer"}
 source:
   provider: "WDC Kyoto"

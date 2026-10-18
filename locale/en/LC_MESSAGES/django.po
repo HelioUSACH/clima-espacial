@@ -574,3 +574,15 @@ msgstr "data up to"
 
 msgid "(con retraso)"
 msgstr "(delayed)"
+
+msgid "experimental"
+msgstr "experimental"
+
+msgid "Gracias"
+msgstr "Thank you"
+
+msgid "datos hasta %(day)s"
+msgstr "data up to %(day)s"
+
+msgid "al %(when)s"
+msgstr "as of %(when)s"

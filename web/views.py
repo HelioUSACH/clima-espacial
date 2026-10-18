@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import re
 
 from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseBadRequest
@@ -8,7 +9,8 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.cache import patch_cache_control
-from django.utils.html import format_html
+from django.utils.html import escape, format_html
+from django.utils.safestring import mark_safe
 from django.utils.translation import get_language, gettext
 from django.views.decorators.http import require_http_methods
 
@@ -18,6 +20,7 @@ from core.models import Event, Forecast, ForecastScore, Heartbeat, Product, Time
 from . import charts, forecasts, series
 from .forms import RegistrationForm
 from .numfmt import fmt_number
+from .product_status import latest_datum, public_status
 
 FLARE_PRODUCT_ID = "usach.flare.nrt"
 SCALES_PRODUCT_ID = "noaa.scales"
@@ -60,7 +63,28 @@ def _status_badge(product_id, effective_status, lang):
         "status": effective_status,
         "color": charts.STATUS_COLORS[effective_status],
         "label": charts.STATUS_LABELS[effective_status][lang],
+        "title": "",
     }
+
+
+def _fmt_day(when, lang):
+    when = when.astimezone(dt.UTC)
+    if lang == "en":
+        return f"{when.day:02d} {_MONTH_ABBR[when.month - 1]}"
+    return f"{when:%d/%m}"
+
+
+def _product_badge(product, lang):
+    """The status pill of one product: its heartbeat, refined to "al día ·
+    con retraso" when its newest datum is older than `delayed_after`
+    (D-085), with "datos hasta dd/mm" as the tooltip."""
+    hb = getattr(product, "heartbeat", None)
+    status, latest = public_status(product, hb.effective_status() if hb else "no_data")
+    badge = _status_badge(product.id, status, lang)
+    badge["latest"] = latest
+    if status == "delayed":
+        badge["title"] = gettext("datos hasta %(day)s") % {"day": _fmt_day(latest, lang)}
+    return badge
 
 
 def _latest_row(product_id, energy=None):
@@ -283,7 +307,7 @@ def catalogue(request):
         {
             "product": p,
             "title": _fmt_title(p, lang),
-            "status": _status_badge(p.id, p.heartbeat.effective_status() if hasattr(p, "heartbeat") else "no_data", lang),
+            "status": _product_badge(p, lang),
         }
         for p in products
     ]
@@ -338,6 +362,18 @@ def _headline_values(product_id, lang):
     return []
 
 
+def _headline_asof(product, badge, lang):
+    """"al 04/10 23:55 UT" under the headline values when they aren't
+    "now": the product is delayed (D-085) or its chart ends at its latest
+    datum (D-082). Otherwise "" -- a live product's values are current."""
+    if badge["status"] != "delayed" and charts.product_anchor(product.id) != "latest":
+        return ""
+    latest = badge.get("latest") or latest_datum(product)
+    if latest is None:
+        return ""
+    return gettext("al %(when)s") % {"when": _fmt_ut(latest, lang)}
+
+
 # D-081: a retired product's page moves to its successor for good. Its
 # rows stay in the store (history) and its serie.json still answers.
 RETIRED_PRODUCTS = {"noaa.dst": "kyoto.dst"}
@@ -354,11 +390,10 @@ def product_detail(request, product_id):
         return redirect("web:product_detail", RETIRED_PRODUCTS[product_id], permanent=True)
     lang = _lang(request)
     product = get_object_or_404(Product, id=product_id)
-    hb = getattr(product, "heartbeat", None)
     context = {
         "product": product,
         "title": _fmt_title(product, lang),
-        "status": _status_badge(product_id, hb.effective_status() if hb else "no_data", lang),
+        "status": _product_badge(product, lang),
         "source_license": _license_text(product.source_license),
         "source_links": product.source_links,
     }
@@ -392,6 +427,7 @@ def product_detail(request, product_id):
     context["csv_stub"] = True
     context["stack_aria_label"] = context["title"]
     context["headline_values"] = _headline_values(product_id, lang)
+    context["headline_asof"] = _headline_asof(product, context["status"], lang)
     context["description"] = product.description(lang)
     context["facts"] = _facts_list(product, lang)
     return render(request, "web/product_detail.html", context)
@@ -411,12 +447,30 @@ _FACT_ROWS = (
 )
 
 
+# A DOI, written "doi:10.xxxx/..." or bare "10.xxxx/...": the registrant
+# code is 4-9 digits, the suffix runs to the next space. A trailing
+# full stop, comma, semicolon or closing bracket is punctuation, not DOI.
+_DOI_RE = re.compile(r"(?:\bdoi:\s*)?\b(10\.\d{4,9}/\S+?)(?=[.,;)\]]*(?:\s|$))", re.IGNORECASE)
+
+
+def link_dois(text):
+    """Escaped `text` with every DOI turned into an https://doi.org/ link
+    (D-085), keeping the text as written ("doi:10.17593/..."). Safe HTML."""
+    parts, last = [], 0
+    for match in _DOI_RE.finditer(text):
+        parts.append(escape(text[last:match.start()]))
+        parts.append(format_html('<a href="https://doi.org/{}" rel="noopener">{}</a>', match.group(1), match.group(0)))
+        last = match.end()
+    parts.append(escape(text[last:]))
+    return mark_safe("".join(parts))  # every piece is escaped or built by format_html
+
+
 def _facts_list(product, lang):
     rows = []
     for key, label_es, label_en in _FACT_ROWS:
         value = product.fact(key, lang)
         if value:
-            rows.append({"label": label_en if lang == "en" else label_es, "value": value})
+            rows.append({"label": label_en if lang == "en" else label_es, "value": link_dois(value)})
     return rows
 
 
@@ -584,7 +638,7 @@ def status(request):
         {
             "product": p,
             "title": _fmt_title(p, lang),
-            "status": _status_badge(p.id, p.heartbeat.effective_status() if hasattr(p, "heartbeat") else "no_data", lang),
+            "status": _product_badge(p, lang),
             "last_seen_at": p.heartbeat.last_seen_at if hasattr(p, "heartbeat") else None,
         }
         for p in products

@@ -67,6 +67,10 @@
   --status-serious:  #ec835a;
   --status-error:    #d03b3b;
   --status-nodata:   #898781;
+  /* D-085: healthy collector, old data ("al día · con retraso"). A true
+   * yellow, kept apart from the amber --status-stale; the label beside the
+   * dot carries the meaning, the dot only reinforces it. */
+  --status-delayed:  #d4b106;
 
   /* Chart contract (D-053 §2): charts.js resolves these once per render,
    * never inside a draw hook (16-PERF B5). s1/s2 alias the mockup's own
@@ -133,6 +137,7 @@
   --status-serious:  #e0794f;
   --status-error:    #e2463f;
   --status-nodata:   #8a93ab;
+  --status-delayed:  #e6cf3f;
 
   --chart-text:  var(--ink-faint);
   --chart-grid:  var(--grid);
@@ -302,6 +307,7 @@ a.btn.pri:hover { color: var(--accent-ink); opacity: .9; }
 }
 .pill.beta { background: var(--accent-soft); border-color: transparent; color: var(--ink); }
 .pill.ok { background: var(--severity-ok-soft); border-color: transparent; color: var(--severity-ok); display: inline-flex; align-items: center; gap: 6px; }
+.pill.delayed { background: var(--severity-minor-soft); border-color: transparent; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; }
 /* D-078: the provider pill links to the provider's page for this product. */
 a.pill { color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
 a.pill:hover { border-color: var(--accent); color: var(--accent); }
@@ -438,6 +444,7 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-h
 .now small { font-family: var(--font-ui); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
 .now b { font-family: var(--font-mono); font-weight: 500; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .now b span { font-size: 14px; color: var(--ink-faint); margin-left: 4px; }
+.now .now-asof { flex-basis: 100%; margin: -18px 0 0; font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
 .below { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; padding-top: 32px; padding-bottom: 64px; }
 .below h2 { font-family: var(--font-ui); font-size: 17px; font-weight: 600; margin: 0 0 10px; }
 .below p { margin: 0 0 12px; color: var(--ink-soft); max-width: 64ch; }
@@ -460,6 +467,7 @@ main:has(> .tintband:last-child) { padding-bottom: 0; }
 
 /* ---------- retained components (status badges, catalogue, forms) ---------- */
 .status-badge { display: inline-flex; align-items: center; gap: .4em; font-size: .82rem; color: var(--ink-soft); }
+.status-badge__note { color: var(--ink-faint); }
 .status-badge__dot { width: .6em; height: .6em; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px var(--raised); }
 
 /* NOAA scale badges (G/S/R) on a product_detail_event page (e.g.

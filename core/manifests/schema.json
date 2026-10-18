@@ -46,6 +46,10 @@
     "maturity": {"enum": ["experimental", "beta", "operational"]},
     "cadence": {"type": "string", "pattern": "^[0-9]+(s|m|h|d)$"},
     "stale_after": {"type": "string", "pattern": "^[0-9]+(s|m|h|d)$"},
+    "delayed_after": {
+      "$ref": "#/$defs/duration",
+      "description": "D-085: a healthy product whose newest stored datum is older than this shows 'al día · con retraso' instead of 'al día'. Optional; stale_after still wins."
+    },
     "producer": {
       "type": "object",
       "required": ["type"],

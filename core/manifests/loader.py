@@ -92,6 +92,8 @@ def _load_manifest_uncached(path: Path) -> dict:
 
     if not errors:
         durations = [data["cadence"], data["stale_after"], *data.get("forecast", {}).get("horizons", [])]
+        if "delayed_after" in data:
+            durations.append(data["delayed_after"])
         for value in durations:
             try:
                 parse_duration(value)

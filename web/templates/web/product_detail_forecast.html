@@ -10,7 +10,7 @@
     <div>
       <h1>{{ title }}</h1>
       <div class="badges">
-        <span class="pill{% if status.status == 'ok' %} ok{% endif %}"><span class="dot" style="background:{{ status.color }}"></span>{{ status.label }}</span>
+        <span class="pill{% if status.status == 'ok' %} ok{% elif status.status == 'delayed' %} delayed{% endif %}"{% if status.title %} title="{{ status.title }}"{% endif %}><span class="dot" style="background:{{ status.color }}"></span>{{ status.label }}</span>
         <span class="pill">{{ product.get_maturity_display }}</span>
         <span class="pill">{% trans "pronóstico" %}</span>
       </div>
