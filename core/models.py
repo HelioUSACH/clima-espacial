@@ -51,6 +51,7 @@ class Product(models.Model):
     description_es = models.TextField(blank=True, default="")
     description_en = models.TextField(blank=True, default="")
     facts = models.JSONField(default=dict, blank=True)
+    source_links = models.JSONField(default=list, blank=True, help_text="[{name, url}], primary first (D-078).")
     exchange_hapi = models.BooleanField(default=False)
     exchange_feed = models.BooleanField(default=False)
     model_card_path = models.CharField(max_length=255, blank=True, default="")
@@ -225,6 +226,8 @@ class ForecastScore(models.Model):
     window_days = models.PositiveSmallIntegerField()
     n = models.PositiveIntegerField(default=0, help_text="Forecast/observation pairs verified.")
     n_unverified = models.PositiveIntegerField(default=0, help_text="Forecasts due in the window with no matching observation.")
+    n_reference_fallback = models.PositiveIntegerField(
+        default=0, help_text="Pairs whose persistence reference used the time_tag rule alone (replayed or backfilled data, D-079).")
     mae = models.FloatField(null=True, blank=True)
     rmse = models.FloatField(null=True, blank=True)
     bias = models.FloatField(null=True, blank=True, help_text="Mean of forecast - observed.")

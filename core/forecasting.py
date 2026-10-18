@@ -59,15 +59,27 @@ def matching_observation(
 
 
 def persistence(
-    observations: Sequence[Observation], issued_at: dt.datetime, step: int, *, times: list | None = None
+    observations: Sequence[Observation], issued_at: dt.datetime, step: int, *, times: list | None = None,
+    inserted: Sequence[dt.datetime] | None = None, known_at: dt.datetime | None = None,
 ) -> Observation | None:
-    """**Persistence reference (D-074).** The last *complete* observation at
-    `issued_at`: the newest sample with `time_tag + step <= issued_at` (an
-    interval still in progress is not yet known). Every model's skill is
-    measured against this, computed from the observations themselves, so no
-    score depends on the `usach.kp.persistence` product being up."""
+    """**Persistence reference (D-074, D-079).** The last *complete*
+    observation at `issued_at`: the newest sample with `time_tag + step <=
+    issued_at` (an interval still in progress is not yet known). Every model's
+    skill is measured against this, computed from the observations
+    themselves, so no score depends on the `usach.kp.persistence` product
+    being up.
+
+    With `known_at` (and `inserted`, each observation's stored-at time,
+    aligned with `observations`), the sample must also have been in the store
+    by `known_at`: what was knowable when the forecast was published. A Kp
+    interval reaches the store minutes after it closes, so by `time_tag` alone
+    the reference would use an interval no forecaster had yet. None if no
+    sample qualifies; the caller decides whether to fall back."""
     times = times if times is not None else _times(observations)
     i = bisect.bisect_right(times, issued_at - dt.timedelta(seconds=step)) - 1
+    if known_at is not None and inserted is not None:
+        while i >= 0 and inserted[i] > known_at:
+            i -= 1
     return observations[i] if i >= 0 else None
 
 

@@ -302,6 +302,11 @@ a.btn.pri:hover { color: var(--accent-ink); opacity: .9; }
 }
 .pill.beta { background: var(--accent-soft); border-color: transparent; color: var(--ink); }
 .pill.ok { background: var(--severity-ok-soft); border-color: transparent; color: var(--severity-ok); display: inline-flex; align-items: center; gap: 6px; }
+/* D-078: the provider pill links to the provider's page for this product. */
+a.pill { color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
+a.pill:hover { border-color: var(--accent); color: var(--accent); }
+a.pill:focus-visible { border-radius: 999px; }
+.ext { flex: none; vertical-align: -1px; }
 
 @media (max-width: 900px) {
   .hero { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-top: 40px; }
@@ -412,7 +417,7 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-h
 /* ---------- footer ---------- */
 /* Dark in both themes (v1.1). */
 .foot { background: var(--space); color: var(--space-soft); margin-top: 24px; }
-.foot-in { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); gap: 32px; padding-top: 40px; padding-bottom: 40px; font-size: 13.5px; color: var(--space-soft); }
+.foot-in { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); gap: 32px; padding-top: 40px; padding-bottom: 40px; font-size: 13.5px; color: var(--space-soft); }
 .foot h4 { font-family: var(--font-ui); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #8fa0b3; margin: 0 0 10px; font-weight: 600; }
 .foot a { color: var(--space-ink); }
 .foot a:hover { color: var(--sun); }

@@ -8,7 +8,14 @@ maturity: experimental             # experimental | beta | operational
 cadence: 60s                       # how often the collector/service runs
 stale_after: 15m                   # a heartbeat older than this reads as "stale"
 producer: {type: collector}        # collector (scheduled) | service (long-running); add unit/repo once it has a systemd unit
-source: {provider: "Provider name", inputs: ["what it reads"], license: "CC-BY-4.0"}
+source:
+  provider: "Provider name"
+  inputs: ["what it reads"]
+  license: "CC-BY-4.0"
+  # Optional: the provider's own page(s) for this product, primary first
+  # (D-078). `name` is a short proper name; `url` must be https.
+  links:
+    - {name: "Provider", url: "https://example.org/product"}
 parameters:
   - {name: example_value, units: "1"}
 exchange: {hapi: false, feed: false}

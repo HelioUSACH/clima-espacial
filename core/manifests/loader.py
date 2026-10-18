@@ -161,6 +161,19 @@ def forecast_target_errors(manifest: dict, manifests: dict[str, dict]) -> list[s
     return errors
 
 
+# Our own products; anyone else's should say where their data come from.
+OWN_PROVIDER_PREFIX = "HelioUSACH"
+
+
+def manifest_warnings(manifest: dict) -> list[str]:
+    """Problems that don't fail validation (D-078): a third-party product
+    without `source.links` shows its provider as plain text."""
+    source = manifest.get("source", {})
+    if not source.get("provider", "").startswith(OWN_PROVIDER_PREFIX) and not source.get("links"):
+        return [f"source.links is empty: provider {source.get('provider')!r} gets no link on the product page"]
+    return []
+
+
 def get_manifest(product_id: str, base_dir: Path | None = None) -> dict:
     manifests = discover_manifests(base_dir)
     try:

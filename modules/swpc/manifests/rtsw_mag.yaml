@@ -10,6 +10,8 @@ source:
   provider: "NOAA SWPC"
   inputs: ["json/rtsw/rtsw_mag_1m.json"]
   license: "Public domain (NOAA)"
+  links:
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/products/solar-wind"}
 parameters:
   - {name: bt, units: nT}
   - {name: bx_gsm, units: nT}

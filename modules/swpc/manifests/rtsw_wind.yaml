@@ -10,6 +10,8 @@ source:
   provider: "NOAA SWPC"
   inputs: ["json/rtsw/rtsw_wind_1m.json"]
   license: "Public domain (NOAA)"
+  links:
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/products/solar-wind"}
 parameters:
   - {name: proton_speed, units: "km/s"}
   - {name: proton_density, units: "1/cm3"}

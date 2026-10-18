@@ -10,6 +10,9 @@ source:
   provider: "NOAA SWPC"
   inputs: ["products/noaa-planetary-k-index.json"]
   license: "Public domain (NOAA)"
+  links:
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/products/planetary-k-index"}
+    - {name: "GFZ Potsdam", url: "https://kp.gfz.de/en/"}
 parameters:
   - {name: kp, units: "1", range: [0, 9]}
   - {name: a_running, units: "1"}

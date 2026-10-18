@@ -344,8 +344,8 @@ msgstr "Clima Espacial"
 msgid "Clima espacial para la infraestructura de Chile"
 msgstr "Space weather for Chile's infrastructure"
 
-msgid "Código Apache-2.0 · datos CC BY 4.0"
-msgstr "Apache-2.0 code · CC BY 4.0 data"
+msgid "Código Apache-2.0 · productos USACH CC BY 4.0 · datos de terceros según su proveedor"
+msgstr "Code Apache-2.0 · USACH products CC BY 4.0 · third-party data under their provider's terms"
 
 msgid "En la red chilena"
 msgstr "In the Chilean network"
@@ -559,3 +559,15 @@ msgstr "Band: central %(pct)s %% interval"
 
 msgid "zona sombreada: después de ahora"
 msgstr "shaded area: after now"
+
+msgid "Fuentes de datos"
+msgstr "Data sources"
+
+msgid "En el sitio del proveedor"
+msgstr "On the provider's site"
+
+msgid "Avisos oficiales:"
+msgstr "Official alerts:"
+
+msgid "datos hasta"
+msgstr "data up to"

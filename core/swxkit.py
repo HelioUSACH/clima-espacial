@@ -65,6 +65,7 @@ def _sync_product(product_id: str, manifest: dict | None = None) -> Product:
             "description_es": description.get("es", ""),
             "description_en": description.get("en", ""),
             "facts": manifest.get("facts", {}),
+            "source_links": manifest["source"].get("links", []),
         },
     )
     ProductVersion.objects.update_or_create(
@@ -205,7 +206,8 @@ def _set_heartbeat(product: Product, status: str, detail: str) -> Heartbeat:
     return hb
 
 
-def read_series(product_id: str, field: str, since, until=None, *, site: str = "") -> list[tuple[dt.datetime, float]]:
+def read_series(product_id: str, field: str, since, until=None, *, site: str = "",
+                with_inserted: bool = False) -> list[tuple]:
     """The read side of the SDK: `[(time_tag, value), ...]` of one numeric
     field, oldest first, `since <= time_tag` (and `< until` if given).
     Non-numeric values (a provider's "" or null) are left out. A module
@@ -213,16 +215,19 @@ def read_series(product_id: str, field: str, since, until=None, *, site: str = "
 
     `site`: for a target with a site dimension (stations, grid cells), only
     the rows whose payload carries that `site` code (the convention a
-    site-dimensioned observed product follows, D-073); "" = every row."""
+    site-dimensioned observed product follows, D-073); "" = every row.
+
+    `with_inserted`: `(time_tag, value, inserted_at)` instead, for the
+    knowable-at-publication persistence reference (D-079)."""
     qs = TimeSeriesPoint.objects.filter(product_id=product_id, time_tag__gte=_as_aware_datetime(since))
     if until is not None:
         qs = qs.filter(time_tag__lt=_as_aware_datetime(until))
     if site:
         qs = qs.filter(payload__site=site)
     out = []
-    for time_tag, value in qs.order_by("time_tag").values_list("time_tag", f"payload__{field}"):
+    for time_tag, value, inserted_at in qs.order_by("time_tag").values_list("time_tag", f"payload__{field}", "inserted_at"):
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            out.append((time_tag, float(value)))
+            out.append((time_tag, float(value), inserted_at) if with_inserted else (time_tag, float(value)))
     return out
 
 
@@ -382,13 +387,19 @@ def publish_forecast(
 
     _ensure_partition("core_forecast", issued_at)
     provenance_json = json.dumps(dict(provenance))
+    # The same clock as publish_timeseries' inserted_at, not the column's
+    # DEFAULT now() (the transaction's start): verification compares the
+    # two to rebuild what was knowable at publication (D-079).
+    inserted_at = timezone.now()
     params, tuples = [], []
     for valid_at, lead, site, values in prepared:
-        tuples.append("(%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)")
-        params += [product_id, model_version, issued_at, valid_at, lead, site, json.dumps(values), provenance_json]
+        tuples.append("(%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)")
+        params += [product_id, model_version, issued_at, valid_at, lead, site, json.dumps(values), provenance_json,
+                   inserted_at]
     with connection.cursor() as cursor:
         cursor.execute(
-            'INSERT INTO core_forecast (product_id, model_version, issued_at, valid_at, lead_seconds, site, "values", provenance) '
+            "INSERT INTO core_forecast (product_id, model_version, issued_at, valid_at, lead_seconds, site, "
+            '"values", provenance, inserted_at) '
             "VALUES " + ", ".join(tuples) + " ON CONFLICT DO NOTHING",
             params,
         )

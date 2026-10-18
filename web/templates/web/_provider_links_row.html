@@ -1,0 +1,1 @@
+{% load i18n %}{% if source_links %}<dt>{% trans "En el sitio del proveedor" %}</dt><dd>{% for l in source_links %}<a href="{{ l.url }}" rel="noopener nofollow">{{ l.name }} {% include "web/_icon_ext.html" %}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</dd>{% endif %}

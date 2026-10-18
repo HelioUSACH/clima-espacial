@@ -9,15 +9,21 @@ producer: {type: collector, unit: "swx-collect@noaa.dst.timer"}
 source:
   provider: "NOAA SWPC (Kyoto WDC)"
   inputs: ["products/kyoto-dst.json"]
-  license: "Public domain (NOAA/Kyoto WDC)"
+  license: "Non-commercial use; quicklook data (WDC Kyoto)"
+  links:
+    - {name: "WDC Kyoto", url: "https://wdc.kugi.kyoto-u.ac.jp/dst_realtime/index.html"}
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/"}
 parameters:
   - {name: dst, units: nT}
-exchange: {hapi: true, feed: false}
+# WDC Kyoto's real-time Dst is "only for non-commercial purpose" and "only for
+# monitoring, diagnostics, and forecasting" (its quicklook page). The portal
+# shows it; it never redistributes it, so no HAPI (D-028, D-078).
+exchange: {hapi: false, feed: false}
 description:
-  es: "El índice Dst mide la depresión del campo magnético horizontal en el ecuador, producida por la corriente de anillo durante una tormenta geomagnética. Mientras más negativo, más intensa la tormenta: por debajo de −50 nT ya se considera una tormenta; por debajo de −250 nT, extrema."
-  en: "The Dst index measures the depression of the horizontal magnetic field at the equator caused by the ring current during a geomagnetic storm. More negative means a stronger storm: below −50 nT is already a storm; below −250 nT, extreme."
+  es: "El índice Dst mide la depresión del campo magnético horizontal en el ecuador, producida por la corriente de anillo durante una tormenta geomagnética. Mientras más negativo, más intensa la tormenta: por debajo de −50 nT ya se considera una tormenta; por debajo de −250 nT, extrema. Son valores preliminares (quicklook), que Kyoto reemplaza más tarde por los provisorios y los definitivos."
+  en: "The Dst index measures the depression of the horizontal magnetic field at the equator caused by the ring current during a geomagnetic storm. More negative means a stronger storm: below −50 nT is already a storm; below −250 nT, extreme. These are quicklook values, which Kyoto later replaces with provisional and then final ones."
 facts:
   source: {es: "Kyoto World Data Center for Geomagnetism, vía NOAA SWPC", en: "Kyoto World Data Center for Geomagnetism, via NOAA SWPC"}
   cadence: {es: "1 hora (datos en tiempo casi real)", en: "1 hour (near-real-time data)"}
-  license: {es: "Dominio público (NOAA/Kyoto WDC)", en: "Public domain (NOAA/Kyoto WDC)"}
+  license: {es: "Uso no comercial; datos preliminares (WDC Kyoto)", en: "Non-commercial use; quicklook data (WDC Kyoto)"}
   used_by: {es: "Franja de estado del portal", en: "The portal's status strip"}

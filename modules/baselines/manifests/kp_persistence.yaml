@@ -23,6 +23,7 @@ forecast:
   horizons: [3h, 6h, 12h, 24h]
   uncertainty: {type: bounds, level: 0.8}
   sites: false
+  baseline: persistence   # verify_forecasts checks its values against the reconstructed reference (D-079)
 description:
   es: "Pronóstico de referencia: supone que el Kp de las próximas 3 a 24 horas será igual al último intervalo de Kp completo. No es un modelo físico, sino la vara con que se mide cualquier modelo: un pronóstico que no supera a la persistencia no aporta información. La banda cubre el 80 % central de los errores de la persistencia en los últimos 30 días."
   en: "Reference forecast: it assumes Kp over the next 3 to 24 hours will equal the last complete Kp interval. It isn't a physical model but the yardstick every model is measured against: a forecast that can't beat persistence adds no information. The band covers the central 80% of persistence errors over the last 30 days."

@@ -142,7 +142,10 @@ benchmark every Kp model must beat.
 - `collectors.py` does the I/O: `read_series("noaa.kp", "kp", …)`, then
   `publish_forecast(...)`, or `heartbeat(..., "error")` if the target is
   stale. `COLLECTORS` maps the product id to it, and
-  `deploy/systemd/swx-collect@usach.kp.persistence.timer` runs it hourly.
+  `deploy/systemd/swx-collect@usach.kp.persistence.timer` runs it hourly at
+  :35. A Kp interval reaches the store 5–16 min after it closes, so a run
+  just after the hour would miss the interval that had just closed (D-079).
+  Time your own runs after your inputs arrive, not after the boundary.
 
 A model in its own repository has the same shape. Its service exposes its
 latest issue over HTTP, and a small module here polls it and calls
@@ -162,9 +165,15 @@ function each:
   minute-cadence target, the sample at or just before. Forecasts with no
   matching observation are skipped and counted (`n_unverified`). Forecasts
   whose verifying interval hasn't closed yet are not counted at all.
-- **Persistence reference** (D-074): the last observation complete at
-  `issued_at`. It is computed from the observations, so no model's score
-  depends on the baseline product being up.
+- **Persistence reference** (D-074, D-079): the last observation complete
+  at `issued_at` *that was already in the store when the forecast was
+  published* (observation `inserted_at` ≤ forecast `inserted_at`). That is
+  the persistence forecast anyone could have issued at that moment, so the
+  comparison is fair whatever your model's latency. It is computed from the
+  observations, so no model's score depends on the baseline product being
+  up. For replayed or backfilled data, where no observation passes that
+  test, the reference falls back to `time_tag` alone and those pairs are
+  counted in `n_reference_fallback`.
 - **Metrics** (D-075): n, MAE, RMSE and bias (forecast − observed); skill =
   1 − MSE / MSE_persistence, null when n < 20 or MSE_persistence = 0; and,
   with bounds, coverage next to its nominal level.
