@@ -239,3 +239,9 @@ On this portal, `productos/<id>/forecast.json` serves an issue (`?issued=latest|
 a lead's verification pairs (`?lead=3h&range=7d|30d`) for the chart. That is a
 chart-oriented columnar shape (`web/forecasts.py`), not the exchange format.
 
+
+The exchange format itself is served at `/api/v1/pronosticos/<id>.json`
+and `.csv` (D-089): the latest issue with no parameters (no API key
+needed), or `?issued_since=…&issued_until=…` (up to 31 days, with a key).
+A new forecast product appears there as soon as it publishes; nothing to
+add.

@@ -47,7 +47,7 @@ Espacial**, delivering products to it through a versioned interface, and
  NOAA SWPC JSON ─┐            collector: swpc.*     (timer, 1 min) ─┐
  Kyoto WDC / GFZ ├ adapters ► collector: indices     (timer)        │   ┌───────────────────────────┐
  JSOC / SDO      │            service:   flare-nrt   (loop, 3 min) ─┼─► │ PRODUCT STORE             │ ─► Web portal (public, ES/EN)
- future sources  ┘            future collectors/services             │   PostgreSQL 16              │ ─► Public REST + HAPI (M2)
+ future sources  ┘            future collectors/services             │   PostgreSQL 16              │ ─► HAPI + CSV + forecast export (v0.5.0)
                                                                       │   • product registry          │ ─► JSON feeds (events, status)
                                                                       │   • time series (partitioned) │ ─► Exchange adapters ─► Plataforma Nacional
                                                                       │   • events / bulletins        │                       (pull now, push later)
@@ -70,6 +70,7 @@ title: {es: "Detección de fulguraciones (NRT)", en: "Flare detection (NRT)"}
 maturity: beta                 # experimental | beta | operational
 cadence: 180s
 stale_after: 15m
+delayed_after: 2d              # optional, D-085: healthy but data older than this -> "al día · con retraso"
 producer: {type: service, unit: swx-flare-loop, repo: HelioUSACH/flare-nrt}
 source:
   provider: "HelioUSACH (USACH)"
@@ -80,7 +81,7 @@ source:
 parameters:
   - {name: probability, units: "1", range: [0, 1]}
   - {name: state, enum: [QUIET, RISING, POST_IMPULSIVE]}
-exchange: {hapi: true, feed: true, push: [national-platform]}   # what may leave the portal
+exchange: {hapi: true, feed: true, push: [national-platform]}   # what may leave the portal (hapi: D-087)
 revise: {window: 6h, version_field: version}   # optional, D-080: a revisable series (below)
 model_card: docs/products/usach.flare.nrt.md
 description: {es: "...", en: "..."}   # optional: the product page's "Qué muestra" text
@@ -182,14 +183,48 @@ doesn't build it yet).
 forecast's payload is one record of the forecast exchange format
 (`docs/models/INTEGRATION.md`, D-076).
 
-### 4.4 Outbound exchange (M2, D-013)
+### 4.4 Outbound exchange (D-013)
 
-1. A read-only **HAPI 3.x** server for `exchange.hapi: true` time series plus
-   a JSON **event feed** — no agreement needed, COSPAR-recommended.
-2. A **push adapter**: HTTPS POST of the envelope, HMAC-signed, per-subscriber
-   product filter.
-3. Whatever the national platform's own ingest API specifies (D-041), added
-   as a new adapter — core untouched.
+**Built (v0.5.0):** pull access, in the `api/` app. Everything is
+language-neutral and lives outside `i18n_patterns`.
+
+1. **One export layer** (`api/export.py`, D-087) reads what is exportable
+   from the manifests: a `timeseries`/`index` product with
+   `exchange.hapi: true` whose `source.license` allows redistribution
+   (D-078; `validate_manifests` refuses anything else, so Kyoto stays out).
+   Rows are the raw stored samples, ordered by `time_tag`, streamed from a
+   server-side cursor; a long-format product (GOES `energy` channels) is
+   pivoted to one column per channel plus the satellite. Missing and
+   provider-fill values become `-1.0E31`. Per request: at most 31 days for a
+   series at ≤ 5 min (measured from the data, not the manifest), 366 days
+   otherwise, and 200 000 rows.
+2. **HAPI 3.3 server** at `/hapi/` (`api/hapi.py`, D-088): about,
+   capabilities, catalog, info, data, CSV and JSON, HAPI 2 parameter names
+   accepted, CORS open, HAPI status JSON on every error. Checked with the
+   community verifier (`deploy/hapi-verify.sh`).
+3. **CSV downloads** at `/api/v1/datos/<id>.csv?start=…&stop=…`, the same
+   rows with a `#` header block (title, page, provider, licence, citation,
+   retrieval time, units); the product page's CSV button opens a dialog.
+4. **Forecast export** at `/api/v1/pronosticos/<id>.json|.csv` in the
+   exchange format (D-076, D-089): the latest issue, or up to 31 days of
+   issues.
+5. **Access** (`api/access.py`, D-083, D-086): `data`, downloads and the
+   forecast range need a free API key (`X-API-Key` header or `api_key`
+   parameter), issued at registration on `/datos-api/` and shown once; only
+   its SHA-256 is stored. Without a key, a span ≤ 24 h ending in the last
+   7 days (or the latest forecast issue) is allowed, 30/h per IP. Per key:
+   60/min, 5 000 requests and 2 000 000 rows per UTC day, service keys 10×.
+   Usage is one row per (key, day, endpoint) in `ApiUsageDay`;
+   `manage.py api_usage_report` turns it into figures by sector.
+
+Each exported dataset is `own` (provider USACH) or `relay` (a third
+party's). Relaying is transitional (D-084): relay datasets say so and link
+the official provider, and withdrawing one is setting `exchange.hapi: false`.
+
+**Not built yet:** the JSON event feed, and the **push adapter** (HTTPS POST
+of the envelope, HMAC-signed, per-subscriber product filter), or whatever
+the national platform's own ingest API specifies (D-041), added as a new
+adapter, core untouched.
 
 ## 5. Stack (D-002)
 
@@ -230,7 +265,7 @@ Inicio — franja de contexto en vivo (escalas G/S/R, viento solar L1 + nave fue
          + oferta USACH al frente: fulguraciones NRT (beta), modelos y productos, "qué ofrecemos"
 Productos y modelos — catálogo con madurez (beta/operacional), hoja de ruta
 Qué ofrecemos — para operadores eléctricos, minería/GNSS, satélites, DMC
-Datos y API — registro simple, licencia CC BY 4.0, cómo citar (stub in M1)
+Datos y API — registro con llave de API, HAPI, descargas CSV, pronósticos; licencia de cada serie (v0.5.0)
 Estado — salud de fuentes y productos
 Acerca — HelioUSACH, Plataforma Nacional (enlace), contacto
 ```
@@ -254,6 +289,7 @@ national platform's — link to them, don't rebuild (D-001, D-037).
 climaespacial/   Django project (settings, urls)
 core/            product registry, manifest loader/validator, store, swxkit, status
 web/             public pages, templates, i18n (es/en), static (vendored chart lib)
+api/             API keys and usage, the export layer, HAPI server, downloads (v0.5.0)
 modules/         one folder per product family — contributors work here
   swpc/            adapters + manifests + tests + fixtures + templates for SWPC products
   _template/       copy-me module skeleton (and `manage.py startmodule`)
