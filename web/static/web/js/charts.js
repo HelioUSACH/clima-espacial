@@ -975,6 +975,8 @@
   ForecastChart.prototype.renderMeta = function () {
     var d = this.data, i18n = this.i18n, bits = [];
     if (d && d.view === "issue" && d.issued_at) bits.push(i18n.issued + " " + fmtUT(d.issued_at, i18n));
+    // D-079: how fresh the issue's input was, so a stale target shows.
+    if (d && d.view === "issue" && d.issued_at && d.data_until) bits.push(i18n.data_until + " " + fmtUT(d.data_until, i18n));
     if (d && d.view === "lead") bits.push(i18n.lead_label + " " + Math.round(d.lead_seconds / 3600) + " h");
     if (d && d.model_version) bits.push("v" + d.model_version);
     if (this.metaEl) this.metaEl.textContent = bits.join(" · ");

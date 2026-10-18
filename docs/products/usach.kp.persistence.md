@@ -17,7 +17,11 @@ newest Kp interval it used.
 
 ## Method
 
-One issue per hour, `issued_at` on the hour (`swxkit.floor_issue_time`).
+One issue per hour, `issued_at` on the hour (`swxkit.floor_issue_time`). The
+run itself is at :35, because a Kp interval reaches the store 5–16 min after
+it closes; a run at :05 (v0.4.0) missed the interval that had just closed at
+00, 03, …, 21 UT (D-079). The product page shows "datos hasta / data up to"
+next to the issue time, from the issue's provenance.
 
 - **Value**: the persistence reference in `core.forecasting.persistence`,
   the last Kp interval complete at `issued_at` (its `time_tag` + 3 h ≤
@@ -48,6 +52,12 @@ as first stored, over 7, 30 and 90 days of valid times. The product page's
 next to its nominal 80 %. Skill is 0 for this product by definition. Its use
 is as the denominator of every other model's skill, and that skill is
 computed from the observations, not from this product being up.
+
+The reference is rebuilt from what was in the store when each forecast was
+published (D-079), so this product's issued values should equal it. The
+manifest marks it `baseline: persistence`, and `verify_forecasts` logs a
+warning when more than 1 % of the last week's values differ, which means
+the issue timing broke (NOAA late, the `noaa.kp` collector down).
 
 ## Known limitations
 

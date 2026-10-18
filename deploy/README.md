@@ -16,6 +16,26 @@ by Victor; nothing here is run by an AI session, AGENTS.md).
    release changes `nginx-clima-espacial.conf`, also re-install the snippet
    and reload nginx (`CONTRIBUTING.md` → Releasing).
 
+### Why deploy.sh hands over to the tag's own copy (D-077)
+
+`sudo bash /opt/swx/deploy/deploy.sh <tag>` starts the script of the release
+that is *currently installed*. Its rsync replaces that file, but bash keeps
+reading the copy it opened, so before 0.4.1 every later step (venv, migrate,
+units, checks) was the previous release's logic: v0.4.0 installed
+`swx-verify.timer` and never enabled it. Since 0.4.1 the script clones the
+tag and immediately runs the clone's `deploy/deploy.sh`, which does the
+install. It prints "Re-running <tag>'s own deploy.sh". Rolling back to an
+older tag works the same way: that tag's script, which predates the
+hand-over, clones again and cleans up after itself. **The first deploy of
+v0.4.1 still runs v0.4.0's script**, which is harmless (v0.4.1 enables no new
+unit), so the hand-over and the timer checks below take effect from the
+deploy after it.
+
+After installing the units, the script enables every `systemd/*.timer` (no
+hand-kept list), then fails the deploy if any of them is not enabled and
+active, and prints `systemctl list-timers 'swx-*'` with the next and last
+runs.
+
 ## Caching and compression (D-055, D-057)
 
 - `/clima-espacial/static/`: hashed filenames from `collectstatic`
@@ -55,7 +75,7 @@ fewer processes also means fewer cold caches.
 | `nginx-clima-espacial.conf` | `/clima-espacial/` location snippet for the existing `helio` vhost |
 | `systemd/swx-web.service` | gunicorn |
 | `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest |
-| `systemd/swx-verify.service` + `.timer` | daily 03:15 UT `manage.py verify_forecasts`: scores every forecast product (D-075); enabled by `deploy.sh` |
+| `systemd/swx-verify.service` + `.timer` | daily 03:15 UT `manage.py verify_forecasts`: scores every forecast product (D-075) |
 | `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle incl. analytics (local; pulled off-machine, see below) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |
 | `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051) |
@@ -71,6 +91,8 @@ the manifest's `cadence` — `deploy.sh` installs every `*.timer` file it finds
 in this directory, so the next deploy picks it up automatically.
 
 A forecast product's timer is the same, but use `OnCalendar` aligned to the
-issue cadence (e.g. `*-*-* *:05:00` for hourly issues) rather than
-`OnUnitActiveSec`, so the run lands just after the boundary its `issued_at`
-is floored to (see `swx-collect@usach.kp.persistence.timer`).
+issue cadence rather than `OnUnitActiveSec`, so the run lands after the
+boundary its `issued_at` is floored to. Leave room for the inputs to arrive:
+`usach.kp.persistence` runs at `*-*-* *:35:00` because a Kp interval reaches
+the store 5–16 min after it closes (D-079; see
+`swx-collect@usach.kp.persistence.timer`).

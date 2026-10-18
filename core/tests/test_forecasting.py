@@ -115,3 +115,16 @@ def test_skill_needs_twenty_pairs_with_a_reference():
 def test_scores_of_nothing_are_null():
     out = forecasting.scores([])
     assert out["n"] == 0 and out["mae"] is None and out["coverage"] is None
+
+
+def test_persistence_known_at_skips_what_was_not_yet_stored():
+    obs = kp_series([1, 2, 3, 4])  # 00, 03, 06, 09
+    # Each interval stored 10 min after it closes.
+    inserted = [t + dt.timedelta(hours=3, minutes=10) for t, _v in obs]
+    issued = T0 + 9 * H
+    # At 09:05 the 06-09 interval had closed but wasn't stored yet.
+    assert forecasting.persistence(obs, issued, STEP, inserted=inserted, known_at=issued + dt.timedelta(minutes=5)) == (T0 + 3 * H, 2.0)
+    # At 09:35 it was.
+    assert forecasting.persistence(obs, issued, STEP, inserted=inserted, known_at=issued + dt.timedelta(minutes=35)) == (T0 + 6 * H, 3.0)
+    # Nothing stored by then: None (the caller decides on a fallback).
+    assert forecasting.persistence(obs, issued, STEP, inserted=inserted, known_at=T0) is None

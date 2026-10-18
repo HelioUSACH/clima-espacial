@@ -71,7 +71,12 @@ maturity: beta                 # experimental | beta | operational
 cadence: 180s
 stale_after: 15m
 producer: {type: service, unit: swx-flare-loop, repo: HelioUSACH/flare-nrt}
-source: {provider: "HelioUSACH (USACH)", inputs: ["SDO/AIA synoptic via JSOC"], license: "CC-BY-4.0"}
+source:
+  provider: "HelioUSACH (USACH)"
+  inputs: ["SDO/AIA synoptic via JSOC"]
+  license: "CC-BY-4.0"
+  links: []                    # optional, D-078: [{name, url}] -- the provider's own page(s)
+                               # for this product, primary first; https only, name not translated
 parameters:
   - {name: probability, units: "1", range: [0, 1]}
   - {name: state, enum: [QUIET, RISING, POST_IMPULSIVE]}
@@ -84,6 +89,13 @@ facts:                                # optional: the product page's "Ficha del 
                                        # any row it doesn't set, never shows one empty
 ```
 
+`source.links` (D-078) turns the provider into a link on the product page
+(the provider pill links to the first entry; "Ficha del producto" lists them
+all). `validate_manifests` warns, without failing, when a product whose
+provider isn't HelioUSACH has none. Third-party data keep their provider's
+terms: `source.license` says what they are, and `exchange` stays off for data
+the provider doesn't let us redistribute (Kyoto's real-time Dst).
+
 A `kind: forecast` product (D-071) also carries a `forecast` block, and
 `model_card` becomes required. `cadence` is the issue cadence, the model id
 is the product id, and the model version is passed per issue (§4.2):
@@ -94,6 +106,7 @@ forecast:
   horizons: [3h, 6h, 12h, 24h]
   uncertainty: {type: bounds, level: 0.8} # none | bounds (central interval, nominal coverage); quantiles reserved
   sites: false                            # true if rows carry a site code (stations, grid cells)
+  baseline: persistence                   # optional (D-079): this product IS the persistence reference
 ```
 
 The block is forbidden on every other kind. `validate_manifests` also checks
@@ -117,13 +130,15 @@ module ships its manifests.
   `docs/models/INTEGRATION.md`.
 - `heartbeat(product, status, *, detail=None)` — `status` is one of `ok`,
   `stale`, `error`, `no_data`; fed into `/estado/`.
-- `read_series(product, field, since, until=None, *, site="")` — the read
-  side: `[(time_tag, value)]` of one numeric field. A module reads
-  observations through this, never by querying `core_timeseries`.
+- `read_series(product, field, since, until=None, *, site="", with_inserted=False)`
+  — the read side: `[(time_tag, value)]` of one numeric field (with
+  `inserted_at` as a third item if asked). A module reads observations
+  through this, never by querying `core_timeseries`.
 
 Forecasts are verified daily by `manage.py verify_forecasts`
 (`swx-verify.timer`, D-075), against the matching rule and persistence
-reference in `core/forecasting.py` (D-074).
+reference in `core/forecasting.py` (D-074). The reference is what was in the
+store when the forecast was published (`inserted_at`, D-079).
 
 All three resolve the product's current manifest version, validate the
 payload shape against it, and raise instead of silently writing malformed

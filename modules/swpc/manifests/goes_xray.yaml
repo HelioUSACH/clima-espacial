@@ -10,6 +10,8 @@ source:
   provider: "NOAA SWPC"
   inputs: ["json/goes/primary/xrays-1-day.json"]
   license: "Public domain (NOAA)"
+  links:
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/products/goes-x-ray-flux"}
 parameters:
   - {name: flux, units: "W/m2"}
   - {name: energy, enum: ["0.05-0.4nm", "0.1-0.8nm"]}

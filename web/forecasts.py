@@ -6,6 +6,8 @@ Issue view, `?issued=latest|<iso>&range=1d|3d|7d`:
 
     {"view": "issue", "product": id, "model_version": "0.1.0",
      "issued_at": t,                       # UNIX seconds, UTC; null if no issue yet
+     "data_until": t,                      # end of the newest target interval the issue used
+                                           # (provenance), null if it doesn't say (D-079)
      "field": "kp", "units": "1",
      "uncertainty": {"type": "bounds", "level": 0.8},
      "rows": {"valid_at": [...], "lead_seconds": [...], "value": [...], "lower": [...], "upper": [...]},
@@ -85,27 +87,49 @@ def issue_view(product_id: str, *, issued: str = "latest", range_key: str = DEFA
         latest = qs.filter(issued_at=issued_at).order_by("-inserted_at").values_list("issued_at", "model_version").first()
     if latest is None:
         out = _header(product_id, spec, units, None)
-        out.update(view="issue", issued_at=None, rows={k: [] for k in ("valid_at", "lead_seconds", "value", "lower", "upper")},
+        out.update(view="issue", issued_at=None, data_until=None, rows={k: [] for k in ("valid_at", "lead_seconds", "value", "lower", "upper")},
                    observed=series.bucketed_series(spec["target"]["product"], range_key))
         return out
     issued_at, model_version = latest
     field = spec["target"]["field"]
     rows = list(qs.filter(issued_at=issued_at, model_version=model_version).order_by("valid_at")
-                .values_list("valid_at", "lead_seconds", "values"))
+                .values_list("valid_at", "lead_seconds", "values", "provenance"))
     out = _header(product_id, spec, units, model_version)
     out.update(
         view="issue",
         issued_at=_epoch(issued_at),
+        data_until=_epoch(data_until(spec["target"]["product"], field, rows[0][3] if rows else None)),
         rows={
-            "valid_at": [_epoch(v) for v, _l, _x in rows],
-            "lead_seconds": [lead for _v, lead, _x in rows],
-            "value": [x.get(field, {}).get("value") for _v, _l, x in rows],
-            "lower": [x.get(field, {}).get("lower") for _v, _l, x in rows],
-            "upper": [x.get(field, {}).get("upper") for _v, _l, x in rows],
+            "valid_at": [_epoch(v) for v, _l, _x, _p in rows],
+            "lead_seconds": [lead for _v, lead, _x, _p in rows],
+            "value": [x.get(field, {}).get("value") for _v, _l, x, _p in rows],
+            "lower": [x.get(field, {}).get("lower") for _v, _l, x, _p in rows],
+            "upper": [x.get(field, {}).get("upper") for _v, _l, x, _p in rows],
         },
         observed=series.bucketed_series(spec["target"]["product"], range_key, now=issued_at),
     )
     return out
+
+
+def data_until(target: str, field: str, provenance: dict | None) -> dt.datetime | None:
+    """The end of the newest target interval an issue used (D-079): its
+    provenance's `latest` for the target (`time_tag`, an interval *start*)
+    plus the target's step, so a 00:00 Kp issue built on the 21:00 interval
+    reads "data up to 00:00". None when the provenance doesn't name the
+    target."""
+    inputs = (provenance or {}).get("inputs") or []
+    latest = next((i.get("latest") for i in inputs if isinstance(i, dict) and i.get("product") == target), None)
+    if not isinstance(latest, str):
+        return None
+    try:
+        start = dt.datetime.fromisoformat(latest.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if timezone.is_naive(start):
+        return None
+    recent = swxkit.read_series(target, field, start - dt.timedelta(days=2), until=start + dt.timedelta(seconds=1))
+    step = forecasting.target_step(recent)
+    return start + dt.timedelta(seconds=step or 0)
 
 
 def lead_view(product_id: str, *, lead: str, range_key: str = DEFAULT_LEAD_RANGE, site: str = "",

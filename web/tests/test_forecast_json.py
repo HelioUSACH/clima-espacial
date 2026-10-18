@@ -111,3 +111,20 @@ def test_product_page_renders_chart_and_performance_table(client, seeded, lang, 
 def test_catalogue_lists_the_baseline_and_home_does_not(client, seeded):
     assert PID in client.get(reverse("web:catalogue")).content.decode()
     assert PID not in client.get(reverse("web:home")).content.decode()
+
+
+def test_issue_view_says_how_fresh_its_input_was(client, seeded):
+    # D-079: data_until = the newest Kp interval the issue used (provenance) + its 3 h.
+    from core.models import Forecast
+    data = client.get(_url()).json()
+    latest = Forecast.objects.filter(product_id=PID).order_by("-issued_at").first().provenance["inputs"][0]["latest"]
+    start = dt.datetime.fromisoformat(latest.replace("Z", "+00:00"))
+    assert data["data_until"] == int(start.timestamp()) + 3 * 3600
+    assert data["data_until"] <= data["issued_at"]
+
+
+def test_data_until_is_null_without_target_provenance(db):
+    from web.forecasts import data_until
+    assert data_until("noaa.kp", "kp", {"inputs": [{"product": "noaa.dst", "latest": "2026-10-17T15:00:00Z"}]}) is None
+    assert data_until("noaa.kp", "kp", {"inputs": [{"product": "noaa.kp", "latest": "2026-10-17T15:00:00"}]}) is None
+    assert data_until("noaa.kp", "kp", None) is None

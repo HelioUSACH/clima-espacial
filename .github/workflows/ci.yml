@@ -43,6 +43,13 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      # D-077: deploy scripts run as root on the server; shellcheck ships on
+      # the GitHub runner image.
+      - name: Lint deploy scripts (bash -n, shellcheck)
+        run: |
+          for f in deploy/*.sh; do bash -n "$f"; done
+          shellcheck -S warning deploy/*.sh
+
       - name: Check templates (no multi-line {# #} comments)
         env:
           DJANGO_SETTINGS_MODULE: climaespacial.settings.dev

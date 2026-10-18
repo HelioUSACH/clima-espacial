@@ -12,7 +12,8 @@
     {{ status.label }}
   </span>
 </p>
-<p>{% trans "Fuente:" %} {{ product.source_provider }}{% if source_license %} — {{ source_license }}{% endif %}</p>
+<p>{% trans "Fuente:" %} {% if source_links %}<a href="{{ source_links.0.url }}" rel="noopener nofollow">{{ product.source_provider }} {% include "web/_icon_ext.html" %}</a>{% else %}{{ product.source_provider }}{% endif %}{% if source_license %} — {{ source_license }}{% endif %}</p>
+{% if official_alerts %}<p>{% trans "Avisos oficiales:" %} <a href="{{ official_alerts.url }}" rel="noopener nofollow">{{ product.source_provider }} {% include "web/_icon_ext.html" %}</a></p>{% endif %}
 
 {% if latest_event %}
 <h2>{% trans "Último evento" %}</h2>

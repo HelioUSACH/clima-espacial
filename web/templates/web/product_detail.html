@@ -10,7 +10,7 @@
       <div class="badges">
         <span class="pill{% if status.status == 'ok' %} ok{% endif %}"><span class="dot" style="background:{{ status.color }}"></span>{{ status.label }}</span>
         <span class="pill">{{ product.get_maturity_display }}</span>
-        <span class="pill">{{ product.source_provider }}</span>
+        {% if source_links %}<a class="pill" href="{{ source_links.0.url }}" rel="noopener nofollow">{{ product.source_provider }} {% include "web/_icon_ext.html" %}</a>{% else %}<span class="pill">{{ product.source_provider }}</span>{% endif %}
       </div>
     </div>
     {% if headline_values %}
@@ -36,6 +36,7 @@
         {% for f in facts %}
         <dt>{{ f.label }}</dt><dd>{{ f.value }}</dd>
         {% endfor %}
+        {% include "web/_provider_links_row.html" %}
       </dl>
     </section>
     {% endif %}

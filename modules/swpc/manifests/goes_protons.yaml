@@ -10,6 +10,8 @@ source:
   provider: "NOAA SWPC"
   inputs: ["json/goes/primary/integral-protons-1-day.json"]
   license: "Public domain (NOAA)"
+  links:
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/products/goes-proton-flux"}
 parameters:
   - {name: flux, units: "1/(cm2 s sr)"}
   - {name: energy, enum: [">=1 MeV", ">=5 MeV", ">=10 MeV", ">=30 MeV", ">=50 MeV", ">=60 MeV", ">=100 MeV", ">=500 MeV"]}
