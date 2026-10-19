@@ -1,0 +1,33 @@
+# GOES integral electron flux (D-092). Same long format as noaa.goes.protons:
+# one row per (time_tag, energy). NOAA's file carried only ">=2 MeV" when
+# this was written (checked 2026-10-18 on the 1-, 3- and 7-day files); a
+# channel NOAA adds later is stored but neither charted nor exported until
+# it joins the enum below.
+id: noaa.goes.electrons
+version: 1
+kind: timeseries
+title: {es: "Flujo de electrones (GOES)", en: "Electron flux (GOES)"}
+maturity: operational
+cadence: 5m
+stale_after: 15m
+producer: {type: collector, unit: "swx-collect@noaa.goes.electrons.timer"}
+source:
+  provider: "NOAA SWPC"
+  inputs: ["json/goes/primary/integral-electrons-1-day.json", "json/goes/primary/integral-electrons-7-day.json (first run, or after a gap)"]
+  license: "Public domain (NOAA)"
+  links:
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/products/goes-electron-flux"}
+parameters:
+  - {name: flux, units: "1/(cm2 s sr)"}
+  - {name: energy, enum: [">=2 MeV"]}
+  - {name: satellite, units: "1"}
+exchange: {hapi: true, feed: false}
+description:
+  es: "Flujo integral de electrones energéticos (sobre 2 MeV) medido en órbita geoestacionaria por el satélite GOES primario. Estos electrones del cinturón de radiación exterior penetran el blindaje de los satélites y causan carga interna de sus componentes. La NOAA emite una alerta de evento de electrones cuando el flujo sobre 2 MeV alcanza 1000 electrones/(cm² s sr) (línea punteada). Aviso de la NOAA: durante eventos de protones significativos, el canal sobre 2 MeV se contamina con protones y no es confiable."
+  en: "Integral flux of energetic electrons (above 2 MeV) measured in geostationary orbit by the primary GOES satellite. These outer-radiation-belt electrons penetrate spacecraft shielding and cause internal charging of their components. NOAA issues an Electron Event alert when the >2 MeV flux reaches 1000 electrons/(cm² s sr) (dashed line). NOAA's caveat: during significant proton events the >2 MeV channel is contaminated by protons and is not reliable."
+facts:
+  source: {es: "NOAA SWPC, GOES", en: "NOAA SWPC, GOES"}
+  spacecraft: {es: "El satélite GOES primario vigente", en: "Whichever GOES satellite is currently primary"}
+  cadence: {es: "5 minutos", en: "5 minutes"}
+  license: {es: "Dominio público (NOAA)", en: "Public domain (NOAA)"}
+  used_by: {es: "Pronóstico de electrones >2 MeV (en desarrollo)", en: ">2 MeV electron forecast (in development)"}

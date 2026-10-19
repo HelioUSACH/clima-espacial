@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -58,3 +59,31 @@ def test_parse_scales_reads_today_entry():
     parsed = adapters.parse_scales(raw)
     assert parsed["issued"].startswith(raw["0"]["DateStamp"])
     assert parsed["payload"]["days"] == raw
+
+
+# D-092: what NOAA's integral-electrons files really carried on 2026-10-18
+# (the 1- and 7-day fixtures are trimmed copies of that day's live files).
+def test_parse_goes_electrons_has_only_the_2mev_channel():
+    for name in ("integral_electrons_1_day.json", "integral_electrons_7_day.json"):
+        raw = _load(name)
+        rows = adapters.parse_goes_electrons(raw)
+        assert len(rows) == len(raw)
+        assert {r["energy"] for r in rows} == {">=2 MeV"}
+        assert all({"time_tag", "flux", "energy", "satellite"} == set(r) for r in rows)
+        assert len({r["time_tag"] for r in rows}) == len(rows)  # one row per time tag
+
+
+def test_parse_goes_electron_fluence_keeps_completed_days_only():
+    raw = _load("integral_electron_fluence_7_day.json")
+    # Midday on the file's last day: that day isn't complete, so it is dropped.
+    now = dt.datetime(2026, 10, 18, 12, 0, tzinfo=dt.UTC)
+    rows = adapters.parse_goes_electron_fluence(raw, now)
+    assert [r["time_tag"] for r in rows] == [f"2026-10-{d}T00:00:00Z" for d in range(13, 18)]
+    assert all(set(r) == {"time_tag", "fluence", "satellite"} for r in rows)
+    assert rows[0]["fluence"] == raw[0]["fluence"]
+    # Once 2026-10-18 has ended, it is published too.
+    later = adapters.parse_goes_electron_fluence(raw, dt.datetime(2026, 10, 19, 0, 0, tzinfo=dt.UTC))
+    assert len(later) == 6
+    # Another energy, if NOAA ever adds one, doesn't make two rows per day.
+    extra = raw + [{**raw[0], "energy": ">=0.8 MeV", "fluence": 1.0}]
+    assert len(adapters.parse_goes_electron_fluence(extra, now)) == 5

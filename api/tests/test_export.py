@@ -32,7 +32,8 @@ def _publish_fixture(product_id, filename, parse):
 
 def test_exportable_datasets_come_from_the_manifests():
     assert [d.id for d in export.datasets()] == [
-        "noaa.goes.protons", "noaa.goes.xray", "noaa.kp", "noaa.rtsw.mag", "noaa.rtsw.wind"]
+        "noaa.goes.electron_fluence", "noaa.goes.electrons", "noaa.goes.protons", "noaa.goes.xray", "noaa.kp",
+        "noaa.rtsw.mag", "noaa.rtsw.wind"]
 
 
 def test_no_exported_product_has_a_licence_that_forbids_redistribution():
@@ -91,6 +92,10 @@ def test_long_format_goes_pivots_energy_into_columns():
     assert [c.name for c in protons.columns][:3] == ["flux_ge1MeV", "flux_ge5MeV", "flux_ge10MeV"]
     assert protons.column("flux_ge10MeV").channel == ">=10 MeV"
     assert protons.column("flux_ge10MeV").units == "1/(cm2 s sr)"
+    electrons = export.get_dataset("noaa.goes.electrons")  # D-092
+    assert [c.name for c in electrons.columns] == ["flux_ge2MeV", "satellite"]
+    fluence = export.get_dataset("noaa.goes.electron_fluence")  # wide: one value per day
+    assert fluence.channel_key is None and [c.name for c in fluence.columns] == ["fluence", "satellite"]
 
 
 @pytest.mark.django_db

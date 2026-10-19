@@ -22,10 +22,10 @@ import io
 import json
 
 from django.conf import settings
-from django.http import HttpResponse, StreamingHttpResponse
-from django.shortcuts import render
+from django.http import HttpResponse, HttpResponseRedirect, StreamingHttpResponse
 from django.urls import reverse
 from django.utils import timezone, translation
+from django.utils.cache import patch_vary_headers
 from django.utils.http import http_date
 from django.views.decorators.http import require_http_methods
 
@@ -33,7 +33,8 @@ from . import export
 from .access import Denied, authorize, is_preview, record_usage, registration_url
 
 HAPI_VERSION = "3.3"
-SPEC_DOCUMENT = "HAPI 3.3.1"
+SPEC_VERSION = "3.3.1"
+SPEC_DOCUMENT = f"HAPI {SPEC_VERSION}"
 OUTPUT_FORMATS = ("csv", "json")
 SERVER_ID = "USACH/ClimaEspacial"
 
@@ -230,13 +231,21 @@ def _info(request, ds: export.Dataset, columns: tuple[export.Column, ...]) -> di
     return info
 
 
+@require_http_methods(["GET", "HEAD", "OPTIONS"])
 def landing(request):
-    """`/hapi`: a short human page (spec §3.2)."""
-    with translation.override("en"):
-        response = render(request, "api/hapi_landing.html", {
-            "datasets": _listed_datasets(), "hapi_version": HAPI_VERSION, "spec": SPEC_DOCUMENT,
-            "data_api_url": registration_url(request),
-        })
+    """`/hapi` and `/hapi/` (spec §3.2 asks only for *a* landing page there):
+    302 to the HAPI section of the data-access page, in the visitor's
+    language (D-093). This path is outside i18n_patterns, where
+    LocaleMiddleware always activates the default language, so the choice
+    is read here: the language cookie, then Accept-Language. The query
+    string is dropped; CORS headers stay."""
+    if request.method == "OPTIONS":
+        return _cors(HttpResponse(status=204))
+    lang = "en" if translation.get_language_from_request(request) == "en" else "es"
+    with translation.override(lang):
+        target = reverse("web:data_api") + "#hapi"
+    response = HttpResponseRedirect(target)
+    patch_vary_headers(response, ("Accept-Language", "Cookie"))
     return _cors(response)
 
 

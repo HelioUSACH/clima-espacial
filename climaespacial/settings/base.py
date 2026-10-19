@@ -86,6 +86,13 @@ SWX_FORECAST_MAX_DAYS = env_int("SWX_FORECAST_MAX_DAYS", 31)
 # Registration (D-086): at most this many new registrations per client IP per day.
 SWX_REGISTRATIONS_PER_IP_DAY = env_int("SWX_REGISTRATIONS_PER_IP_DAY", 5)
 
+# --- Nightly NRT export (D-091) ----------------------------------------------
+# `manage.py export_nrt` writes the stored rows, per product and UTC day, as
+# gzipped JSON lines under this directory, which the off-machine backup pull
+# carries away; files older than SWX_NRT_KEEP_DAYS are deleted here.
+SWX_NRT_EXPORT_DIR = Path(os.environ.get("SWX_NRT_EXPORT_DIR") or "/srv/swx/backups/nrt")
+SWX_NRT_KEEP_DAYS = env_int("SWX_NRT_KEEP_DAYS", 30)
+
 # --- Email (optional, D-086) ---------------------------------------------------
 # Only used to send a new API key to its owner. Without SWX_EMAIL_HOST no
 # email is ever attempted and the key is only shown on screen.

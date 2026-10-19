@@ -519,9 +519,15 @@ button.primary { font: inherit; background: var(--accent); color: var(--accent-i
 
 /* Data access (v0.5.0): /datos-api/, the key page, the CSV dialog. */
 .data-access .toc { font-family: var(--font-ui); font-size: 13px; margin: 0 0 1.5rem; }
+/* Anchored sections (#hapi is where /hapi lands, D-093) clear the 64px sticky header. */
+.data-access h2[id] { scroll-margin-top: 80px; }
 .data-access .table-wrap { overflow-x: auto; }
 .data-access .relay-tag { color: var(--ink-faint); }
 .data-access .note { color: var(--ink-soft); }
+.data-access .hapi-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 20px; margin: 0 0 1rem; }
+.data-access .hapi-facts dt { color: var(--ink-faint); font-family: var(--font-ui); font-size: 13px; }
+.data-access .hapi-facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .data-access .hapi-facts { grid-template-columns: minmax(0, 1fr); } .data-access .hapi-facts dd { margin-bottom: 6px; } }
 pre.code { background: var(--band); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px;
   overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; white-space: pre; max-width: 100%; }
 .data-access code, pre.code code { font-family: var(--font-mono); font-size: inherit; }

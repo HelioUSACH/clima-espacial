@@ -13,6 +13,11 @@ else on helio. Nightly content of that directory is produced by
 If analytics isn't set up yet, the dump logs a warning and the bundle simply
 leaves those two out.
 
+Since v0.5.1 the same directory also holds **`nrt/`**, the nightly NRT
+export (D-091, see [below](#the-nrt-export-nrt)). The pull already copies
+it: `rsync -az` is recursive, and the restricted key reads the whole of
+`/srv/swx/backups/`, so nothing changes on icaria or in `authorized_keys`.
+
 On icaria the copy lives in `/data/backups/clima-espacial-usach` and keeps
 its **own** history: the pull never deletes a file just because helio has
 pruned it. `backup-pull.sh` instead prunes `swx-*` files older than
@@ -77,7 +82,7 @@ From icaria:
 SWX_BACKUP_DEST=/data/backups/clima-espacial-usach bash /data/bin/swx-backup-pull.sh
 ls -l /data/backups/clima-espacial-usach
 ```
-should copy the dump/config files and nothing else. Two checks worth doing
+should copy the dump/config files and the `nrt/` tree, and nothing else. Two checks worth doing
 once, by hand, before trusting the schedule (both confirmed against a real
 `rrsync` while building this):
 - `rsync -az swx-backup-pull:../../etc/passwd /tmp/x` must be **refused**
@@ -94,6 +99,7 @@ anchors at `/srv/swx/backups/`, so the client must use a bare `host:` (see
 ## Schedule
 
 A daily cron entry on icaria at 04:30, an hour after helio's 03:30 dump
+(and the 03:05 NRT export)
 (`crontab -e` as the pull user):
 ```
 30 4 * * * SWX_BACKUP_DEST=/data/backups/clima-espacial-usach /bin/bash /data/bin/swx-backup-pull.sh >> /data/backups/clima-espacial-usach/pull.log 2>&1
@@ -102,6 +108,110 @@ Add `SWX_BACKUP_KEEP_DAYS=<n>` to the same line to keep more or fewer than
 90 days. Check `tail /data/backups/clima-espacial-usach/pull.log` weekly.
 After a release that changes `deploy/backup-pull.sh`, re-run the `curl`
 line above to update the copy in `/data/bin`.
+
+## The NRT export (`nrt/`)
+
+A data server builds an archive (monthly CDF files) from the NRT data the
+portal stores. Models are trained on science data but run on NRT data, so
+the NRT record *as it was stored* is worth keeping (D-091). The portal's
+part is `manage.py export_nrt`, run nightly by `swx-export-nrt.timer` at
+03:05 helio time, before the 03:30 dump and well before icaria's 04:30 pull.
+
+**Layout.** One file per product and UTC day, for every product with stored
+rows (third-party ones included: these files are for internal use):
+```
+nrt/<product>/<yyyy>/<product>_<yyyymmdd>.jsonl.gz
+nrt/.export_nrt.json        the marker: last successful run, files written
+nrt/FORMAT.json             the format: version, fields per kind of file
+nrt/manifests.json          every product's manifest (or that it is retired)
+```
+e.g. `nrt/noaa.goes.electrons/2026/noaa.goes.electrons_20261018.jsonl.gz`.
+
+**The export describes itself** (D-094), so whatever reads it needs the
+files, not the repo. `FORMAT.json` is built from the code that writes the
+day files:
+```
+{"format": "nrt-export/1", "generated_at": "2026-10-19T06:05:00Z",
+ "kinds": {"timeseries": {"filed_by": "time_tag", "fields": ["time_tag", "source", ...]},
+           "event": {"filed_by": "issued", ...}, "forecast": {"filed_by": "issued_at", ...}}}
+```
+`format` changes (`nrt-export/2`, ...) whenever a field is added, removed or
+renamed; a reader should refuse a version it doesn't know. `manifests.json`
+lists every product with a directory here or stored rows (so a product whose
+files helio has pruned is still listed):
+```
+{"format": "nrt-export/1", "generated_at": "...",
+ "products": [{"id": "noaa.kp", "kind": "timeseries", "manifest_version": 1,
+               "retired": false, "manifest": {...the manifest as loaded...}}, ...]}
+```
+`kind` is the kind of day file (a key of `FORMAT.json`'s `kinds`; an
+`index` product's files are `timeseries`), and the manifest is where titles,
+units, parameters and channels (`enum`), cadence, provider, licence,
+citation (`facts.citation`) and links are: read them there, never hard-code
+them. A retired product (its manifest has been removed, e.g. `noaa.dst`,
+D-081) has `"retired": true, "manifest": null`, and its last version.
+Both files are written each run like the day files (`.tmp`, rename, `0640`),
+re-written only when something other than `generated_at` changed, and never
+pruned.
+
+**Content.** gzip of JSON lines: one stored row per line, keys sorted,
+times ISO 8601 UTC with `Z` (microseconds only when non-zero), `null` where
+the column is null. Fields by product kind:
+
+| Kind | Fields | Day file chosen by |
+|---|---|---|
+| time series / index | `time_tag` (interval start), `source` (spacecraft or route, D-040/D-081), `payload` (the manifest's parameters), `quality`, `provenance`, `inserted_at` (when the value became known), `revised_at` (null unless revised in place, D-080) | `time_tag` |
+| event | `issued`, `valid_from`, `valid_to`, `payload`, `quality`, `provenance`, `created_at` | `issued` |
+| forecast | `model_version`, `issued_at`, `valid_at`, `lead_seconds`, `site`, `values` (`{field: {value, lower, upper}}`), `provenance`, `inserted_at` | `issued_at` (a whole issue stays in one file) |
+
+Rows are in stored order (`time_tag`, then insertion order: a GOES file has
+one row per energy channel per time). Values are raw, as stored: a
+provider's fill values are kept, not replaced. What a payload's fields
+mean is in the product's manifest (`modules/*/manifests/`, also in each
+night's config bundle).
+
+**A day file can be re-written.** Each run re-writes every day that gained
+or changed rows since the last successful run (`inserted_at`, `revised_at`
+or `created_at` after the marker, with an hour of overlap): today's file,
+which is partial until the UTC day ends; late data (Kyoto AE arrives weeks
+late, so a file from last month can change); revisions (Dst within 6 h, AE
+within 40 days); and backfills. Treat the newest copy of a file as the
+truth and rebuild whatever was derived from it. The first run writes every
+day there is. The output is deterministic, so an unchanged day keeps the
+same bytes and isn't re-written at all. Files are written as `*.tmp` and
+renamed; the pull skips `*.tmp`, so it never copies half a file.
+
+**Permissions.** `nrt/` is `swx:swx-backup` `2750` (setgid), files `0640`,
+directories `0750`: readable by the pull key's group, not world-readable,
+like the dumps. The export runs as `swx`; it reaches `nrt/` through the
+root-owned `0750` backup directory because its systemd unit gives that
+one process `swx-backup` as a supplementary group, and the unit's
+`ExecStartPre` (run as root) creates both directories with these owners.
+`swx` itself is not in `swx-backup`, so it still can't read the dumps.
+**The `swx-backup` group must exist** (the one-time setup below); without
+it the unit fails to start, the timer stays active, and
+`systemctl status swx-export-nrt` says why.
+
+**Retention.** helio deletes these files 30 days after they were last
+written (`SWX_NRT_KEEP_DAYS`), and the stored rows themselves are never
+deleted, so a file that changes later is simply written again. icaria
+keeps everything: `backup-pull.sh` never deletes, and its prune touches
+only top-level `swx-*` files. `swx-dump.sh`'s prune is top-level only too.
+
+**Check it.** On helio, after the first night (or right away with
+`sudo systemctl start swx-export-nrt`):
+```
+systemctl status swx-export-nrt --no-pager    # "export_nrt: N written, ..."
+sudo ls -l /srv/swx/backups/nrt/ /srv/swx/backups/nrt/noaa.kp/2026/ | head
+sudo cat /srv/swx/backups/nrt/.export_nrt.json
+sudo zcat /srv/swx/backups/nrt/noaa.kp/2026/noaa.kp_$(date -u +%Y%m%d).jsonl.gz | head -3
+```
+On icaria, after the next 04:30 pull:
+```
+ls /data/backups/clima-espacial-usach/nrt/
+find /data/backups/clima-espacial-usach/nrt -name '*.jsonl.gz' | wc -l
+zcat /data/backups/clima-espacial-usach/nrt/noaa.kp/2026/noaa.kp_$(date -u +%Y%m%d).jsonl.gz | head -3
+```
 
 ## Restoring analytics
 

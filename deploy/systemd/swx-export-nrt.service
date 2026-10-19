@@ -1,0 +1,35 @@
+# One oneshot run of `manage.py export_nrt` (D-091): the stored rows, per
+# product and UTC day, as gzipped JSON lines in /srv/swx/backups/nrt/, which
+# the off-machine backup pull carries away. Triggered by swx-export-nrt.timer.
+#
+# Permissions: /srv/swx/backups stays root:swx-backup 0750 (swx-dump.sh,
+# D-051/P2), and nrt/ below it is swx:swx-backup 2750, created by the
+# ExecStartPre lines (the "+" runs them as root). The export runs as swx
+# with swx-backup only as a supplementary group of this one process, which
+# is what lets it reach nrt/ through the 0750 parent; swx itself is not
+# added to that group, so it still can't read the database dumps. setgid
+# on nrt/ gives every new file and directory the swx-backup group, and
+# UMask=0027 plus the command's own chmod make them 0640/0750.
+[Unit]
+Description=Clima Espacial USACH: nightly NRT export for the archive
+After=postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=swx
+Group=swx
+SupplementaryGroups=swx-backup
+UMask=0027
+WorkingDirectory=/opt/swx
+EnvironmentFile=/etc/swx/swx.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=+/usr/bin/install -d -o root -g swx-backup -m 0750 /srv/swx/backups
+ExecStartPre=+/usr/bin/install -d -o swx -g swx-backup -m 2750 /srv/swx/backups/nrt
+ExecStart=/opt/swx/venv/bin/python manage.py export_nrt
+TimeoutStartSec=1800
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

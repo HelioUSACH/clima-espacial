@@ -12,6 +12,8 @@ sources (SOLAR1, DSCOVR, ACE, …) per timestamp, only one of which is
 
 from __future__ import annotations
 
+import datetime as dt
+
 
 def _active_rows(records: list[dict]) -> list[dict]:
     return [r for r in records if r.get("active")]
@@ -78,6 +80,36 @@ def parse_goes_protons(records: list[dict]) -> list[dict]:
         }
         for r in records
     ]
+
+
+def parse_goes_electrons(records: list[dict]) -> list[dict]:
+    return [
+        {
+            "time_tag": r["time_tag"],
+            "flux": r["flux"],
+            "energy": r["energy"],
+            "satellite": r["satellite"],
+        }
+        for r in records
+    ]
+
+
+FLUENCE_ENERGY = ">=2 MeV"
+
+
+def parse_goes_electron_fluence(records: list[dict], now: dt.datetime) -> list[dict]:
+    """One row per completed UTC day (D-092): `time_tag` is the day's start,
+    and a day still in progress at `now` is left out. Only the >=2 MeV
+    rows: the product is wide, one value per day."""
+    rows = []
+    for r in records:
+        if r.get("energy") != FLUENCE_ENERGY:
+            continue
+        start = dt.datetime.fromisoformat(r["time_tag"].replace("Z", "+00:00"))
+        if start + dt.timedelta(days=1) > now:
+            continue
+        rows.append({"time_tag": r["time_tag"], "fluence": r["fluence"], "satellite": r["satellite"]})
+    return rows
 
 
 def parse_scales(data: dict) -> dict:

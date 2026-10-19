@@ -1,0 +1,44 @@
+[
+  {
+    "energy": ">=2 MeV",
+    "instrument": "electrons",
+    "satellite": 19,
+    "time_tag": "2026-10-13T00:00:00Z",
+    "fluence": 13428363.9473991
+  },
+  {
+    "energy": ">=2 MeV",
+    "instrument": "electrons",
+    "satellite": 19,
+    "time_tag": "2026-10-14T00:00:00Z",
+    "fluence": 14932115.180826187
+  },
+  {
+    "energy": ">=2 MeV",
+    "instrument": "electrons",
+    "satellite": 19,
+    "time_tag": "2026-10-15T00:00:00Z",
+    "fluence": 22460627.078041155
+  },
+  {
+    "energy": ">=2 MeV",
+    "instrument": "electrons",
+    "satellite": 19,
+    "time_tag": "2026-10-16T00:00:00Z",
+    "fluence": 39904203.0442393
+  },
+  {
+    "energy": ">=2 MeV",
+    "instrument": "electrons",
+    "satellite": 19,
+    "time_tag": "2026-10-17T00:00:00Z",
+    "fluence": 25004883.30270312
+  },
+  {
+    "energy": ">=2 MeV",
+    "instrument": "electrons",
+    "satellite": 19,
+    "time_tag": "2026-10-18T00:00:00Z",
+    "fluence": 19997215.46915972
+  }
+]

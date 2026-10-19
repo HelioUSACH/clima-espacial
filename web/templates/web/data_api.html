@@ -8,6 +8,7 @@
 
 <nav class="toc" aria-label="{% trans 'En esta página' %}">
   <a href="#acceso">{% trans "Cómo acceder" %}</a> ·
+  <a href="#hapi">HAPI</a> ·
   <a href="#series">{% trans "Series disponibles" %}</a> ·
   <a href="#ejemplos">{% trans "Ejemplos" %}</a> ·
   <a href="#condiciones">{% trans "Condiciones de uso" %}</a> ·
@@ -16,7 +17,7 @@
 
 <h2 id="acceso">{% trans "Cómo acceder" %}</h2>
 <ul>
-  <li>{% blocktrans with url=hapi_url %}<strong>HAPI</strong>, el estándar de la comunidad heliofísica para series de tiempo: <a href="{{ url }}">{{ url }}</a>. Funciona con cualquier cliente HAPI.{% endblocktrans %}</li>
+  <li>{% blocktrans with url=hapi_url %}<strong>HAPI</strong>, el estándar de la comunidad heliofísica para series de tiempo: <a href="{{ url }}">{{ url }}</a>. Funciona con cualquier cliente HAPI (<a href="#hapi">detalles</a>).{% endblocktrans %}</li>
   <li>{% trans "<strong>CSV</strong>: el botón «CSV» de cada producto descarga las últimas 24 h, 7 o 30 días, o el rango que elijas." %}</li>
   <li>{% trans "<strong>Pronósticos</strong> en el formato de intercambio de la red, en JSON o CSV (lista más abajo)." %}</li>
 </ul>
@@ -33,6 +34,21 @@
   <li>{% trans "Si te pasas, la respuesta es HTTP 429 con <code>Retry-After</code>." %}</li>
 </ul>
 
+<h2 id="hapi">{% trans "Servidor HAPI" %}</h2>
+<p>{% blocktrans %}<a href="https://hapi-server.org/" rel="noopener">HAPI</a> (Heliophysics Application Programmer’s Interface) es la especificación común de la comunidad heliofísica para pedir series de tiempo por HTTP, de modo que el mismo cliente sirve para cualquier servidor.{% endblocktrans %}</p>
+<dl class="hapi-facts">
+  <dt>{% trans "Dirección del servidor" %}</dt>
+  <dd><code>{{ hapi_url }}</code></dd>
+  <dt>{% trans "Puntos de entrada" %}</dt>
+  <dd><a href="{% url 'hapi:about' %}"><code>about</code></a> · <a href="{% url 'hapi:capabilities' %}"><code>capabilities</code></a> · <a href="{% url 'hapi:catalog' %}"><code>catalog</code></a> · <code>info</code> · <code>data</code></dd>
+  <dt>{% trans "Versión" %}</dt>
+  <dd>{% blocktrans with v=hapi_version s=hapi_spec %}HAPI {{ v }}, especificación {{ s }}{% endblocktrans %}</dd>
+  <dt>{% trans "Formatos" %}</dt>
+  <dd>CSV, JSON</dd>
+</dl>
+<p>{% trans "Los conjuntos de datos (<em>datasets</em>) son las series de la tabla siguiente: cada identificador enlaza a su descripción HAPI (<code>info</code>). Las series de terceros están marcadas como tales." %}</p>
+<p>{% blocktrans with h=limits.keyless_hours d=limits.keyless_days %}<code>about</code>, <code>capabilities</code>, <code>catalog</code> e <code>info</code> no piden llave. <code>data</code> pide una llave de API (encabezado <code>X-API-Key</code> o parámetro <code>api_key</code>), salvo tramos de hasta {{ h }} h que terminen dentro de los últimos {{ d }} días (<a href="#acceso">ver «Sin llave»</a>).{% endblocktrans %}</p>
+
 <h2 id="series">{% trans "Series disponibles" %}</h2>
 <div class="table-wrap">
 <table class="status-table">
@@ -40,7 +56,7 @@
   <tbody>
   {% for d in datasets %}
     <tr>
-      <td><code>{{ d.id }}</code></td>
+      <td>{% if d.hapi_listed %}<a href="{% url 'hapi:info' %}?dataset={{ d.id|urlencode }}" title="HAPI info"><code>{{ d.id }}</code></a>{% else %}<code>{{ d.id }}</code>{% endif %}</td>
       <td><a href="{% url 'web:product_detail' d.id %}">{{ d.title }}</a>{% if d.relay %}<br><small class="relay-tag">{% trans "de terceros:" %} {% if d.provider_url %}<a href="{{ d.provider_url }}" rel="noopener nofollow">{{ d.provider }} {% include "web/_icon_ext.html" %}</a>{% else %}{{ d.provider }}{% endif %}</small>{% endif %}</td>
       <td>{{ d.cadence }}</td>
       <td>{{ d.license }}</td>
