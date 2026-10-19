@@ -5,7 +5,7 @@ development."""
 
 import pytest
 
-from web.numfmt import fmt_number
+from web.numfmt import fmt_number, fmt_sci
 
 
 @pytest.mark.parametrize(
@@ -24,3 +24,16 @@ from web.numfmt import fmt_number
 )
 def test_fmt_number(value, lang, decimals, grouping, expected):
     assert fmt_number(value, lang, decimals=decimals, grouping=grouping) == expected
+
+
+@pytest.mark.parametrize("value, lang, expected", [
+    (19997215.46915972, "en", "2.00 × 10⁷"),
+    (19997215.46915972, "es", "2,00 × 10⁷"),
+    (13428363.9, "es", "1,34 × 10⁷"),
+    (0.000123, "en", "1.23 × 10⁻⁴"),
+    (-5e3, "en", "−5.00 × 10³"),
+    (0, "en", "0"),
+    (None, "en", None),
+])
+def test_fmt_sci(value, lang, expected):
+    assert fmt_sci(value, lang) == expected

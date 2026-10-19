@@ -235,3 +235,11 @@ def test_data_sparser_than_bucket_has_no_false_gaps(client, manifests):
     payload = _series(client, "noaa.goes.xray", "1d").json()
     assert len(payload["time"]) == 60
     assert None not in payload["series"]["0.1-0.8nm"]
+
+
+def test_two_samples_set_the_step_so_daily_points_join():
+    # D-092: a daily product has only 2 points in a 3-day range; they must
+    # not be split by null buckets at the 5-min bucket step.
+    from web.series import _cadence_seconds
+    assert _cadence_seconds([0, 86400], 300) == 86400
+    assert _cadence_seconds([0], 300) == 300

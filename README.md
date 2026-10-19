@@ -35,7 +35,7 @@ climaespacial/   Django project (settings, urls)
 core/            product registry, manifest loader/validator, store, swxkit, status
 web/             public pages, templates, i18n (es/en), vendored static assets
 modules/         one folder per product family — contributors work here
-  swpc/            NOAA SWPC adapters (solar wind, indices, X-rays, protons, scales)
+  swpc/            NOAA SWPC adapters (solar wind, indices, X-rays, protons, electrons, scales)
   _template/       copy-me module skeleton
 deploy/          systemd units, nginx snippet, deploy scripts (run by a human)
 docs/            architecture, module contract, model-card template, decisions

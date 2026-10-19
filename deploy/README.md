@@ -126,6 +126,7 @@ fewer processes also means fewer cold caches.
 | `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest (`kyoto.ae`: daily 04:10 UT) |
 | `systemd/swx-verify.service` + `.timer` | daily 03:15 UT `manage.py verify_forecasts`: scores every forecast product (D-075) |
 | `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle incl. analytics (local; pulled off-machine, see below) |
+| `systemd/swx-export-nrt.service` + `.timer` | nightly 03:05 (local) `manage.py export_nrt`: stored rows per product and UTC day into `/srv/swx/backups/nrt/`, pulled off-machine with the dumps (D-091, `README-backup.md`) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |
 | `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051); skips `/hapi/` and `/api/` |
 | `hapi-verify.sh` | runs the HAPI verifier against the server (not CI; no sudo) |

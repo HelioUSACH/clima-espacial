@@ -695,8 +695,8 @@ msgstr "Terms of use"
 msgid "Registro"
 msgstr "Registration"
 
-msgid "<strong>HAPI</strong>, el estándar de la comunidad heliofísica para series de tiempo: <a href=\"%(url)s\">%(url)s</a>. Funciona con cualquier cliente HAPI."
-msgstr "<strong>HAPI</strong>, the heliophysics community's standard for time series: <a href=\"%(url)s\">%(url)s</a>. It works with any HAPI client."
+msgid "<strong>HAPI</strong>, el estándar de la comunidad heliofísica para series de tiempo: <a href=\"%(url)s\">%(url)s</a>. Funciona con cualquier cliente HAPI (<a href=\"#hapi\">detalles</a>)."
+msgstr "<strong>HAPI</strong>, the heliophysics community's standard for time series: <a href=\"%(url)s\">%(url)s</a>. It works with any HAPI client (<a href=\"#hapi\">details</a>)."
 
 msgid "<strong>CSV</strong>: el botón «CSV» de cada producto descarga las últimas 24 h, 7 o 30 días, o el rango que elijas."
 msgstr "<strong>CSV</strong>: the “CSV” button on each product downloads the last 24 h, 7 or 30 days, or a range of your choice."
@@ -847,3 +847,31 @@ msgstr "We couldn't process the registration. Please try again."
 
 msgid "Demasiados registros desde esta conexión hoy. Inténtalo mañana o escríbenos."
 msgstr "Too many registrations from this connection today. Try again tomorrow or write to us."
+
+# v0.5.1: the HAPI section of /datos-api/ (D-093)
+msgid "Servidor HAPI"
+msgstr "HAPI server"
+
+msgid "<a href=\"https://hapi-server.org/\" rel=\"noopener\">HAPI</a> (Heliophysics Application Programmer’s Interface) es la especificación común de la comunidad heliofísica para pedir series de tiempo por HTTP, de modo que el mismo cliente sirve para cualquier servidor."
+msgstr "<a href=\"https://hapi-server.org/\" rel=\"noopener\">HAPI</a> (Heliophysics Application Programmer’s Interface) is the heliophysics community’s common specification for requesting time series over HTTP, so the same client works with any server."
+
+msgid "Dirección del servidor"
+msgstr "Server URL"
+
+msgid "Puntos de entrada"
+msgstr "Endpoints"
+
+msgid "Versión"
+msgstr "Version"
+
+msgid "HAPI %(v)s, especificación %(s)s"
+msgstr "HAPI %(v)s, specification %(s)s"
+
+msgid "Formatos"
+msgstr "Formats"
+
+msgid "Los conjuntos de datos (<em>datasets</em>) son las series de la tabla siguiente: cada identificador enlaza a su descripción HAPI (<code>info</code>). Las series de terceros están marcadas como tales."
+msgstr "The datasets are the series in the table below: each identifier links to its HAPI description (<code>info</code>). Third-party series are marked as such."
+
+msgid "<code>about</code>, <code>capabilities</code>, <code>catalog</code> e <code>info</code> no piden llave. <code>data</code> pide una llave de API (encabezado <code>X-API-Key</code> o parámetro <code>api_key</code>), salvo tramos de hasta %(h)s h que terminen dentro de los últimos %(d)s días (<a href=\"#acceso\">ver «Sin llave»</a>)."
+msgstr "<code>about</code>, <code>capabilities</code>, <code>catalog</code> and <code>info</code> need no key. <code>data</code> needs an API key (header <code>X-API-Key</code> or parameter <code>api_key</code>), except spans of up to %(h)s h ending within the last %(d)s days (<a href=\"#acceso\">see “Without a key”</a>)."

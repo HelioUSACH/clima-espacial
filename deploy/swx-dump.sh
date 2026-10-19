@@ -73,7 +73,8 @@ tar --create --gzip \
 chown "$DIR_OWNER" "$BACKUP_DIR"/swx-config-"$STAMP".tar.gz "$BACKUP_DIR"/swx-"$STAMP".dump.gz
 chmod "$FILE_MODE" "$BACKUP_DIR"/swx-config-"$STAMP".tar.gz "$BACKUP_DIR"/swx-"$STAMP".dump.gz
 
-find "$BACKUP_DIR" -name 'swx-*.dump.gz' -mtime "+$KEEP_DAYS" -delete
-find "$BACKUP_DIR" -name 'swx-config-*.tar.gz' -mtime "+$KEEP_DAYS" -delete
+# Top level only: nrt/ (swx-export-nrt.service, D-091) prunes itself.
+find "$BACKUP_DIR" -maxdepth 1 -name 'swx-*.dump.gz' -mtime "+$KEEP_DAYS" -delete
+find "$BACKUP_DIR" -maxdepth 1 -name 'swx-config-*.tar.gz' -mtime "+$KEEP_DAYS" -delete
 
 echo "Backup done: $BACKUP_DIR/swx-$STAMP.dump.gz"

@@ -33,4 +33,14 @@
       menuBtn.setAttribute("aria-expanded", open ? "false" : "true");
     });
   }
+
+  // The ES/EN links are plain links to the counterpart URL (D-053); a
+  // section id is the same in both languages, so carry the #fragment over
+  // (e.g. /datos-api/#hapi <-> /en/datos-api/#hapi, D-093).
+  var langLinks = document.querySelectorAll(".lang-switch a");
+  for (var i = 0; i < langLinks.length; i++) {
+    langLinks[i].addEventListener("click", function () {
+      this.setAttribute("href", this.getAttribute("href").split("#")[0] + location.hash);
+    });
+  }
 })();

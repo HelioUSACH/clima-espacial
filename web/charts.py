@@ -195,10 +195,10 @@ class Panel:
     anchor: str = "now"
 
 
-# Energy-channel products (X-ray, protons) interleave one row per channel
+# Energy-channel products (X-ray, protons, electrons) interleave one row per channel
 # per timestamp instead of one column per channel; `product_series_json`
 # pivots on the `energy` field for these — see web/views.py `_channel_columns`.
-ENERGY_CHANNEL_PRODUCTS = frozenset({"noaa.goes.xray", "noaa.goes.protons"})
+ENERGY_CHANNEL_PRODUCTS = frozenset({"noaa.goes.xray", "noaa.goes.protons", "noaa.goes.electrons"})
 
 # product_id -> ordered panels (12-HANDOFF §4 layout + physics requirements).
 PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
@@ -275,6 +275,23 @@ PRODUCT_PANELS: dict[str, tuple[Panel, ...]] = {
                 Series(">=1 MeV", "≥1 MeV", "≥1 MeV", 3, sig_figs=3),
             ),
             ref_lines=((10, "S1"),),  # S1 threshold, ≥10 MeV
+        ),
+    ),
+    "noaa.goes.electrons": (
+        Panel(
+            key="electrons", title_es="Electrones (GOES)", title_en="Electrons (GOES)", unit="1/(cm² s sr)",
+            y="log", series=(Series(">=2 MeV", "≥2 MeV", "≥2 MeV", 1, sig_figs=3),),
+            ref_lines=((1000, "1000"),),  # NOAA's Electron Event alert, >2 MeV (D-092)
+        ),
+    ),
+    # One value per completed UTC day, at the day's start. Not anchored at
+    # the latest datum (D-082): a day-old value is on time here, not
+    # "con retraso". Fixed decades, so a week inside one decade still has
+    # a labelled axis and the level reads at a glance.
+    "noaa.goes.electron_fluence": (
+        Panel(
+            key="fluence", title_es="Fluencia diaria >2 MeV", title_en="Daily >2 MeV fluence", unit="1/(cm² sr)",
+            y="log", series=(Series("fluence", "Fluencia", "Fluence", 1, sig_figs=3),), y_range=(1e4, 1e10),
         ),
     ),
 }

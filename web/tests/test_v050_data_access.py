@@ -26,8 +26,9 @@ def _get(client, name, lang="es", *args):
 ])
 def test_data_access_page(client, lang, relay, not_exported, privacy):
     html = _get(client, "web:data_api", lang)
-    for dataset in ("noaa.goes.protons", "noaa.goes.xray", "noaa.kp", "noaa.rtsw.mag", "noaa.rtsw.wind"):
-        assert f"<td><code>{dataset}</code></td>" in html
+    for dataset in ("noaa.goes.electron_fluence", "noaa.goes.electrons", "noaa.goes.protons", "noaa.goes.xray",
+                    "noaa.kp", "noaa.rtsw.mag", "noaa.rtsw.wind"):
+        assert f"<td><code>{dataset}</code></td>" in html  # no data yet: no HAPI info link (D-093)
     assert relay in html and not_exported in html and privacy in html
     # Kyoto: listed with its provider link, never as a dataset.
     assert "<code>kyoto." not in html

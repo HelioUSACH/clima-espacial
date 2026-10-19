@@ -5,6 +5,9 @@ import datetime as dt
 import json
 
 import pytest
+from django.conf import settings
+from django.test import override_settings
+from django.urls import set_script_prefix
 
 from api import export
 from api.models import ApiUsageDay
@@ -236,7 +239,60 @@ def test_options_preflight(client):
     assert r.status_code == 204 and "X-API-Key" in r["Access-Control-Allow-Headers"]
 
 
+# D-093: /hapi and /hapi/ redirect to the data-access page's HAPI section.
+@pytest.mark.parametrize("path", ["/hapi", "/hapi/"])
+@pytest.mark.parametrize("headers, target", [
+    ({}, "/datos-api/#hapi"),
+    ({"HTTP_ACCEPT_LANGUAGE": "es-CL,es;q=0.9"}, "/datos-api/#hapi"),
+    ({"HTTP_ACCEPT_LANGUAGE": "en-US,en;q=0.9"}, "/en/datos-api/#hapi"),
+    ({"HTTP_ACCEPT_LANGUAGE": "de-DE,de;q=0.9"}, "/datos-api/#hapi"),
+])
+def test_landing_redirects_by_accept_language(client, path, headers, target):
+    r = client.get(path, {"x": "1"}, **headers)
+    assert r.status_code == 302 and r["Location"] == target  # query string dropped
+    assert r["Access-Control-Allow-Origin"] == "*"
+    assert "Accept-Language" in r["Vary"]
+
+
+def test_landing_language_cookie_beats_accept_language(client):
+    client.cookies[settings.LANGUAGE_COOKIE_NAME] = "es"
+    assert client.get("/hapi", HTTP_ACCEPT_LANGUAGE="en")["Location"] == "/datos-api/#hapi"
+    client.cookies[settings.LANGUAGE_COOKIE_NAME] = "en"
+    assert client.get("/hapi", HTTP_ACCEPT_LANGUAGE="es")["Location"] == "/en/datos-api/#hapi"
+
+
+@override_settings(FORCE_SCRIPT_NAME="/clima-espacial")
+def test_landing_redirect_keeps_the_script_prefix(client):
+    # Production runs under /clima-espacial (D-005); the test client doesn't
+    # set the script prefix itself (web/tests/test_language_switch.py).
+    set_script_prefix("/clima-espacial")
+    try:
+        r = client.get("/hapi", HTTP_ACCEPT_LANGUAGE="en")
+        assert r["Location"] == "/clima-espacial/en/datos-api/#hapi"
+    finally:
+        set_script_prefix("/")
+
+
+def test_landing_options_and_methods(client):
+    assert client.options("/hapi")["Access-Control-Allow-Origin"] == "*"
+    assert client.head("/hapi/").status_code == 302
+    assert client.post("/hapi").status_code == 405
+
+
 @pytest.mark.django_db
-def test_landing_page(client, recent_mag):
-    r = client.get("/hapi")
-    assert r.status_code == 200 and b"noaa.rtsw.mag" in r.content
+def test_landing_target_has_the_hapi_section(client, recent_mag):
+    for lang_header, page, heading, version in (
+            ("es", "/datos-api/", "Servidor HAPI", "HAPI 3.3, especificación 3.3.1"),
+            ("en", "/en/datos-api/", "HAPI server", "HAPI 3.3, specification 3.3.1")):
+        r = client.get("/hapi", HTTP_ACCEPT_LANGUAGE=lang_header, follow=True)
+        assert r.redirect_chain == [(page + "#hapi", 302)]
+        html = r.content.decode()
+        assert 'id="hapi"' in html and 'href="#hapi"' in html
+        assert 'href="/hapi/about"' in html and 'href="/hapi/capabilities"' in html and 'href="/hapi/catalog"' in html
+        assert 'href="https://hapi-server.org/"' in html
+        assert heading in html and version in html  # translated with the rest of the page
+        # The existing table's ids link to HAPI info; no second dataset table.
+        assert 'href="/hapi/info?dataset=noaa.rtsw.mag"' in html
+        assert html.count("<table") == 1
+        # Not in HAPI's catalog until it has data: plain text, no info link.
+        assert "<code>noaa.kp</code>" in html and "info?dataset=noaa.kp" not in html

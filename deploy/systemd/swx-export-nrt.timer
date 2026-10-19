@@ -1,0 +1,13 @@
+[Unit]
+Description=Run swx-export-nrt.service nightly, before the 03:30 dump
+
+# Helio local time, like swx-dump.timer: the export finishes before the
+# dump (03:30-03:40) and well before the backup host's 04:30 pull. An
+# overlap would still be safe: every file is written as *.tmp, which the
+# pull skips, and renamed.
+[Timer]
+OnCalendar=*-*-* 03:05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

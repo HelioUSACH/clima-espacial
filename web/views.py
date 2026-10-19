@@ -20,6 +20,7 @@ from api import export
 from api.access import client_ip
 from api.emails import quickstart as email_quickstart
 from api.emails import send_key_email
+from api.hapi import HAPI_VERSION, SPEC_VERSION
 from api.keys import issue_key
 from core.manifests.loader import discover_manifests, get_manifest
 from core.models import Event, Forecast, ForecastScore, Heartbeat, Product, TimeSeriesPoint
@@ -27,7 +28,7 @@ from core.models import Event, Forecast, ForecastScore, Heartbeat, Product, Time
 from . import charts, forecasts, series
 from .forms import RegistrationForm
 from .models import RegistrationRequest
-from .numfmt import fmt_number
+from .numfmt import fmt_number, fmt_sci
 from .product_status import latest_datum, public_status
 
 FLARE_PRODUCT_ID = "usach.flare.nrt"
@@ -369,6 +370,13 @@ def _headline_values(product_id, lang):
     if product_id == "noaa.goes.protons":
         row = _latest_row(product_id, energy=">=10 MeV")
         return [_headline_value("≥10 MeV", "≥10 MeV", row.payload.get("flux") if row else None, "pfu", lang)]
+    if product_id == "noaa.goes.electrons":
+        row = _latest_row(product_id, energy=">=2 MeV")
+        return [_headline_value("≥2 MeV", "≥2 MeV", row.payload.get("flux") if row else None, "1/(cm² s sr)", lang)]
+    if product_id == "noaa.goes.electron_fluence":
+        row = _latest_row(product_id)
+        return [_headline_value("Fluencia, último día", "Fluence, last day",
+                                fmt_sci(row.payload.get("fluence") if row else None, lang), "1/(cm² sr)", lang)]
     return []
 
 
@@ -687,6 +695,9 @@ def _dataset_rows(lang):
             "relay": ds.relay,
             "provider": ds.provider,
             "provider_url": ds.provider_url,
+            # HAPI's catalog lists a dataset once it has data (D-088), so
+            # only then does its id link to `info` (D-093).
+            "hapi_listed": export.time_bounds(ds)[0] is not None,
         })
     return rows
 
@@ -723,6 +734,8 @@ def _data_api_context(request, lang, form):
             "forecast_days": settings.SWX_FORECAST_MAX_DAYS,
         },
         "hapi_url": request.build_absolute_uri(reverse("hapi:landing")),
+        "hapi_version": HAPI_VERSION,
+        "hapi_spec": SPEC_VERSION,
         "email_enabled": settings.SWX_EMAIL_ENABLED,
     }
 

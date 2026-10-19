@@ -201,7 +201,9 @@ language-neutral and lives outside `i18n_patterns`.
 2. **HAPI 3.3 server** at `/hapi/` (`api/hapi.py`, D-088): about,
    capabilities, catalog, info, data, CSV and JSON, HAPI 2 parameter names
    accepted, CORS open, HAPI status JSON on every error. Checked with the
-   community verifier (`deploy/hapi-verify.sh`).
+   community verifier (`deploy/hapi-verify.sh`). `/hapi` itself redirects
+   to the `#hapi` section of `/datos-api/` in the visitor's language
+   (D-093), so the human-facing page is part of the bilingual site.
 3. **CSV downloads** at `/api/v1/datos/<id>.csv?start=…&stop=…`, the same
    rows with a `#` header block (title, page, provider, licence, citation,
    retrieval time, units); the product page's CSV button opens a dialog.
@@ -282,6 +284,10 @@ national platform's — link to them, don't rebuild (D-001, D-037).
   ML product.
 - Nightly `pg_dump` + config bundle (incl. analytics, D-068), pulled by an
   off-machine backup host (D-039).
+- Nightly NRT export (`manage.py export_nrt`, D-091): every product's stored
+  rows, per UTC day, as gzipped JSON lines in the backup area, pulled with
+  the dumps. Models are trained on science data but run on NRT data, so the
+  NRT record as it was stored is kept for an archive built off the VM.
 
 ## 9. Repository layout (D-010, D-016)
 

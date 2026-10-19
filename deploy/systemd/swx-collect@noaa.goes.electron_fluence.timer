@@ -1,0 +1,11 @@
+[Unit]
+Description=Clima Espacial USACH: collect noaa.goes.electron_fluence hourly (daily values, D-092)
+
+# Hourly at :20: NOAA adds a completed UTC day's fluence shortly after
+# 00:00 UT, and polling each hour picks it up within the hour.
+[Timer]
+OnCalendar=*-*-* *:20:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

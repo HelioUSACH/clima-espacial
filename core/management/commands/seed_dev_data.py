@@ -108,7 +108,7 @@ class Command(BaseCommand):
             ae.append({"time_tag": t, "source": "KYOTO-HAPI", "ae": au - al, "al": al, "au": au,
                        "ao": (au + al) // 2, "version": 0 if t > ae_end - dt.timedelta(days=2) else 10})
 
-        xray, protons = [], []
+        xray, protons, electrons = [], [], []
         # (peak time, peak long-channel flux): one B/C/M/X-class mix
         flares = [(start + dt.timedelta(hours=rnd.uniform(0, options["days"] * 24)), peak)
                   for peak in (8e-7, 2e-6, 5e-6, 1.5e-5, 4e-5, 1.2e-4)]
@@ -127,10 +127,27 @@ class Command(BaseCommand):
                 for energy, base in PROTON_CHANNELS.items():
                     flux = base * math.exp(0.3 * math.sin(2 * math.pi * phase(t) / 5)) * rnd.lognormvariate(0, 0.08)
                     protons.append({"time_tag": t, "energy": energy, "flux": flux, "satellite": 18})
+                # >2 MeV electrons (D-092): a diurnal swing plus a slow
+                # enhancement, crossing NOAA's 1000 alert line now and then.
+                flux = 150 * math.exp(1.6 * math.sin(2 * math.pi * phase(t) / 3) + 0.8 * math.sin(2 * math.pi * phase(t))) \
+                    * rnd.lognormvariate(0, 0.1)
+                electrons.append({"time_tag": t, "energy": ">=2 MeV", "flux": flux, "satellite": 18})
+
+        # Daily >2 MeV fluence for each completed UTC day: the 5-min flux
+        # integrated over the day (x 300 s per sample).
+        fluence = []
+        day_totals: dict = {}
+        for row in electrons:
+            day = row["time_tag"].replace(hour=0, minute=0, second=0, microsecond=0)
+            day_totals[day] = day_totals.get(day, 0.0) + row["flux"] * 300
+        for day, total in sorted(day_totals.items()):
+            if day + dt.timedelta(days=1) <= end and day >= start:
+                fluence.append({"time_tag": day, "fluence": total, "satellite": 18})
 
         for product_id, rows in (
             ("noaa.rtsw.mag", mag), ("noaa.rtsw.wind", wind), ("noaa.kp", kp), ("kyoto.dst", dst),
             ("noaa.goes.xray", xray), ("noaa.goes.protons", protons), ("kyoto.ae", ae),
+            ("noaa.goes.electrons", electrons), ("noaa.goes.electron_fluence", fluence),
         ):
             TimeSeriesPoint.objects.filter(product_id=product_id).delete()
             n = swxkit.publish_timeseries(product_id, rows)

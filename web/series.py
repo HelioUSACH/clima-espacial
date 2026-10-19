@@ -138,8 +138,11 @@ def _query_channels(product_id, specs, since, bucket):
 def _cadence_seconds(times: list[int], bucket: int) -> int:
     # The series' own cadence, not the manifest's polling `cadence` (D-054:
     # noaa.kp is polled every 15 min for data NOAA updates every 3 h). Kp in
-    # 2-min buckets is still one point per 3 h, and that's not a gap.
-    if len(times) < 3:
+    # 2-min buckets is still one point per 3 h, and that's not a gap. Two
+    # samples are enough: their spacing is the best guess there is, and
+    # falling back to the bucket would put nulls between them (a daily
+    # product's 1-2 points in range, D-092, would never join into a line).
+    if len(times) < 2:
         return bucket
     deltas = sorted(b - a for a, b in zip(times, times[1:], strict=False))
     return max(bucket, deltas[len(deltas) // 2])

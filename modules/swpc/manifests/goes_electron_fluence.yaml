@@ -1,0 +1,36 @@
+# Daily >2 MeV electron fluence from GOES (D-092): NOAA's
+# integral-electron-fluence-7-day.json, one row per completed UTC day (the
+# file never carries the day in progress; the collector also drops it, in
+# case it ever does). `time_tag` is the start of the day. Wide format: the
+# file has a single energy, so it is not an energy-channel product.
+id: noaa.goes.electron_fluence
+version: 1
+kind: index
+title: {es: "Fluencia diaria de electrones >2 MeV (GOES)", en: "Daily >2 MeV electron fluence (GOES)"}
+maturity: operational
+# Polled hourly for a value that changes once a day, so a late NOAA update
+# lands within the hour.
+cadence: 1h
+stale_after: 3h
+# The newest day is normally 24-48 h old; older than this, a day is missing.
+delayed_after: 3d
+producer: {type: collector, unit: "swx-collect@noaa.goes.electron_fluence.timer"}
+source:
+  provider: "NOAA SWPC"
+  inputs: ["json/goes/primary/integral-electron-fluence-7-day.json"]
+  license: "Public domain (NOAA)"
+  links:
+    - {name: "NOAA SWPC", url: "https://www.spaceweather.gov/products/goes-electron-flux"}
+parameters:
+  - {name: fluence, units: "1/(cm2 sr)"}
+  - {name: satellite, units: "1"}
+exchange: {hapi: true, feed: false}
+description:
+  es: "Fluencia diaria de electrones sobre 2 MeV en órbita geoestacionaria: el flujo del satélite GOES primario integrado sobre cada día UTC completo, en electrones/(cm² sr). Es la cantidad que suelen pronosticar los servicios operacionales para el riesgo de carga interna de satélites. Se publica solo por días terminados. Mismo aviso que el flujo: durante eventos de protones significativos, el canal sobre 2 MeV se contamina."
+  en: "Daily >2 MeV electron fluence in geostationary orbit: the primary GOES satellite's flux integrated over each complete UTC day, in electrons/(cm² sr). It is the quantity operational services usually forecast for the risk of spacecraft internal charging. Published for completed days only. Same caveat as the flux: during significant proton events the >2 MeV channel is contaminated."
+facts:
+  source: {es: "NOAA SWPC, GOES", en: "NOAA SWPC, GOES"}
+  spacecraft: {es: "El satélite GOES primario vigente", en: "Whichever GOES satellite is currently primary"}
+  cadence: {es: "1 día (días UTC completos)", en: "1 day (complete UTC days)"}
+  license: {es: "Dominio público (NOAA)", en: "Public domain (NOAA)"}
+  used_by: {es: "Pronóstico de electrones >2 MeV (en desarrollo)", en: ">2 MeV electron forecast (in development)"}
