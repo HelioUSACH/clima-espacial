@@ -30,6 +30,20 @@ renamed, and the backup pull skips `*.tmp`. Files are 0640: the directory
 belongs to the `swx-backup` group (setgid, deploy/systemd/swx-export-nrt.service),
 never world-readable. After exporting, files whose last write is older than
 SWX_NRT_KEEP_DAYS days are deleted here; the backup host keeps everything.
+
+The export describes itself, for an archive that has the files but not the
+repo. Each run also writes, at the top of the export root:
+
+- FORMAT.json: the format string, and per kind of day file the field its
+  day is chosen by and the fields each line carries, built from TABLES.
+  **Bump FORMAT_VERSION whenever a field is added, removed or renamed**
+  (test_export_nrt pins the fields to the version, so it fails until you do);
+- manifests.json: for every product with a directory here or stored rows,
+  its file kind, manifest version, whether it is retired (its manifest is
+  gone) and the manifest as loaded (null once retired).
+
+Both are written like the day files (.tmp then rename, 0640) and replaced
+only when their content changed, generated_at aside; never pruned.
 """
 
 from __future__ import annotations
@@ -48,7 +62,8 @@ from django.db.models import Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
-from core.models import Event, Forecast, TimeSeriesPoint
+from core.manifests.loader import discover_manifests
+from core.models import Event, Forecast, Product, TimeSeriesPoint
 
 MARKER_NAME = ".export_nrt.json"
 OVERLAP = dt.timedelta(hours=1)
@@ -56,10 +71,14 @@ FILE_MODE = 0o640
 DIR_MODE = 0o750
 SUFFIX = ".jsonl.gz"
 TMP_SUFFIX = ".tmp"
+FORMAT_VERSION = "nrt-export/1"  # bump on any field added, removed or renamed
+FORMAT_NAME = "FORMAT.json"
+MANIFESTS_NAME = "manifests.json"
 
 
 @dataclass(frozen=True)
 class Table:
+    kind: str  # the kind of day file, as FORMAT.json and manifests.json name it
     model: type
     day_field: str  # rows are filed by this field's UTC date
     changed_fields: tuple[str, ...]  # a row newer than the marker in any of these re-exports its day
@@ -68,11 +87,11 @@ class Table:
 
 
 TABLES = (
-    Table(TimeSeriesPoint, "time_tag", ("inserted_at", "revised_at"), ("time_tag", "id"),
+    Table("timeseries", TimeSeriesPoint, "time_tag", ("inserted_at", "revised_at"), ("time_tag", "id"),
           ("time_tag", "source", "payload", "quality", "provenance", "inserted_at", "revised_at")),
-    Table(Event, "issued", ("created_at",), ("issued", "id"),
+    Table("event", Event, "issued", ("created_at",), ("issued", "id"),
           ("issued", "valid_from", "valid_to", "payload", "quality", "provenance", "created_at")),
-    Table(Forecast, "issued_at", ("inserted_at",), ("issued_at", "model_version", "valid_at", "site", "id"),
+    Table("forecast", Forecast, "issued_at", ("inserted_at",), ("issued_at", "model_version", "valid_at", "site", "id"),
           ("model_version", "issued_at", "valid_at", "lead_seconds", "site", "values", "provenance", "inserted_at")),
 )
 
@@ -167,6 +186,59 @@ def prune(root: Path, keep_days: int, now: dt.datetime) -> int:
     return deleted
 
 
+def format_description() -> dict:
+    """FORMAT.json's content, generated_at aside."""
+    return {"format": FORMAT_VERSION,
+            "kinds": {t.kind: {"filed_by": t.day_field, "fields": list(t.fields)} for t in TABLES}}
+
+
+def manifests_description(root: Path) -> dict:
+    """manifests.json's content, generated_at aside. A product counts if it
+    has a directory here or stored rows (helio prunes old files, and the
+    archive must not lose a product whose files are all gone from here)."""
+    manifests = discover_manifests()
+    products = {p.id: p for p in Product.objects.all()}
+    kinds = {}
+    for product_id in products:
+        for table in TABLES:
+            if table.model.objects.filter(product_id=product_id).exists():
+                kinds[product_id] = table.kind
+                break
+    ids = set(kinds) | {p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")}
+    entries = []
+    for product_id in sorted(ids):
+        manifest = manifests.get(product_id)
+        product = products.get(product_id)
+        if manifest is not None:
+            version = manifest["version"]
+        else:
+            version = product.current_version if product else None
+        entries.append({"id": product_id, "kind": kinds.get(product_id), "manifest_version": version,
+                        "retired": manifest is None, "manifest": manifest})
+    return {"format": FORMAT_VERSION, "products": entries}
+
+
+def write_description(root: Path, name: str, content: dict, generated_at: dt.datetime) -> str:
+    """Write a top-level JSON file; "written" or "unchanged" (same content
+    but for generated_at, which then keeps its old value)."""
+    path = root / name
+    try:
+        old = json.loads(path.read_text())
+        old.pop("generated_at", None)
+    except (OSError, ValueError, AttributeError):
+        old = None
+    # Round-trip so a manifest's tuples or dates compare as they'd be read back.
+    content = json.loads(json.dumps(content, default=str))
+    if old == content:
+        return "unchanged"
+    tmp = path.with_name(name + TMP_SUFFIX)
+    tmp.write_text(json.dumps({"generated_at": _time(generated_at), **content}, indent=1, sort_keys=True,
+                              ensure_ascii=False) + "\n")
+    os.chmod(tmp, FILE_MODE)
+    os.replace(tmp, path)
+    return "written"
+
+
 def read_marker(root: Path) -> dt.datetime | None:
     try:
         return dt.datetime.fromisoformat(json.loads((root / MARKER_NAME).read_text())["marker"])
@@ -196,6 +268,8 @@ def export(root: Path, *, keep_days: int, full: bool = False, now: dt.datetime |
             counts[outcome] += 1
             if outcome == "written":
                 per_product[product_id] = per_product.get(product_id, 0) + 1
+    write_description(root, FORMAT_NAME, format_description(), started)
+    write_description(root, MANIFESTS_NAME, manifests_description(root), started)
     write_marker(root, started - OVERLAP, timezone.now(), counts["written"])
     counts["pruned"] = prune(root, keep_days, started)
     return {"since": since, "per_product": per_product, **counts}

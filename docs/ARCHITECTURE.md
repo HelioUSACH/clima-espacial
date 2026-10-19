@@ -288,6 +288,7 @@ national platform's — link to them, don't rebuild (D-001, D-037).
   rows, per UTC day, as gzipped JSON lines in the backup area, pulled with
   the dumps. Models are trained on science data but run on NRT data, so the
   NRT record as it was stored is kept for an archive built off the VM.
+  The export describes itself (`FORMAT.json`, `manifests.json`, D-094).
 
 ## 9. Repository layout (D-010, D-016)
 

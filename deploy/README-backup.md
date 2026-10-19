@@ -122,8 +122,37 @@ rows (third-party ones included: these files are for internal use):
 ```
 nrt/<product>/<yyyy>/<product>_<yyyymmdd>.jsonl.gz
 nrt/.export_nrt.json        the marker: last successful run, files written
+nrt/FORMAT.json             the format: version, fields per kind of file
+nrt/manifests.json          every product's manifest (or that it is retired)
 ```
 e.g. `nrt/noaa.goes.electrons/2026/noaa.goes.electrons_20261018.jsonl.gz`.
+
+**The export describes itself** (D-094), so whatever reads it needs the
+files, not the repo. `FORMAT.json` is built from the code that writes the
+day files:
+```
+{"format": "nrt-export/1", "generated_at": "2026-10-19T06:05:00Z",
+ "kinds": {"timeseries": {"filed_by": "time_tag", "fields": ["time_tag", "source", ...]},
+           "event": {"filed_by": "issued", ...}, "forecast": {"filed_by": "issued_at", ...}}}
+```
+`format` changes (`nrt-export/2`, ...) whenever a field is added, removed or
+renamed; a reader should refuse a version it doesn't know. `manifests.json`
+lists every product with a directory here or stored rows (so a product whose
+files helio has pruned is still listed):
+```
+{"format": "nrt-export/1", "generated_at": "...",
+ "products": [{"id": "noaa.kp", "kind": "timeseries", "manifest_version": 1,
+               "retired": false, "manifest": {...the manifest as loaded...}}, ...]}
+```
+`kind` is the kind of day file (a key of `FORMAT.json`'s `kinds`; an
+`index` product's files are `timeseries`), and the manifest is where titles,
+units, parameters and channels (`enum`), cadence, provider, licence,
+citation (`facts.citation`) and links are: read them there, never hard-code
+them. A retired product (its manifest has been removed, e.g. `noaa.dst`,
+D-081) has `"retired": true, "manifest": null`, and its last version.
+Both files are written each run like the day files (`.tmp`, rename, `0640`),
+re-written only when something other than `generated_at` changed, and never
+pruned.
 
 **Content.** gzip of JSON lines: one stored row per line, keys sorted,
 times ISO 8601 UTC with `Z` (microseconds only when non-zero), `null` where

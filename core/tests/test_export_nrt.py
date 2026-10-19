@@ -183,3 +183,76 @@ def test_command(tmp_path, kp, capsys, settings):
     assert "first run" in out and "noaa.kp: 3 day file(s) written" in out
     call_command("export_nrt", "--keep-days", "0")
     assert "0 written, 3 unchanged" in capsys.readouterr().out
+
+
+# The format the archive reads. If this fails you added, removed or renamed
+# a field: bump export_nrt.FORMAT_VERSION, then update both lines here.
+PINNED_FORMAT = ("nrt-export/1", {
+    "timeseries": ("time_tag", ["time_tag", "source", "payload", "quality", "provenance", "inserted_at",
+                                "revised_at"]),
+    "event": ("issued", ["issued", "valid_from", "valid_to", "payload", "quality", "provenance", "created_at"]),
+    "forecast": ("issued_at", ["model_version", "issued_at", "valid_at", "lead_seconds", "site", "values",
+                               "provenance", "inserted_at"]),
+})
+
+
+def test_format_version_is_bumped_with_the_fields():
+    version, kinds = PINNED_FORMAT
+    assert export_nrt.FORMAT_VERSION == version
+    assert {t.kind: (t.day_field, list(t.fields)) for t in export_nrt.TABLES} == kinds
+
+
+@pytest.mark.django_db
+def test_format_and_manifests_describe_the_export(tmp_path, kp):
+    # A retired product: stored rows, a Product row, no manifest any more.
+    retired = {**swxkit.get_manifest("noaa.kp"), "id": "noaa.dst", "version": 3}
+    swxkit._sync_product("noaa.dst", retired)
+    TimeSeriesPoint.objects.create(product_id="noaa.dst", time_tag=DAY0, source="NOAA", payload={"dst": -20})
+    export_nrt.export(tmp_path, keep_days=30)
+
+    fmt = json.loads((tmp_path / "FORMAT.json").read_text())
+    assert fmt["format"] == export_nrt.FORMAT_VERSION and fmt["generated_at"].endswith("Z")
+    assert fmt["kinds"] == {t.kind: {"filed_by": t.day_field, "fields": list(t.fields)} for t in export_nrt.TABLES}
+
+    products = {p["id"]: p for p in json.loads((tmp_path / "manifests.json").read_text())["products"]}
+    assert set(products) == {"noaa.kp", "noaa.dst"}
+    kp_entry = products["noaa.kp"]
+    assert (kp_entry["kind"], kp_entry["retired"]) == ("timeseries", False)
+    assert kp_entry["manifest"]["id"] == "noaa.kp" and kp_entry["manifest_version"] == kp_entry["manifest"]["version"]
+    assert kp_entry["manifest"]["parameters"] and kp_entry["manifest"]["source"]["provider"]
+    assert products["noaa.dst"] == {"id": "noaa.dst", "kind": "timeseries", "manifest_version": 3,
+                                    "retired": True, "manifest": None}
+    for name in ("FORMAT.json", "manifests.json"):
+        assert stat.S_IMODE((tmp_path / name).stat().st_mode) == 0o640
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.django_db
+def test_a_product_whose_files_were_pruned_stays_in_manifests(tmp_path, kp):
+    export_nrt.export(tmp_path, keep_days=30)
+    old = timezone.now().timestamp() - 31 * 86400
+    for path in tmp_path.rglob("*.jsonl.gz"):
+        os.utime(path, (old, old))
+    export_nrt.prune(tmp_path, 30, timezone.now())
+    assert not (tmp_path / "noaa.kp").exists()
+    export_nrt.export(tmp_path, keep_days=0)
+    ids = [p["id"] for p in json.loads((tmp_path / "manifests.json").read_text())["products"]]
+    assert "noaa.kp" in ids
+
+
+@pytest.mark.django_db
+def test_unchanged_descriptions_are_left_alone(tmp_path, kp):
+    export_nrt.export(tmp_path, keep_days=30)
+    paths = [tmp_path / "FORMAT.json", tmp_path / "manifests.json"]
+    before = [p.read_bytes() for p in paths]
+    for path in paths:
+        os.utime(path, (1_000_000_000, 1_000_000_000))
+    export_nrt.export(tmp_path, keep_days=30, now=timezone.now() + dt.timedelta(days=1))
+    assert [p.read_bytes() for p in paths] == before  # generated_at included: not rewritten
+    assert all(p.stat().st_mtime == 1_000_000_000 for p in paths)
+    # A new product changes manifests.json only.
+    swxkit.publish_event("noaa.scales", {"days": {}}, valid_from=DAY0, issued=DAY0)
+    export_nrt.export(tmp_path, keep_days=30)
+    assert paths[0].stat().st_mtime == 1_000_000_000 and paths[1].stat().st_mtime != 1_000_000_000
+    entry = [p for p in json.loads(paths[1].read_text())["products"] if p["id"] == "noaa.scales"]
+    assert entry[0]["kind"] == "event"
