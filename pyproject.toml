@@ -1,6 +1,6 @@
 [project]
 name = "clima-espacial"
-version = "0.4.2"
+version = "0.5.0"
 description = "Clima Espacial USACH — USACH node of the Plataforma Nacional de Meteorología Espacial"
 requires-python = ">=3.12"
 license = "Apache-2.0"

@@ -1,23 +1,34 @@
 import datetime as dt
 import json
+import re
 
+from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.cache import patch_cache_control
-from django.utils.html import format_html
+from django.utils.html import escape, format_html
+from django.utils.safestring import mark_safe
 from django.utils.translation import get_language, gettext
 from django.views.decorators.http import require_http_methods
 
+from api import export
+from api.access import client_ip
+from api.emails import quickstart as email_quickstart
+from api.emails import send_key_email
+from api.keys import issue_key
 from core.manifests.loader import discover_manifests, get_manifest
 from core.models import Event, Forecast, ForecastScore, Heartbeat, Product, TimeSeriesPoint
 
 from . import charts, forecasts, series
 from .forms import RegistrationForm
+from .models import RegistrationRequest
 from .numfmt import fmt_number
+from .product_status import latest_datum, public_status
 
 FLARE_PRODUCT_ID = "usach.flare.nrt"
 SCALES_PRODUCT_ID = "noaa.scales"
@@ -60,7 +71,28 @@ def _status_badge(product_id, effective_status, lang):
         "status": effective_status,
         "color": charts.STATUS_COLORS[effective_status],
         "label": charts.STATUS_LABELS[effective_status][lang],
+        "title": "",
     }
+
+
+def _fmt_day(when, lang):
+    when = when.astimezone(dt.UTC)
+    if lang == "en":
+        return f"{when.day:02d} {_MONTH_ABBR[when.month - 1]}"
+    return f"{when:%d/%m}"
+
+
+def _product_badge(product, lang):
+    """The status pill of one product: its heartbeat, refined to "al día ·
+    con retraso" when its newest datum is older than `delayed_after`
+    (D-085), with "datos hasta dd/mm" as the tooltip."""
+    hb = getattr(product, "heartbeat", None)
+    status, latest = public_status(product, hb.effective_status() if hb else "no_data")
+    badge = _status_badge(product.id, status, lang)
+    badge["latest"] = latest
+    if status == "delayed":
+        badge["title"] = gettext("datos hasta %(day)s") % {"day": _fmt_day(latest, lang)}
+    return badge
 
 
 def _latest_row(product_id, energy=None):
@@ -90,9 +122,11 @@ def _offer_cards(lang):
             "text": gettext("Pronóstico de variaciones rápidas del campo geomagnético, el insumo de las corrientes inducidas en redes eléctricas."),
         },
         {
-            "pill": gettext("próximamente"), "pill_class": "",
+            "pill": gettext("disponible"), "pill_class": "",
             "title": gettext("Datos abiertos y API"),
-            "text": gettext("Series curadas con licencia CC BY 4.0, descargas y acceso HAPI con registro gratuito."),
+            "text": gettext("Descargas CSV y un servidor HAPI, con registro gratuito. Cada serie conserva su licencia: "
+                            "los productos USACH son CC BY 4.0 y los datos de la NOAA, de dominio público."),
+            "url": reverse("web:data_api"),
         },
     ]
 
@@ -283,7 +317,7 @@ def catalogue(request):
         {
             "product": p,
             "title": _fmt_title(p, lang),
-            "status": _status_badge(p.id, p.heartbeat.effective_status() if hasattr(p, "heartbeat") else "no_data", lang),
+            "status": _product_badge(p, lang),
         }
         for p in products
     ]
@@ -338,6 +372,18 @@ def _headline_values(product_id, lang):
     return []
 
 
+def _headline_asof(product, badge, lang):
+    """"al 04/10 23:55 UT" under the headline values when they aren't
+    "now": the product is delayed (D-085) or its chart ends at its latest
+    datum (D-082). Otherwise "" -- a live product's values are current."""
+    if badge["status"] != "delayed" and charts.product_anchor(product.id) != "latest":
+        return ""
+    latest = badge.get("latest") or latest_datum(product)
+    if latest is None:
+        return ""
+    return gettext("al %(when)s") % {"when": _fmt_ut(latest, lang)}
+
+
 # D-081: a retired product's page moves to its successor for good. Its
 # rows stay in the store (history) and its serie.json still answers.
 RETIRED_PRODUCTS = {"noaa.dst": "kyoto.dst"}
@@ -354,11 +400,10 @@ def product_detail(request, product_id):
         return redirect("web:product_detail", RETIRED_PRODUCTS[product_id], permanent=True)
     lang = _lang(request)
     product = get_object_or_404(Product, id=product_id)
-    hb = getattr(product, "heartbeat", None)
     context = {
         "product": product,
         "title": _fmt_title(product, lang),
-        "status": _status_badge(product_id, hb.effective_status() if hb else "no_data", lang),
+        "status": _product_badge(product, lang),
         "source_license": _license_text(product.source_license),
         "source_links": product.source_links,
     }
@@ -389,12 +434,24 @@ def product_detail(request, product_id):
     context["panels_id"] = stack_id + "-panels"
     context["i18n_id"] = stack_id + "-i18n"
     context["tall"] = True
-    context["csv_stub"] = True
+    context.update(_download_context(product))
     context["stack_aria_label"] = context["title"]
     context["headline_values"] = _headline_values(product_id, lang)
+    context["headline_asof"] = _headline_asof(product, context["status"], lang)
     context["description"] = product.description(lang)
     context["facts"] = _facts_list(product, lang)
     return render(request, "web/product_detail.html", context)
+
+
+def _download_context(product):
+    """The chart card's CSV button (§3): a download dialog for an exportable
+    product; otherwise a link to the data on the provider's own site."""
+    if export.get_dataset(product.id) is not None:
+        return {"csv_download": {"endpoint": reverse("api:download_csv", args=[product.id]),
+                                 "product_id": product.id}}
+    if product.source_links:
+        return {"provider_data_link": product.source_links[0]}
+    return {}
 
 
 # dt/dd order fixed, same for every product (18-HANDOFF §2 "Ficha del
@@ -411,12 +468,30 @@ _FACT_ROWS = (
 )
 
 
+# A DOI, written "doi:10.xxxx/..." or bare "10.xxxx/...": the registrant
+# code is 4-9 digits, the suffix runs to the next space. A trailing
+# full stop, comma, semicolon or closing bracket is punctuation, not DOI.
+_DOI_RE = re.compile(r"(?:\bdoi:\s*)?\b(10\.\d{4,9}/\S+?)(?=[.,;)\]]*(?:\s|$))", re.IGNORECASE)
+
+
+def link_dois(text):
+    """Escaped `text` with every DOI turned into an https://doi.org/ link
+    (D-085), keeping the text as written ("doi:10.17593/..."). Safe HTML."""
+    parts, last = [], 0
+    for match in _DOI_RE.finditer(text):
+        parts.append(escape(text[last:match.start()]))
+        parts.append(format_html('<a href="https://doi.org/{}" rel="noopener">{}</a>', match.group(1), match.group(0)))
+        last = match.end()
+    parts.append(escape(text[last:]))
+    return mark_safe("".join(parts))  # every piece is escaped or built by format_html
+
+
 def _facts_list(product, lang):
     rows = []
     for key, label_es, label_en in _FACT_ROWS:
         value = product.fact(key, lang)
         if value:
-            rows.append({"label": label_en if lang == "en" else label_es, "value": value})
+            rows.append({"label": label_en if lang == "en" else label_es, "value": link_dois(value)})
     return rows
 
 
@@ -584,7 +659,7 @@ def status(request):
         {
             "product": p,
             "title": _fmt_title(p, lang),
-            "status": _status_badge(p.id, p.heartbeat.effective_status() if hasattr(p, "heartbeat") else "no_data", lang),
+            "status": _product_badge(p, lang),
             "last_seen_at": p.heartbeat.last_seen_at if hasattr(p, "heartbeat") else None,
         }
         for p in products
@@ -596,17 +671,106 @@ def about(request):
     return render(request, "web/about.html")
 
 
+# --- Data access (D-083, D-086) ------------------------------------------------
+
+DUPLICATE_WINDOW = dt.timedelta(minutes=10)
+
+
+def _dataset_rows(lang):
+    rows = []
+    for ds in export.datasets():
+        rows.append({
+            "id": ds.id,
+            "title": ds.title["en" if lang == "en" else "es"],
+            "cadence": ds.fact("cadence", lang) or ds.manifest["cadence"],
+            "license": ds.fact("license", lang) or _license_text(ds.license),
+            "relay": ds.relay,
+            "provider": ds.provider,
+            "provider_url": ds.provider_url,
+        })
+    return rows
+
+
+def _not_exported_rows(lang):
+    return [{"id": m["id"], "title": m["title"]["en" if lang == "en" else "es"],
+             "license": (m.get("facts", {}).get("license") or {}).get(lang) or m["source"].get("license", ""),
+             "links": m["source"].get("links", [])} for m in export.not_exported()]
+
+
+def _forecast_rows(lang):
+    return [{"id": pid, "title": m["title"]["en" if lang == "en" else "es"],
+             "license": (m.get("facts", {}).get("license") or {}).get(lang) or m["source"].get("license", "")}
+            for pid, m in sorted(discover_manifests().items()) if m["kind"] == "forecast"]
+
+
+def _data_api_context(request, lang, form):
+    return {
+        "form": form,
+        "datasets": _dataset_rows(lang),
+        "not_exported": _not_exported_rows(lang),
+        "forecasts": _forecast_rows(lang),
+        "examples": email_quickstart(request, "TU_LLAVE" if lang == "es" else "YOUR_KEY"),
+        "limits": {
+            "per_minute": settings.SWX_API_RATE_PER_MINUTE,
+            "per_day": settings.SWX_API_DAILY_REQUESTS,
+            "rows_per_day": settings.SWX_API_DAILY_ROWS,
+            "keyless_hours": settings.SWX_API_KEYLESS_MAX_HOURS,
+            "keyless_days": settings.SWX_API_KEYLESS_RECENT_DAYS,
+            "keyless_per_hour": settings.SWX_API_KEYLESS_PER_HOUR,
+            "max_days_fast": settings.SWX_EXPORT_MAX_DAYS_FAST,
+            "max_days_slow": settings.SWX_EXPORT_MAX_DAYS_SLOW,
+            "max_rows": settings.SWX_EXPORT_MAX_ROWS,
+            "forecast_days": settings.SWX_FORECAST_MAX_DAYS,
+        },
+        "hapi_url": request.build_absolute_uri(reverse("hapi:landing")),
+        "email_enabled": settings.SWX_EMAIL_ENABLED,
+    }
+
+
+def _registrations_today(request):
+    return f"swx:reg:{client_ip(request)}:{timezone.now().astimezone(dt.UTC):%Y%m%d}"
+
+
 @require_http_methods(["GET", "POST"])
 def data_api(request):
+    """The data-access page, and registration. A valid POST creates the
+    registration and a key and answers with the thanks page directly: the
+    key is in this one response only (no redirect, no session), which is
+    never cached (D-086)."""
+    lang = _lang(request)
+    status = 200
     if request.method == "POST":
         form = RegistrationForm(request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect("web:data_api_thanks")
+        if request.POST.get("website"):
+            form.add_error(None, gettext("No pudimos procesar el registro. Inténtalo de nuevo."))
+            status = 400
+        elif form.is_valid():
+            email = form.cleaned_data["email"]
+            if RegistrationRequest.objects.filter(email__iexact=email,
+                                                  created_at__gte=timezone.now() - DUPLICATE_WINDOW).exists():
+                response = render(request, "web/data_api_thanks.html", {"duplicate": True})
+                response["Cache-Control"] = "no-store"
+                return response
+            if (cache.get(_registrations_today(request)) or 0) >= settings.SWX_REGISTRATIONS_PER_IP_DAY:
+                form.add_error(None, gettext("Demasiados registros desde esta conexión hoy. Inténtalo mañana o "
+                                             "escríbenos."))
+                status = 429
+            else:
+                with transaction.atomic():
+                    registration = form.save(commit=False)
+                    registration.language = lang
+                    registration.save()
+                    _key, raw = issue_key(registration=registration, kind="user")
+                if not cache.add(_registrations_today(request), 1, 86400):
+                    cache.incr(_registrations_today(request))
+                email_status = send_key_email(request, to=registration.email, name=registration.name, key=raw,
+                                              lang=lang)
+                response = render(request, "web/data_api_thanks.html", {
+                    "key": raw, "qs": email_quickstart(request, raw), "email_status": email_status,
+                    "email": registration.email,
+                })
+                response["Cache-Control"] = "no-store"
+                return response
     else:
         form = RegistrationForm()
-    return render(request, "web/data_api.html", {"form": form})
-
-
-def data_api_thanks(request):
-    return render(request, "web/data_api_thanks.html")
+    return render(request, "web/data_api.html", _data_api_context(request, lang, form), status=status)

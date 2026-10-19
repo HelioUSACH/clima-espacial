@@ -52,6 +52,7 @@ def _sync_product(product_id: str, manifest: dict | None = None) -> Product:
             "maturity": manifest["maturity"],
             "cadence_seconds": parse_duration(manifest["cadence"]),
             "stale_after_seconds": parse_duration(manifest["stale_after"]),
+            "delayed_after_seconds": parse_duration(manifest["delayed_after"]) if "delayed_after" in manifest else None,
             "producer_type": manifest["producer"]["type"],
             "producer_repo": manifest["producer"].get("repo", ""),
             "source_provider": manifest["source"]["provider"],

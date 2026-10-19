@@ -122,6 +122,9 @@ fetch() {
 }
 fetch /estado/ > /dev/null
 HOME_HTML="$(fetch /)"
+# v0.5.0: the HAPI server answers (metadata needs no key, D-088).
+fetch /hapi/capabilities | grep -q '"outputFormats"' \
+    || { echo "Smoke test: /hapi/capabilities is not a HAPI response." >&2; exit 1; }
 
 # D-055: the page must reference hashed static files, and the exact file it
 # names must exist in STATIC_ROOT — otherwise collectstatic/the manifest

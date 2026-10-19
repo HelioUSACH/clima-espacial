@@ -34,6 +34,7 @@ STATUS_COLORS = {
     "error": "var(--status-error)",
     "no_data": "var(--status-nodata)",  # not a severity — "nothing published yet", kept neutral
     "pending": "var(--status-nodata)",  # same neutral — "en preparación" isn't a severity either
+    "delayed": "var(--status-delayed)",  # healthy, but its newest datum is old (D-085)
 }
 STATUS_LABELS = {
     "ok": {"es": "al día", "en": "live"},
@@ -44,6 +45,8 @@ STATUS_LABELS = {
     # (flare-nrt, D-036) is "en preparación", not "con errores" — error/
     # no_data would wrongly read as *our* collector being broken.
     "pending": {"es": "en preparación", "en": "in preparation"},
+    # D-085: the collector is healthy but the provider's data are behind.
+    "delayed": {"es": "al día · con retraso", "en": "up to date · delayed"},
 }
 
 # NOAA scale level (0-5) -> status role, so G/S/R badges reuse the same

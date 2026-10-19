@@ -44,6 +44,15 @@ def test_bounds_contain_the_value_widen_with_spread_and_stay_in_range():
         assert 0 <= kp["lower"] <= kp["value"] <= kp["upper"] <= 9
 
 
+def test_rounded_bounds_still_contain_a_thirds_value():
+    # Kp in thirds (2.333...) with no spread in its errors: the band is the
+    # value itself, and rounding must not push it below/above the value.
+    rows, _ = persistence.issue(kp_history(ISSUED, pattern=(7 / 3,)), ISSUED, HORIZONS)
+    for r in rows:
+        kp = r["kp"]
+        assert kp["lower"] <= kp["value"] <= kp["upper"], kp
+
+
 def test_bounds_are_the_error_percentiles():
     obs = kp_history(ISSUED)
     errors = persistence.persistence_errors(obs, ISSUED, 3 * 3600, 3 * 3600)

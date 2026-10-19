@@ -1,0 +1,21 @@
+{% load i18n %}{% autoescape off %}{% blocktrans %}Hola {{ name }}:{% endblocktrans %}
+
+{% trans "Gracias por registrarte en Clima Espacial USACH. Esta es tu llave de API:" %}
+
+    {{ key }}
+
+{% trans "Guárdala en un lugar seguro: no la almacenamos y no podemos recuperarla. Si la pierdes, escríbenos y te daremos una nueva." %}
+
+{% trans "Descargar CSV (curl):" %}
+    {{ qs.curl }}
+
+{% trans "HAPI (URL directa):" %}
+    {{ qs.hapi_url }}
+
+{% trans "Python (requests):" %}
+{{ qs.python }}
+{% trans "Condiciones de uso, límites y lista de series:" %} {{ data_api_url }}
+
+-- 
+Clima Espacial USACH · HelioFísica USACH
+{% endautoescape %}

@@ -1,10 +1,37 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n static %}
 {% block title %}{% trans "Gracias" %}{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex">{% endblock %}
 {% block content %}
-<div class="wrap page">
-<h1>{% trans "¡Gracias!" %}</h1>
-<p class="lede">{% trans "Registramos tu interés. Te avisaremos cuando la API y las descargas estén disponibles." %}</p>
-<a href="{% url 'web:home' %}">{% trans "Volver al inicio" %}</a>
+<div class="wrap page data-access">
+{% if duplicate %}
+<h1>{% trans "Ya estás registrado" %}</h1>
+<p class="lede">{% trans "Registramos este correo hace unos minutos, así que no creamos otra llave. Si no alcanzaste a copiar la tuya, escríbenos y te daremos una nueva." %}</p>
+{% else %}
+<h1>{% trans "¡Gracias! Esta es tu llave de API" %}</h1>
+<p class="lede"><strong>{% trans "Cópiala ahora: se muestra solo esta vez." %}</strong> {% trans "No la guardamos (solo una huella para reconocerla), así que no podemos recuperarla." %}</p>
+<div class="key-box">
+  <input id="api-key" class="key" type="text" value="{{ key }}" readonly spellcheck="false" aria-label="{% trans 'Tu llave de API' %}">
+  <button class="primary" type="button" data-copy="api-key" data-copied="{% trans 'Copiada' %}">{% trans "Copiar" %}</button>
+</div>
+{% if email_status == "sent" %}
+<p>{% blocktrans %}También te la enviamos a {{ email }}.{% endblocktrans %}</p>
+{% elif email_status == "failed" %}
+<p class="note">{% trans "No pudimos enviarte la llave por correo: cópiala ahora." %}</p>
+{% endif %}
+
+<h2>{% trans "Primeros pasos" %}</h2>
+<h3>{% trans "CSV con curl" %}</h3>
+<pre class="code"><code id="qs-curl">{{ qs.curl }}</code></pre>
+<button class="sbtn" type="button" data-copy="qs-curl" data-copied="{% trans 'Copiado' %}">{% trans "Copiar" %}</button>
+<h3>{% trans "HAPI (URL directa)" %}</h3>
+<pre class="code"><code id="qs-hapi">{{ qs.hapi_url }}</code></pre>
+<button class="sbtn" type="button" data-copy="qs-hapi" data-copied="{% trans 'Copiado' %}">{% trans "Copiar" %}</button>
+<h3>{% trans "Python (requests)" %}</h3>
+<pre class="code"><code id="qs-python">{{ qs.python }}</code></pre>
+<button class="sbtn" type="button" data-copy="qs-python" data-copied="{% trans 'Copiado' %}">{% trans "Copiar" %}</button>
+{% endif %}
+<p><a href="{% url 'web:data_api' %}">{% trans "Límites, series y condiciones de uso" %}</a> · <a href="{% url 'web:home' %}">{% trans "Volver al inicio" %}</a></p>
 </div>
 {% endblock %}
+{% block extra_scripts %}<script defer src="{% static 'web/js/data-access.js' %}"></script>{% endblock %}

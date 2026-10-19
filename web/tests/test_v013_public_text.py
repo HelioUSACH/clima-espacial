@@ -61,20 +61,20 @@ def test_home_context_heading(client, lang, heading):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "lang, licence, csv_text",
-    [("es", "Dominio público (NOAA)", "CSV · próximamente"), ("en", "Public domain (NOAA)", "CSV · coming soon")],
+    "lang, licence, dialog_title",
+    [("es", "Dominio público (NOAA)", "Descargar CSV"), ("en", "Public domain (NOAA)", "Download CSV")],
 )
-def test_product_page_licence_and_csv_stub_text(client, mag_product, lang, licence, csv_text):
-    # 18-HANDOFF-v0.2.0.md §2: the licence moved into "Ficha del producto"
-    # (facts, from the manifest); "Descargar datos" became a disabled
-    # "CSV · próximamente" button in the chart card's own toolbar.
+def test_product_page_licence_and_csv_button(client, mag_product, lang, licence, dialog_title):
+    # 18-HANDOFF-v0.2.0.md §2: the licence lives in "Ficha del producto".
+    # v0.5.0 §3: the disabled "CSV · próximamente" stub became a working
+    # CSV button that opens the download dialog.
     html = _get(client, "web:product_detail", lang, "noaa.rtsw.mag")
     assert f"<dd>{licence}</dd>" in html
-    assert re.search(r"<button[^>]*\bdisabled\b[^>]*>" + re.escape(csv_text) + r"</button>", html)
+    assert re.search(r'<button[^>]*data-csv-open="csv-dialog"[^>]*>CSV</button>', html)
+    assert f'<h2 id="csv-dialog-title">{dialog_title}</h2>' in html
+    assert "próximamente" not in html and "coming soon" not in html
     if lang == "es":
         assert "Public domain" not in html
-    else:
-        assert "próximamente" not in html
 
 
 @pytest.mark.django_db

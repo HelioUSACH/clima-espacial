@@ -1,7 +1,6 @@
-"""M1 ships the data/API **registration stub**, not the full API (D-029):
-this captures interest and basic sector info for FONDEF/FIU reporting. It
-does not issue API keys yet — that is M2 work alongside the HAPI endpoint
-(docs/DECISIONS.md D-048).
+"""Data/API registration (D-029): name, institution, sector and intended
+use, for usage statistics by sector in the project's reporting. Since
+v0.5.0 a valid registration also gets an API key (`api.ApiKey`, D-086).
 
 Stores personal data (name, email, institution) — D-051/P6: the form shows
 a short privacy notice and requires explicit consent before this can be
@@ -36,6 +35,9 @@ class RegistrationRequest(models.Model):
         default=False,
         help_text=_("El usuario aceptó el aviso de privacidad al enviar el formulario."),
     )
+    # The page language at registration (D-086): an API key issued later
+    # from the admin is emailed in the same language.
+    language = models.CharField(max_length=8, default="es", editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clima Espacial USACH: HAPI server</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 16px;color:#1b2430;background:#fff}code{font-size:.9em}li{margin:.2rem 0}</style>
+</head>
+<body>
+<h1>Clima Espacial USACH: HAPI server</h1>
+<p>A <a href="https://hapi-server.org/">HAPI</a> {{ hapi_version }} server ({{ spec }}). Output formats: csv and json.</p>
+<ul>
+  <li><a href="{% url 'hapi:about' %}">about</a></li>
+  <li><a href="{% url 'hapi:capabilities' %}">capabilities</a></li>
+  <li><a href="{% url 'hapi:catalog' %}">catalog</a></li>
+</ul>
+<h2>Datasets</h2>
+<ul>
+  {% for ds in datasets %}<li><a href="{% url 'hapi:info' %}?dataset={{ ds.id|urlencode }}">{{ ds.id }}</a>: {{ ds.title.en }}{% if ds.relay %} (relayed from {{ ds.provider }}){% endif %}</li>
+  {% empty %}<li>No dataset has data yet.</li>{% endfor %}
+</ul>
+<p><code>data</code> needs a free API key (header <code>X-API-Key</code> or parameter <code>api_key</code>), except short recent requests. Register and read the terms at <a href="{{ data_api_url }}">{{ data_api_url }}</a>.</p>
+</body>
+</html>

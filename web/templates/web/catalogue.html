@@ -20,7 +20,7 @@
   <div class="product-card">
     <span class="badge">{{ row.product.get_maturity_display }}</span>
     <h3><a href="{% url 'web:product_detail' row.product.id %}">{{ row.title }}</a></h3>
-    <span class="status-badge">
+    <span class="status-badge{% if row.status.status == 'delayed' %} status-badge--delayed{% endif %}"{% if row.status.title %} title="{{ row.status.title }}"{% endif %}>
       <span class="status-badge__dot" style="background:{{ row.status.color }}"></span>
       {{ row.status.label }}
     </span>

@@ -41,6 +41,9 @@ class Product(models.Model):
     maturity = models.CharField(max_length=16, choices=MATURITY_CHOICES)
     cadence_seconds = models.PositiveIntegerField()
     stale_after_seconds = models.PositiveIntegerField()
+    # Optional (manifest `delayed_after`): a healthy product whose newest
+    # datum is older than this reads "al día · con retraso" (web/status.py).
+    delayed_after_seconds = models.PositiveIntegerField(null=True, blank=True)
     producer_type = models.CharField(max_length=16, choices=PRODUCER_TYPE_CHOICES)
     producer_repo = models.CharField(max_length=200, blank=True, default="")
     source_provider = models.CharField(max_length=200, blank=True, default="")

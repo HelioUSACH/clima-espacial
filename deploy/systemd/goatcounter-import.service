@@ -14,7 +14,9 @@
 # to /etc/hosts so it resolves on the server itself. The three extra
 # -exclude globs stop the charts' own data requests, the admin and the
 # language switch from being counted as page views (11-MANUAL-STEPS.md
-# Part 1 — found running this for real).
+# Part 1 — found running this for real). The /hapi/ and /api/ globs (D-090)
+# are belt and braces: nginx doesn't log those paths at all, and API use is
+# counted per key in the database instead.
 [Unit]
 Description=Clima Espacial USACH: import pageviews from nginx's access log into GoatCounter
 After=network.target goatcounter.service
@@ -32,6 +34,8 @@ ExecStart=/opt/goatcounter/goatcounter import -site http://stats.clima-espacial.
     -exclude "path:glob:**serie.json*" \
     -exclude "path:glob:/clima-espacial/gestion/**" \
     -exclude "path:glob:/clima-espacial/i18n/**" \
+    -exclude "path:glob:/clima-espacial/hapi/**" \
+    -exclude "path:glob:/clima-espacial/api/**" \
     -follow /var/log/nginx/access.log
 Restart=on-failure
 RestartSec=10

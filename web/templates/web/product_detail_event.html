@@ -7,7 +7,7 @@
 <h1>{{ title }}</h1>
 <p class="lede">
   <span class="badge">{{ product.get_maturity_display }}</span>
-  <span class="status-badge">
+  <span class="status-badge"{% if status.title %} title="{{ status.title }}"{% endif %}>
     <span class="status-badge__dot" style="background:{{ status.color }}"></span>
     {{ status.label }}
   </span>

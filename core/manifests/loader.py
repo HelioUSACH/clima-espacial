@@ -92,6 +92,8 @@ def _load_manifest_uncached(path: Path) -> dict:
 
     if not errors:
         durations = [data["cadence"], data["stale_after"], *data.get("forecast", {}).get("horizons", [])]
+        if "delayed_after" in data:
+            durations.append(data["delayed_after"])
         for value in durations:
             try:
                 parse_duration(value)
@@ -100,6 +102,7 @@ def _load_manifest_uncached(path: Path) -> dict:
 
     if not errors:
         errors.extend(_revise_errors(data))
+        errors.extend(_exchange_errors(data))
 
     if errors:
         raise ManifestError(path, errors)
@@ -196,13 +199,45 @@ def forecast_target_errors(manifest: dict, manifests: dict[str, dict]) -> list[s
 
 # Our own products; anyone else's should say where their data come from.
 OWN_PROVIDER_PREFIX = "HelioUSACH"
+OWN_PROVIDER_PREFIXES = (OWN_PROVIDER_PREFIX, "USACH")
+
+
+def is_own_provider(provider: str) -> bool:
+    """True for a product USACH itself produces ("HelioUSACH (USACH)"), so
+    it is exported as `own`; anything else is a `relay` of a third party's
+    data (D-084)."""
+    return provider.strip().startswith(OWN_PROVIDER_PREFIXES)
+
+
+# D-078/D-087: licences that allow us to redistribute the data. Anything
+# else -- in particular a non-commercial licence such as WDC Kyoto's --
+# may be shown on the portal but never exported.
+_REDISTRIBUTABLE_RE = re.compile(r"^(public domain\b|cc-?by-4\.0$|cc by 4\.0$|cc0\b)", re.IGNORECASE)
+_NON_COMMERCIAL_RE = re.compile(r"non-?commercial|\bNC\b", re.IGNORECASE)
+
+
+def license_allows_redistribution(license_text: str) -> bool:
+    text = (license_text or "").strip()
+    return bool(_REDISTRIBUTABLE_RE.match(text)) and not _NON_COMMERCIAL_RE.search(text)
+
+
+def _exchange_errors(data: dict) -> list[str]:
+    """D-087: `exchange.hapi: true` exports the data to anyone, so the
+    licence must allow redistribution."""
+    if not data.get("exchange", {}).get("hapi"):
+        return []
+    license_text = data.get("source", {}).get("license", "")
+    if not license_allows_redistribution(license_text):
+        return [f"exchange.hapi is true but source.license {license_text!r} doesn't allow redistribution "
+                f"(D-078): set exchange.hapi to false"]
+    return []
 
 
 def manifest_warnings(manifest: dict) -> list[str]:
     """Problems that don't fail validation (D-078): a third-party product
     without `source.links` shows its provider as plain text."""
     source = manifest.get("source", {})
-    if not source.get("provider", "").startswith(OWN_PROVIDER_PREFIX) and not source.get("links"):
+    if not is_own_provider(source.get("provider", "")) and not source.get("links"):
         return [f"source.links is empty: provider {source.get('provider')!r} gets no link on the product page"]
     return []
 

@@ -85,11 +85,14 @@ def test_data_api_registration_round_trip(client):
             "consent_given": "on",
         },
     )
-    assert response.status_code == 302
+    # v0.5.0 (D-086): no redirect; the response itself carries the new key.
+    assert response.status_code == 200
+    assert "swx_" in response.content.decode()
     from web.models import RegistrationRequest
 
     registration = RegistrationRequest.objects.get(email="test@example.org")
     assert registration.consent_given is True
+    assert registration.api_keys.count() == 1
 
 
 @pytest.mark.django_db

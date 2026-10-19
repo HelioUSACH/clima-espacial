@@ -52,6 +52,36 @@ cd /opt/swx && sudo -u swx bash -c 'set -a; . /etc/swx/swx.env; set +a; venv/bin
 | 0.4.2 | `backfill_kyoto_dst --days 30` | 30 days of Kyoto's realtime Dst into `kyoto.dst` (D-081). Safe to re-run: it also repairs hours Kyoto has revised. |
 | 0.4.2 | `backfill_kyoto_ae --since 2026-01-01` | `kyoto.ae` history, a month per request, ~1440 rows a day (D-082). Takes a few minutes. Safe to re-run. |
 
+## Data access: keys, HAPI, downloads (v0.5.0, D-083..D-090)
+
+- **Email (optional).** To email new API keys, add the `SWX_EMAIL_*`
+  variables from `.env.example` to `/etc/swx/swx.env` and restart `swx-web`.
+  Without `SWX_EMAIL_HOST` nothing is sent and the key is only shown on
+  screen. Check outbound SMTP from the server first (`nc -vz <host> 587`).
+- **Limits** default to the values in `.env.example`; override any of them
+  in `/etc/swx/swx.env`. The per-minute and keyless per-hour throttles live
+  in each gunicorn worker's memory (approximate, up to 2×); the daily quotas
+  are counted in the database (exact).
+- **Logs never carry an API key.** gunicorn's access log records the path
+  without the query string (`--access-logformat` in
+  `systemd/swx-web.service`), nginx doesn't log `/clima-espacial/hapi` and
+  `/clima-espacial/api/` (`access_log off`), and GoatCounter's import skips
+  both. Check after deploying: `sudo journalctl -u swx-web -n 50` shows
+  paths with no `?`.
+- **Old registrations.** People who registered before v0.5.0 have no key:
+  in `/gestion/` → Registration requests, select them and run "Issue an API
+  key". The key is shown once in the admin message (and emailed if SMTP is
+  set). Service keys (e.g. for the national platform) are added under API
+  keys → Add, with a label and optional quotas; the key is shown once.
+- **Usage report** for the project's reporting, by sector, no personal data:
+  `manage.py api_usage_report --from 2026-10-01 --to 2026-12-31 [--by day]`
+  (run it like the one-off commands below).
+- **HAPI verifier.** `bash deploy/hapi-verify.sh` (from any machine with git,
+  Node.js ≥ 16, npm, curl and python3; no sudo) runs the community verifier
+  against the production server, one dataset per clock hour because the
+  verifier can't send a key and the keyless preview allows 30 requests an
+  hour. Reports land in `./hapi-verify-<dataset>.txt`.
+
 ## Caching and compression (D-055, D-057)
 
 - `/clima-espacial/static/`: hashed filenames from `collectstatic`
@@ -61,7 +91,10 @@ cd /opt/swx && sudo -u swx bash -c 'set -a; . /etc/swx/swx.env; set +a; venv/bin
 - HTML pages: `Cache-Control: no-cache` (always revalidated).
 - `serie.json`: Django's own `Cache-Control: public, max-age=60`, and a
   60-s server-side cache per (product, range).
-- gzip for JSON/JS/CSS/SVG (HTML is gzipped by nginx already). The `gzip*`
+- HAPI and `/api/v1/` responses set their own `Cache-Control` (metadata
+  `public, max-age=60`; data, downloads and the key page `no-store`), so
+  their nginx locations add none.
+- gzip for JSON/JS/CSS/SVG/CSV (HTML is gzipped by nginx already). The `gzip*`
   lines sit in the helio `server{}` context, so they apply to the group
   site's responses too — compression only, nothing else changes there.
 - nginx gotcha worth knowing: a `location` that has its own `add_header`
@@ -94,7 +127,8 @@ fewer processes also means fewer cold caches.
 | `systemd/swx-verify.service` + `.timer` | daily 03:15 UT `manage.py verify_forecasts`: scores every forecast product (D-075) |
 | `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle incl. analytics (local; pulled off-machine, see below) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |
-| `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051) |
+| `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051); skips `/hapi/` and `/api/` |
+| `hapi-verify.sh` | runs the HAPI verifier against the server (not CI; no sudo) |
 | `swx-dump.sh` | the nightly backup script itself |
 | `backup-pull.sh`, `README-backup.md` | runs on the **off-machine** backup host, not on helio (D-039) |
 

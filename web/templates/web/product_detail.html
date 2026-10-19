@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n static %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 <div class="wrap">
@@ -8,7 +8,7 @@
     <div>
       <h1>{{ title }}</h1>
       <div class="badges">
-        <span class="pill{% if status.status == 'ok' %} ok{% endif %}"><span class="dot" style="background:{{ status.color }}"></span>{{ status.label }}</span>
+        <span class="pill{% if status.status == 'ok' %} ok{% elif status.status == 'delayed' %} delayed{% endif %}"{% if status.title %} title="{{ status.title }}"{% endif %}><span class="dot" style="background:{{ status.color }}"></span>{{ status.label }}</span>
         <span class="pill">{{ product.get_maturity_display }}</span>
         {% if source_links %}<a class="pill" href="{{ source_links.0.url }}" rel="noopener nofollow">{{ product.source_provider }} {% include "web/_icon_ext.html" %}</a>{% else %}<span class="pill">{{ product.source_provider }}</span>{% endif %}
       </div>
@@ -18,11 +18,13 @@
       {% for h in headline_values %}
       <div><small>{{ h.label }}</small><b>{% if h.value %}{{ h.value }}{% if h.unit %} <span>{{ h.unit }}</span>{% endif %}{% else %}—{% endif %}</b></div>
       {% endfor %}
+      {% if headline_asof %}<p class="now-asof">{{ headline_asof }}</p>{% endif %}
     </div>
     {% endif %}
   </div>
 
   {% include "web/_panel_stack.html" %}
+  {% if csv_download %}{% include "web/_csv_dialog.html" %}{% endif %}
 
   <div class="below">
     <section>
@@ -43,3 +45,4 @@
   </div>
 </div>
 {% endblock %}
+{% block extra_scripts %}{% if csv_download %}<script defer src="{% static 'web/js/data-access.js' %}"></script>{% endif %}{% endblock %}
