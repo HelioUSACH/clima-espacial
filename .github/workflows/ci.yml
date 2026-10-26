@@ -96,7 +96,9 @@ jobs:
   # error/empty state, a JS error, or a regression of the range-click race
   # (16-PERF B1) / client cache (B2). See .github/scripts/screenshots.py.
   screenshots:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright 1.55 has no
+    # Chromium build ("does not support chromium on ubuntu26.04-x64").
+    runs-on: ubuntu-24.04
     needs: test
     services:
       postgres:
