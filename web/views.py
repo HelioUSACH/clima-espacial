@@ -150,7 +150,7 @@ def home(request):
             "panels_id": "home-panels",
             "i18n_id": "home-i18n",
             "stack_aria_label": gettext("Viento solar en L1"),
-            **_range_buttons(charts.HOME_PRODUCT_ORDER, charts.DEFAULT_RANGE_HOME, lang),
+            **_range_buttons(charts.HOME_PRODUCT_ORDER, charts.DEFAULT_CHART.ranges, charts.DEFAULT_RANGE_HOME, lang),
         },
     )
 
@@ -179,6 +179,10 @@ def _panel_json(product_id, panel, lang):
         "envelope": panel.envelope,
         "y_range": list(panel.y_range) if panel.y_range else None,
         "anchor": panel.anchor,
+        # D-097: stack-wide, repeated per panel (a stack is one product
+        # page, or home's default-chart pair).
+        "caption": charts.product_chart(product_id).caption(lang),
+        "daily": charts.product_chart(product_id).daily,
     }
 
 
@@ -206,6 +210,7 @@ def _chart_i18n():
         "delayed_suffix": gettext("(con retraso)"),
         "source_mark_note": gettext("Línea discontinua: cambio de nave activa"),
         "averages_label": gettext("promedios de"),
+        "day_label": gettext("día"),
         "minutes_unit": gettext("min"),
         "seconds_unit": gettext("s"),
     }
@@ -230,6 +235,13 @@ def _fmt_ut(when, lang):
     return f"{when:%d/%m %H:%M} UT"
 
 
+def _fmt_day(when, lang):
+    when = when.astimezone(dt.UTC)
+    if lang == "en":
+        return f"{when.day:02d} {gettext(_MONTH_ABBR[when.month - 1])}"
+    return f"{when:%d/%m}"
+
+
 def _history_since(product_ids):
     """The newest of the products' oldest stored points: a range is only
     complete once *every* panel in the stack has data that far back. A
@@ -250,14 +262,16 @@ def _history_since(product_ids):
     return since
 
 
-def _range_buttons(product_ids, default_range, lang):
+def _range_buttons(product_ids, range_keys, default_range, lang):
     since = _history_since(product_ids)
     history_days = (timezone.now() - since).total_seconds() / 86400 if since else None
     buttons = []
-    for i, (key, label_es, label_en, days) in enumerate(charts.RANGE_CHOICES):
+    choices = [c for c in charts.RANGE_CHOICES if c[0] in range_keys]
+    for i, (key, label_es, label_en, days) in enumerate(choices):
         # The shortest range is always offered; so is every range while
-        # nothing is stored yet (no history to measure against).
-        enabled = i == 0 or history_days is None or history_days >= days * _RANGE_COVERAGE
+        # nothing is stored yet (no history to measure against), and
+        # "todo", whatever is stored.
+        enabled = i == 0 or days is None or history_days is None or history_days >= days * _RANGE_COVERAGE
         buttons.append({
             "key": key,
             "label": label_en if lang == "en" else label_es,
@@ -266,9 +280,11 @@ def _range_buttons(product_ids, default_range, lang):
         })
     enabled_keys = [b["key"] for b in buttons if b["enabled"]]
     if default_range not in enabled_keys:
-        # The longest available range that is shorter than the default.
+        # The longest available range that is shorter than the default
+        # ("todo", always available, is longer).
         order = [b["key"] for b in buttons]
-        default_range = max(enabled_keys, key=order.index)
+        shorter = [k for k in enabled_keys if order.index(k) < order.index(default_range)]
+        default_range = shorter[-1] if shorter else enabled_keys[0]
     return {"ranges": buttons, "default_range": default_range}
 
 
@@ -383,12 +399,16 @@ def _headline_values(product_id, lang):
 def _headline_asof(product, badge, lang):
     """"al 04/10 23:55 UT" under the headline values when they aren't
     "now": the product is delayed (D-085) or its chart ends at its latest
-    datum (D-082). Otherwise "" -- a live product's values are current."""
-    if badge["status"] != "delayed" and charts.product_anchor(product.id) != "latest":
+    datum (D-082). Otherwise "" -- a live product's values are current.
+    A daily product always says which day its value is: "día 21/10" (D-097)."""
+    daily = charts.product_chart(product.id).daily
+    if not daily and badge["status"] != "delayed" and charts.product_anchor(product.id) != "latest":
         return ""
     latest = badge.get("latest") or latest_datum(product)
     if latest is None:
         return ""
+    if daily:
+        return f"{gettext('día')} {_fmt_day(latest, lang)}"
     return gettext("al %(when)s") % {"when": _fmt_ut(latest, lang)}
 
 
@@ -435,7 +455,8 @@ def product_detail(request, product_id):
         return render(request, "web/product_detail_forecast.html", context)
 
     stack_id = _dom_id(product_id)
-    context.update(_range_buttons((product_id,), charts.DEFAULT_RANGE_PRODUCT, lang))
+    chart = charts.product_chart(product_id)
+    context.update(_range_buttons((product_id,), chart.ranges, chart.default_range, lang))
     context["panels"] = [_panel_json(product_id, panel, lang) for panel in charts.PRODUCT_PANELS.get(product_id, ())]
     context["chart_i18n"] = _chart_i18n()
     context["stack_id"] = stack_id
@@ -508,9 +529,12 @@ def product_series_json(request, product_id):
     cached per (product, range) for SERIES_CACHE_SECONDS (D-057). A cache
     hit touches no database table at all — not even the Product lookup —
     so a burst of visitors clicking "7 días" costs one query per minute."""
-    range_key = request.GET.get("range", charts.DEFAULT_RANGE_PRODUCT)
-    if range_key not in charts.BUCKET_SECONDS:
-        range_key = charts.DEFAULT_RANGE_PRODUCT
+    # Only the product's own ranges (D-097): "1y" of a 1-min series is
+    # not something a button offers, so not something a URL can ask for.
+    chart = charts.product_chart(product_id)
+    range_key = request.GET.get("range", chart.default_range)
+    if range_key not in chart.ranges:
+        range_key = chart.default_range
     cache_key = f"swx:serie:v1:{product_id}:{range_key}"
     body = cache.get(cache_key)
     if body is None:

@@ -4,7 +4,7 @@ supersedes the uPlot-era version, D-058).
     python .github/scripts/screenshots.py http://127.0.0.1:8000 shots/
 
 Against a running portal with seeded data (`manage.py seed_dev_data`), for
-home, one product page and the forecast baseline's page x 1440/390 px x
+home, a few product pages and the forecast baseline's page x 1440/390 px x
 day/night x ES/EN:
 
 - waits for exactly one ECharts canvas group per stack and saves a
@@ -19,6 +19,7 @@ day/night x ES/EN:
 Exit status 1 on any failure, with every failure listed.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -36,6 +37,9 @@ PAGES = {
     # ends at its latest datum, not now (D-082).
     "kyoto.dst": ("/productos/kyoto.dst/", 1, None),
     "kyoto.ae": ("/productos/kyoto.ae/", 1, "delayed"),
+    # v0.5.2: a daily product (D-097): its own ranges, caption and day label,
+    # and markers on its few points.
+    "noaa.goes.electron_fluence": ("/productos/noaa.goes.electron_fluence/", 1, "daily"),
     # v0.5.0: the data-access page (no chart): its code examples must show.
     "datos-api": ("/datos-api/", 0, "code"),
 }
@@ -71,6 +75,28 @@ def check_delayed(page, failures, label):
         span = page.evaluate(SPAN_SECONDS)
         if not span or span < 0.5 * 86400:
             failures.append(f"{label} {range_key}: delayed chart spans {span} s, expected its data")
+
+
+DAILY_TEXT = {
+    "es": ("valores diarios (días UTC completos)", "Último dato día "),
+    "en": ("daily values (complete UTC days)", "Last data point day "),
+}
+
+
+def check_daily(page, failures, label, lang):
+    """D-097: the product's ranges, its caption instead of "promedios de N
+    min", its latest datum as a day, and a marker on each of its points."""
+    keys = page.evaluate("[...document.querySelectorAll('[data-chart-range]')].map(b => b.dataset.chartRange)")
+    if keys != ["30d", "90d", "1y", "all"]:
+        failures.append(f"{label}: range buttons {keys}, expected 30d/90d/1y/all")
+    meta = page.evaluate("document.querySelector('[data-stack-meta]').textContent")
+    caption, latest = DAILY_TEXT[lang]
+    if caption not in meta or latest not in meta or re.search(r"\d\d:\d\d", meta):
+        failures.append(f"{label}: meta {meta!r} lacks {caption!r} / {latest!r} (or names a time)")
+    shown = page.evaluate("document.querySelector('.swx-stack').__swxStack.ec.getOption().series"
+                          ".filter(s => s.id === 'fluence-0').map(s => s.showSymbol)")
+    if shown != [True]:
+        failures.append(f"{label}: fluence line markers {shown}, expected [True]")
 
 
 def check_code_blocks(page, failures, label):
@@ -186,6 +212,8 @@ def main(base_url, out_dir):
                                 check_delayed(page, failures, label)
                         if checks == "code":
                             check_code_blocks(page, failures, label)
+                        if checks == "daily":
+                            check_daily(page, failures, label, lang)
                         context.close()
         browser.close()
     for f in failures:

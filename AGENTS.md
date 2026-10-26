@@ -7,6 +7,7 @@ working in this repository. `CLAUDE.md` just points here.
 `docs/DECISIONS.md` to check nothing here has since been superseded. If your
 task touches a module, also read `docs/modules/README.md` and that module's
 own docs. If it touches a model integration, read `docs/models/INTEGRATION.md`.
+A model lives in its own repo; its agent runs `docs/models/CONTRIBUTING-A-MODEL.md`.
 
 ## Hard rules
 

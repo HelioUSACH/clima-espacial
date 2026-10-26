@@ -50,6 +50,10 @@ See `docs/models/INTEGRATION.md`. Models live in their own repository; this
 repo only needs a manifest, a producer following the product contract, and a
 model card (`docs/models/MODEL-CARD-TEMPLATE.md`).
 
+The model's own repository follows `docs/models/CONTRIBUTING-A-MODEL.md`
+(a checklist to run before every push) and fills in
+`docs/models/INTEGRATION-SHEET-TEMPLATE.md` as its `INTEGRATION.md` (D-095).
+
 ## Vendored assets (charts, fonts) — D-002, never a CDN
 
 - **ECharts** (`web/static/web/vendor/echarts/`): see that directory's own
