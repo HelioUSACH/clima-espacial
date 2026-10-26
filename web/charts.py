@@ -124,11 +124,17 @@ def scale_text(raw_text, lang):
 
 # (key, label_es, label_en, days) — bilingual, unlike the old ES-only
 # labels (12-HANDOFF item 4: they leaked onto EN pages untranslated).
+# Every range a chart can offer; which ones a product actually offers is
+# its `ChartSpec.ranges` below (D-097). `days=None` is "everything stored".
 RANGE_CHOICES = [
     ("6h", "6 h", "6 h", 0.25),
     ("1d", "1 día", "1 day", 1),
     ("3d", "3 días", "3 days", 3),
     ("7d", "7 días", "7 days", 7),
+    ("30d", "30 días", "30 days", 30),
+    ("90d", "90 días", "90 days", 90),
+    ("1y", "1 año", "1 year", 365),
+    ("all", "todo", "all", None),
 ]
 RANGE_DAYS = {key: days for key, _es, _en, days in RANGE_CHOICES}
 DEFAULT_RANGE_HOME = "3d"  # 18-HANDOFF-v0.2.0.md §2: "Default range 3 d" for the home solar-wind stack
@@ -138,7 +144,11 @@ DEFAULT_RANGE_PRODUCT = "3d"
 # with PostgreSQL's `date_bin` to one mean/min/max per bucket, so a 7-day
 # click is ~670 points per series instead of ~10,000 raw 1-min rows. 6 h
 # keeps 1-min buckets — the raw RTSW cadence, so nothing is lost there.
-BUCKET_SECONDS = {"6h": 60, "1d": 120, "3d": 300, "7d": 900}
+# The long ranges are offered only by products that declare them (daily
+# ones today): buckets no wider than a day leave a daily series as it is,
+# one value per bucket, so a daily product is never averaged (D-097).
+BUCKET_SECONDS = {"6h": 60, "1d": 120, "3d": 300, "7d": 900,
+                  "30d": 3600, "90d": 10800, "1y": 86400, "all": 86400}
 
 # Provider fill values (NOAA RTSW's -9999, GOES' -1e5, ...) are dropped in
 # SQL *before* aggregating, so one fill can't drag a whole bucket's mean
@@ -193,6 +203,40 @@ class Panel:
     # datum, for a delayed product (kyoto.ae, D-082) whose every range
     # would otherwise show an empty chart.
     anchor: str = "now"
+
+
+@dataclass(frozen=True)
+class ChartSpec:
+    """A product page's chart as a whole (D-097): the range buttons it
+    offers, the one pressed first, and what the caption says each point is.
+    `caption_es`/`caption_en` None means "promedios de N min", from the
+    bucket. `daily`: one value per complete UTC day, so its latest datum
+    reads "día 21/10", never a time of day."""
+    ranges: tuple[str, ...] = ("6h", "1d", "3d", "7d")
+    default_range: str = DEFAULT_RANGE_PRODUCT
+    caption_es: str | None = None
+    caption_en: str | None = None
+    daily: bool = False
+
+    def caption(self, lang: str) -> str | None:
+        return self.caption_en if lang == "en" else self.caption_es
+
+
+DEFAULT_CHART = ChartSpec()
+DAILY_CHART = ChartSpec(
+    ranges=("30d", "90d", "1y", "all"), default_range="90d",
+    caption_es="valores diarios (días UTC completos)", caption_en="daily values (complete UTC days)",
+    daily=True,
+)
+
+# product_id -> its ChartSpec, when it isn't DEFAULT_CHART.
+PRODUCT_CHARTS: dict[str, ChartSpec] = {
+    "noaa.goes.electron_fluence": DAILY_CHART,
+}
+
+
+def product_chart(product_id: str) -> ChartSpec:
+    return PRODUCT_CHARTS.get(product_id, DEFAULT_CHART)
 
 
 # Energy-channel products (X-ray, protons, electrons) interleave one row per channel

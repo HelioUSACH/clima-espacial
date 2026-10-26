@@ -164,6 +164,17 @@
     var d = new Date(sec * 1000);
     return fmtDate(d, i18n) + " " + fmtTime(d) + " UT";
   }
+  // A daily product's datum is a whole UTC day, not an instant (D-097).
+  function fmtDay(sec, i18n) { return i18n.day_label + " " + fmtDate(new Date(sec * 1000), i18n); }
+
+  // A line with this few values gets a marker on each one (D-097): two
+  // daily points are otherwise one thin segment, and one is nothing.
+  var FEW_POINTS = 60;
+  function countValues(values) {
+    var n = 0;
+    for (var i = 0; i < values.length; i++) { if (values[i] != null) n++; }
+    return n;
+  }
 
   // ---- geometry: fixed per-grid pixel height, from the approved mockup --
 
@@ -374,9 +385,10 @@
               }), z: 1,
             });
           }
+          var few = countValues(values) <= FEW_POINTS;
           var lineSeries = {
             id: panel.key + "-" + si, name: s.label, type: "line", xAxisIndex: pi, yAxisIndex: pi,
-            showSymbol: false, symbol: "none", sampling: "none", connectNulls: false,
+            showSymbol: few, symbol: few ? "circle" : "none", symbolSize: 5, sampling: "none", connectNulls: false,
             lineStyle: { width: 1.5, color: color }, itemStyle: { color: color }, z: 3, emphasis: { disabled: true },
             data: times.map(function (t, i) { return [t * 1000, values[i]]; }),
           };
@@ -650,12 +662,19 @@
       if (activeSource) bits.push(this.i18n.active_source_label + " " + activeSource);
       // D-082: a delayed product's range ends at its latest datum, and says so.
       var delayed = this.panels.some(function (p) { return p.anchor === "latest"; });
+      // D-097: the product says what a point is (a daily value) and how
+      // its time reads; otherwise it's the bucket's average.
+      var daily = this.panels.some(function (p) { return p.daily; });
+      var caption = null;
+      this.panels.forEach(function (p) { if (p.caption && !caption) caption = p.caption; });
       if (latestTs != null) {
+        var when = daily ? fmtDay(latestTs, this.i18n) : fmtUT(latestTs, this.i18n);
         bits.push(delayed
-          ? this.i18n.data_until_label + " " + fmtUT(latestTs, this.i18n) + " " + this.i18n.delayed_suffix
-          : this.i18n.last_datum_label + " " + fmtUT(latestTs, this.i18n));
+          ? this.i18n.data_until_label + " " + when + " " + this.i18n.delayed_suffix
+          : this.i18n.last_datum_label + " " + when);
       }
-      if (bucketSeconds) bits.push(fmtBucket(bucketSeconds, this.i18n));
+      if (caption) bits.push(caption);
+      else if (bucketSeconds) bits.push(fmtBucket(bucketSeconds, this.i18n));
       this.metaEl.innerHTML = bits.map(escapeHtml).join(" · ");
     }
     if (this.snapEl) {

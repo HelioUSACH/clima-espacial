@@ -68,7 +68,10 @@ def _series_specs(product_id):
 
 def _window(range_key: str, now: dt.datetime) -> tuple[dt.datetime, int]:
     bucket = charts.BUCKET_SECONDS[range_key]
-    since = now - dt.timedelta(days=charts.RANGE_DAYS[range_key])
+    days = charts.RANGE_DAYS[range_key]
+    if days is None:  # "all": only offered by products small enough to send whole (D-097)
+        return BUCKET_ORIGIN, bucket
+    since = now - dt.timedelta(days=days)
     # Snap the start down to a bucket edge so the first bucket is complete.
     offset = (since - BUCKET_ORIGIN).total_seconds() % bucket
     return since - dt.timedelta(seconds=offset), bucket

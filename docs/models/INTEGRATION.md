@@ -1,5 +1,11 @@
 # Integrating a model
 
+> **Building a model in its own repository?** Start with
+> [`CONTRIBUTING-A-MODEL.md`](CONTRIBUTING-A-MODEL.md): the checklist your
+> repo (and its coding agent) runs before every push, and the integration
+> sheet ([`INTEGRATION-SHEET-TEMPLATE.md`](INTEGRATION-SHEET-TEMPLATE.md))
+> the maintainers review first (D-095). This file is the portal side.
+
 Models are built and owned in **their own repository** (D-044) — weights
 ship as a release asset there, never committed here, and never developed in
 an OneDrive-synced folder (a shared folder written by two hosts at once has
@@ -53,6 +59,12 @@ nginx — docs/ARCHITECTURE.md §6) every minute and republishes
 the service isn't reachable, the collector marks the heartbeat `error`
 instead of crashing, and the portal's beta card falls back to "en
 preparación" (D-036) — launch was never blocked on this model being ready.
+
+The producer's own `live_status` decides (D-096): only `live` is published,
+and a result already stored (same `issued`, the producer updates every ~3 min)
+is not stored again; `stale` turns the heartbeat `stale` with the producer's
+`seconds_since_update` in its detail; `no_data`, `unknown` or a missing value
+is `no_data`. A naive `timestamp` is read as UTC.
 
 ## Forecast models
 
