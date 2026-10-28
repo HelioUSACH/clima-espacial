@@ -103,7 +103,7 @@ def test_daily_todo_returns_everything_stored(client):
     _publish_days(400)
     assert len(_series(client, FLUENCE, "all")["time"]) == 400
     # Not a range this product offers: its default (90 días).
-    assert len(_series(client, FLUENCE, "6h")["time"]) in (90, 91)
+    assert 89 <= len(_series(client, FLUENCE, "6h")["time"]) <= 91  # edges move with the clock
 
 
 @pytest.mark.django_db
