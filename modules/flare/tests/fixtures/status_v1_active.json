@@ -1,0 +1,85 @@
+{
+  "status": "running",
+  "model": "flare-nrt",
+  "model_version": "1.0.0",
+  "weights_sha256": "d3b850e3ec3d2670f4cb9327c397f7391ed1b082d2b6d154bca1b57626676006",
+  "timestamp": "2026-10-28T16:31:52Z",
+  "last_update": "2026-10-28T16:31:52Z",
+  "observation_time": "2026-10-28T16:22:00Z",
+  "state": "active",
+  "probability": 0.9312,
+  "raw_score": 0.9312,
+  "alert": true,
+  "flare_detected": true,
+  "event_id": 17,
+  "event_t_start": "2026-10-28T16:18:00Z",
+  "threshold": 0.8,
+  "location": {
+    "centroid_arcsec": [
+      -412.3,
+      268.9
+    ],
+    "bbox_arcsec": [
+      -460.8,
+      230.4,
+      -364.8,
+      307.2
+    ],
+    "area_px": 46,
+    "area_arcsec2": 1059.8,
+    "on_limb": false,
+    "method": "diff131_rate_brightest_region",
+    "confidence": "experimental"
+  },
+  "ensemble_scores": [
+    0.97,
+    0.88,
+    0.95,
+    0.91,
+    0.95
+  ],
+  "ensemble_std": 0.0326,
+  "lag_min": 8,
+  "baseline_slots": [
+    "2026-10-28T16:14:00Z",
+    "2026-10-28T16:12:00Z",
+    "2026-10-28T16:10:00Z"
+  ],
+  "baseline_missing": [],
+  "n_baseline_used": 3,
+  "inputs": {
+    "131": "2026-10-28T16:21:56.070Z",
+    "171": "2026-10-28T16:21:58.350Z",
+    "304": "2026-10-28T16:22:06.580Z",
+    "1600": "2026-10-28T16:21:51.574Z"
+  },
+  "data_latency_s": 587,
+  "latency_ms": 10412,
+  "frame_count": 427,
+  "loop_errors": 0,
+  "loop_last_error": null,
+  "loop_last_error_ts": null,
+  "live_status": "live",
+  "stale_reason": null,
+  "seconds_since_update": 18.0,
+  "input_age_s": 602.0,
+  "stale_after_sec": 600,
+  "max_input_age_sec": 900,
+  "last_frame": {
+    "slot": "2026-10-28T16:22:00Z",
+    "made_at": "2026-10-28T16:31:52Z",
+    "status": "ok",
+    "reason": null,
+    "qc": [],
+    "channels_missing": [],
+    "baseline_missing": [],
+    "input_age_s": 596.0,
+    "inputs": {
+      "131": "2026-10-28T16:21:56.070Z",
+      "171": "2026-10-28T16:21:58.350Z",
+      "304": "2026-10-28T16:22:06.580Z",
+      "1600": "2026-10-28T16:21:51.574Z"
+    }
+  },
+  "server_time": "2026-10-28T16:32:10Z"
+}

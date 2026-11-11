@@ -132,6 +132,7 @@
   // the general fmtNum.
   function formatReadoutValue(v, panel, s, lang) {
     if (v == null) return "—";
+    if (panel.readout_decimals != null) return fmtDecimal(v, lang, panel.readout_decimals);
     if (panel.unit === "K") return fmtGrouped(v, lang);
     if (panel.unit === "W/m²") {
       var flux = fmtSci(v, lang);
@@ -307,7 +308,7 @@
             // filter above is new here. A fixed y_range gets one label per
             // decade ("10⁻⁸" style, §1.1); an auto-scaled log axis keeps
             // the old plain exponential.
-            if (!isLog) return String(v);
+            if (!isLog) return stack.i18n.lang === "es" ? String(v).replace(".", ",") : String(v);
             return panel.y_range ? "10" + superscript(Math.round(Math.log10(v))) : v.toExponential(0);
           },
         },
@@ -334,16 +335,20 @@
       // trimmed build, ref/echarts-swx/entry.js) positioned over its own
       // grid -- ECharts supports an array of independent titles.
       titles.push({
-        text: panel.title + "  ·  " + panel.unit, left: g.left + 8, top: g.top + pi * g.H + 5,
+        text: panel.unit ? panel.title + "  ·  " + panel.unit : panel.title, left: g.left + 8, top: g.top + pi * g.H + 5,
         textStyle: { fontFamily: UI, fontSize: 10, fontWeight: 500, color: P["--ink-faint"] },
       });
 
       var ml = [];
       if (panel.zero_line) ml.push({ yAxis: 0, lineStyle: { color: P["--ref"], width: 1, type: "solid" }, label: { show: false } });
       (panel.ref_lines || []).forEach(function (r) {
+        // A null value is the product's own, sent with its data (the flare
+        // detector's threshold, D-101); "{v}" in the label is that value.
+        var value = r.value != null ? r.value : (data && data.threshold != null ? data.threshold : null);
+        if (value == null) return;
         ml.push({
-          yAxis: r.value, lineStyle: { color: P["--ref"], width: 1, type: "dashed" },
-          label: { show: true, formatter: r.label, color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "insideEndTop" },
+          yAxis: value, lineStyle: { color: P["--ref"], width: 1, type: "dashed" },
+          label: { show: true, formatter: r.label.replace("{v}", fmtDecimal(value, stack.i18n.lang, 2)), color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "insideEndTop" },
         });
       });
 
@@ -426,6 +431,14 @@
           });
           primary.markArea = { silent: true, data: areas };
         }
+      }
+      // Time spans the data marks (the flare detector's alert slots, D-101),
+      // shaded across the panel's full height.
+      if (panel.spans && data && data.spans && data.spans.length) {
+        var spanAreas = data.spans.map(function (sp) {
+          return [{ xAxis: sp[0] * 1000, itemStyle: { color: withAlpha(P["--severity-strong"], 0.16) } }, { xAxis: sp[1] * 1000 }];
+        });
+        primary.markArea = { silent: true, data: ((primary.markArea && primary.markArea.data) || []).concat(spanAreas) };
       }
       if (ml.length) primary.markLine = { silent: true, symbol: "none", animation: false, data: ml.slice() };
       panelPrimary.push(primary);
@@ -558,7 +571,7 @@
       var ok = !!(d && d.time && d.time.length);
       if (ok) anyData = true;
       self.statusEls[pi].hidden = ok;
-      self.statusEls[pi].textContent = ok ? "" : (d ? self.i18n.no_data_message : self.i18n.error_message);
+      self.statusEls[pi].textContent = ok ? "" : (d ? (p.empty_message || self.i18n.no_data_message) : self.i18n.error_message);
     });
 
     // The container's height must be set *before* echarts.init() reads it
@@ -638,13 +651,15 @@
 
   Stack.prototype.updateMetaAndAria = function (dataById, anyData) {
     var self = this;
-    var latestTs = null, activeSource = null, bucketSeconds = null, parts = [];
+    var latestTs = null, activeSource = null, bucketSeconds = null, parts = [], perPanel = [];
     this.panels.forEach(function (p) {
       var d = dataById[p.product_id];
       if (!d || !d.time || !d.time.length) return;
       var lastT = d.time[d.time.length - 1];
       if (latestTs == null || lastT > latestTs) latestTs = lastT;
       if (bucketSeconds == null) bucketSeconds = d.bucket_seconds;
+      var described = p.caption || ((p.caption_prefix ? p.caption_prefix + " " : "") + fmtBucket(d.bucket_seconds, self.i18n));
+      if (perPanel.indexOf(described) < 0) perPanel.push(described);
       if (p.show_source && d.source) {
         var idx = lastIndexWithValue(d.source);
         if (idx >= 0) activeSource = d.source[idx];
@@ -673,7 +688,9 @@
           ? this.i18n.data_until_label + " " + when + " " + this.i18n.delayed_suffix
           : this.i18n.last_datum_label + " " + when);
       }
-      if (caption) bits.push(caption);
+      var mixed = this.panels.some(function (p) { return p.caption_prefix; });
+      if (mixed) perPanel.forEach(function (c) { bits.push(c); });
+      else if (caption) bits.push(caption);
       else if (bucketSeconds) bits.push(fmtBucket(bucketSeconds, this.i18n));
       this.metaEl.innerHTML = bits.map(escapeHtml).join(" · ");
     }

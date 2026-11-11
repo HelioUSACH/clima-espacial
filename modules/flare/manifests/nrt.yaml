@@ -2,20 +2,39 @@
 # and FastAPI service (docs/models/INTEGRATION.md). This module only polls
 # its already-running /api/status and republishes it as our own event — it
 # never imports or depends on that repo's code.
+#
+# Version 2 (D-098, flare-nrt 1.x): valid_from is the AIA slot
+# (`observation_time`), not the processing time; the payload gains
+# threshold, alert, state, event_id and event_t_start. Version-1 events
+# (probability, flare_detected, location only) stay readable.
 id: usach.flare.nrt
-version: 1
+version: 2
 kind: event
 title: {es: "Detección de fulguraciones (NRT)", en: "Flare detection (NRT)"}
 maturity: beta
 cadence: 1m
 stale_after: 10m
-producer: {type: service, unit: "flare-loop.service", repo: "HelioUSACH/flare-nrt"}
+producer: {type: service, unit: "flare-nrt-loop.service", repo: "HelioUSACH/flare-nrt"}
 source:
   provider: "HelioUSACH (USACH)"
-  inputs: ["SDO/AIA synoptic via JSOC (flare-nrt internal pipeline)"]
+  inputs: ["SDO/AIA synoptic 131, 171, 304 and 1600 Å via JSOC (flare-nrt internal pipeline)"]
   license: "CC-BY-4.0"
+  links:
+    - {name: "flare-nrt", url: "https://github.com/HelioUSACH/flare-nrt"}
 parameters:
   - {name: probability, units: "1", range: [0, 1]}
+  - {name: threshold, units: "1", range: [0, 1]}
+  - {name: alert, units: "1"}
+  - {name: state, enum: [quiet, onset, active, decay]}
   - {name: flare_detected, units: "1"}
+  - {name: event_id, units: "1"}
 exchange: {hapi: false, feed: true}
 model_card: docs/products/usach.flare.nrt.md
+description:
+  es: "Un detector de fulguraciones solares de HelioUSACH que mira imágenes del Sol tomadas por SDO/AIA en cuatro canales (131, 171, 304 y 1600 Å), cada 2 minutos. Para cada imagen calcula una probabilidad; cuando supera el umbral emite una alerta, y las alertas separadas por menos de 10 minutos forman un evento. Durante un evento indica dónde está la región en el disco (experimental) y un mapa Grad-CAM de lo que miró la red. Es un producto de investigación en beta, no un aviso oficial: para alertas operativas, la NOAA."
+  en: "A HelioUSACH solar flare detector that looks at images of the Sun from SDO/AIA in four channels (131, 171, 304 and 1600 Å), every 2 minutes. For each image it computes a probability; above the threshold it raises an alert, and alerts less than 10 minutes apart form one event. During an event it shows where the region is on the disk (experimental) and a Grad-CAM map of what the network looked at. It is a research product in beta, not an official warning: for operational alerts, see NOAA."
+facts:
+  source: {es: "HelioUSACH, a partir de SDO/AIA (NASA) vía JSOC", en: "HelioUSACH, from SDO/AIA (NASA) via JSOC"}
+  cadence: {es: "Una imagen AIA cada 2 minutos; llega con 7–10 minutos de retraso", en: "One AIA image every 2 minutes, available 7–10 minutes after it is taken"}
+  coordinates: {es: "Ubicación en coordenadas helioproyectivas (segundos de arco), experimental", en: "Location in helioprojective coordinates (arcseconds), experimental"}
+  license: {es: "CC BY 4.0", en: "CC BY 4.0"}

@@ -22,8 +22,11 @@ def test_parse_status_live():
     assert parsed["payload"]["flare_detected"] is False
     assert "location" in parsed["payload"]
     assert "severity" not in parsed["payload"]  # 01-AUDIT.md §3.6: never republished
-    assert parsed["quality"]["producer_live_status"] == "live"
+    assert parsed["quality"]["live_status"] == "live"
     assert parsed["issued"] == dt.datetime(2026, 10, 15, 1, 59, 21, tzinfo=dt.UTC)
+    # A producer before 1.0 sends no observation_time: valid_from falls back to issued.
+    assert parsed["valid_from"] == parsed["issued"]
+    assert parsed["payload"]["state"] is None and parsed["payload"]["threshold"] == 0.58
 
 
 def test_parse_status_no_result_returns_none():
@@ -158,3 +161,63 @@ def test_live_without_result_is_no_data(producer):
 def test_unreachable_producer_is_error(producer):
     collectors.collect_nrt()
     assert _heartbeat().status == "error"
+
+
+# --- flare-nrt 1.x (D-098) ----------------------------------------------------
+# status_v1_*.json follow flare-nrt v1.0.0's /api/status field for field
+# (INTEGRATION.md "GET /api/status"; loop.py::_write_status + server.py::status
+# at tag v1.0.0). The quiet one is the real 2026-10-28 15:52 UT slot (its
+# T_OBS and probability are those of flare-nrt's own test snapshot); the
+# active one is synthetic.
+
+
+def test_parse_v1_quiet_uses_observation_time_and_keeps_issued():
+    parsed = adapters.parse_status(_load("status_v1_quiet.json"))
+    assert parsed["issued"] == dt.datetime(2026, 10, 28, 16, 1, 47, tzinfo=dt.UTC)
+    assert parsed["valid_from"] == dt.datetime(2026, 10, 28, 15, 52, tzinfo=dt.UTC)
+    assert parsed["payload"] == {
+        "probability": 0.046951, "threshold": 0.8, "alert": False, "state": "quiet",
+        "flare_detected": False, "event_id": None, "event_t_start": None, "location": None,
+    }
+    assert parsed["quality"] == {"live_status": "live", "input_age_s": 611.0, "ensemble_std": 0.066163}
+    assert parsed["provenance"] == {
+        "producer": "flare-nrt@1.0.0",
+        "inputs": {"131": "2026-10-28T15:51:56.070Z", "171": "2026-10-28T15:51:58.348Z",
+                   "304": "2026-10-28T15:52:06.579Z", "1600": "2026-10-28T15:51:51.573Z"},
+    }
+
+
+def test_parse_v1_active_event():
+    parsed = adapters.parse_status(_load("status_v1_active.json"))
+    payload = parsed["payload"]
+    assert payload["state"] == "active" and payload["alert"] is True and payload["flare_detected"] is True
+    assert payload["event_id"] == 17
+    assert payload["event_t_start"] == "2026-10-28T16:18:00Z"
+    assert payload["location"]["bbox_arcsec"] == [-460.8, 230.4, -364.8, 307.2]
+    assert payload["location"]["confidence"] == "experimental"
+    # Service-health fields never reach the product.
+    for key in ("ensemble_scores", "latency_ms", "loop_errors", "severity", "last_frame"):
+        assert key not in payload and key not in parsed["quality"]
+
+
+def test_parse_drops_unknown_state_and_location_keys():
+    raw = dict(_load("status_v1_active.json"), state="exploding")
+    raw["location"] = dict(raw["location"], debug_mask=[1, 2, 3])
+    parsed = adapters.parse_status(raw)
+    assert parsed["payload"]["state"] is None
+    assert "debug_mask" not in parsed["payload"]["location"]
+
+
+@pytest.mark.django_db
+def test_collector_stores_v1_fields(producer):
+    producer["raw"] = _load("status_v1_active.json")
+    collectors.collect_nrt()
+    collectors.collect_nrt()  # same timestamp: stored once
+    event = _events().get()
+    assert event.issued == dt.datetime(2026, 10, 28, 16, 31, 52, tzinfo=dt.UTC)
+    assert event.valid_from == dt.datetime(2026, 10, 28, 16, 22, tzinfo=dt.UTC)
+    assert event.payload["state"] == "active" and event.payload["threshold"] == 0.8
+    assert event.quality["live_status"] == "live" and event.quality["input_age_s"] == 602.0
+    assert event.provenance["producer"] == "flare-nrt@1.0.0"
+    assert set(event.provenance["inputs"]) == {"131", "171", "304", "1600"}
+    assert event.product.current_version == 2

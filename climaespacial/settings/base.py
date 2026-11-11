@@ -93,6 +93,16 @@ SWX_REGISTRATIONS_PER_IP_DAY = env_int("SWX_REGISTRATIONS_PER_IP_DAY", 5)
 SWX_NRT_EXPORT_DIR = Path(os.environ.get("SWX_NRT_EXPORT_DIR") or "/srv/swx/backups/nrt")
 SWX_NRT_KEEP_DAYS = env_int("SWX_NRT_KEEP_DAYS", 30)
 
+# --- Flare detector page (D-099, D-100) -----------------------------------------
+# flare-nrt's own HTTP service, on the same server and never exposed by nginx
+# (docs/ARCHITECTURE.md §6). The same variable modules/flare/client.py reads.
+# Django reads its JSON server-side for the product page; its PNGs reach the
+# browser through nginx's cached image locations only.
+SWX_FLARE_NRT_URL = os.environ.get("FLARE_NRT_URL", "http://127.0.0.1:5050")
+# Off (default): the public keeps the minimal event page for usach.flare.nrt
+# and only a logged-in staff user sees the new page. On: everyone does.
+SWX_FLARE_PAGE_PUBLIC = os.environ.get("SWX_FLARE_PAGE_PUBLIC", "0") == "1"
+
 # --- Email (optional, D-086) ---------------------------------------------------
 # Only used to send a new API key to its owner. Without SWX_EMAIL_HOST no
 # email is ever attempted and the key is only shown on screen.

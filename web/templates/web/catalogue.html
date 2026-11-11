@@ -9,7 +9,7 @@
 <div class="product-grid">
   <div class="product-card">
     <span class="badge">{% trans "beta" %}</span>
-    <h3>{% trans "Detección de fulguraciones (NRT)" %}</h3>
+    <h3>{% if flare_page_link %}<a href="{% url 'web:product_detail' 'usach.flare.nrt' %}">{% trans "Detección de fulguraciones (NRT)" %}</a>{% else %}{% trans "Detección de fulguraciones (NRT)" %}{% endif %}</h3>
     {% if flare_card_ready %}
       <p>{% trans "Modelo propio de HelioUSACH." %}</p>
     {% else %}

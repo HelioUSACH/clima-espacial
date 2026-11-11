@@ -82,6 +82,75 @@ cd /opt/swx && sudo -u swx bash -c 'set -a; . /etc/swx/swx.env; set +a; venv/bin
   verifier can't send a key and the keyless preview allows 30 requests an
   hour. Reports land in `./hapi-verify-<dataset>.txt`.
 
+## The flare detector's page (v0.6.0, D-098..D-101)
+
+flare-nrt (its own repository and systemd units, `flare-nrt-loop.service`
+and `flare-nrt-api.service`) answers on `127.0.0.1:5050` and is never
+exposed directly. The portal uses it two ways:
+
+- **Images** (AIA channels and Grad-CAM PNGs) go from the service to the
+  browser **through nginx only**, cached:
+  `/clima-espacial/productos/usach.flare.nrt/img/{131,171,304,1600}.png?kind=img|diff[&slot=ISO]`
+  and `/clima-espacial/productos/usach.flare.nrt/gradcam/{latest|ISO}.png`.
+  Django never sees these requests. "latest" is cached 60 s, a given slot
+  7 days; a slow or dead service gets a stale copy at once, or a 504 within
+  5 s; 10 requests/s per address (burst 20). The response carries
+  `X-Cache-Status` (MISS/HIT/STALE/UPDATING) for checking.
+- **JSON** (`/api/status|series|events|frames`) is read by Django
+  server-side, 2 s timeout, 30 s cache per gunicorn worker. If the service
+  is down the page still renders (HTTP 200) and says "sin datos del
+  detector". The page's own data, `productos/usach.flare.nrt/datos/*.json`,
+  has its own nginx location like `serie.json` (no added `Cache-Control`).
+
+**nginx needs two files now.** The image cache, the rate limit and the
+argument whitelist are `http{}`-context directives, which can't go in the
+snippet (it is included inside `server{}`, D-051):
+
+| file | installed as |
+|---|---|
+| `nginx-clima-espacial-http.conf` | `/etc/nginx/conf.d/clima-espacial-http.conf` (Ubuntu's `nginx.conf` includes `conf.d/*.conf` inside `http{}`) |
+| `nginx-clima-espacial.conf` | `/etc/nginx/snippets/clima-espacial.conf` (as before) |
+
+and one cache directory, owned by nginx's worker user:
+
+```bash
+sudo install -d -o www-data -g www-data -m 750 /var/cache/nginx/clima-espacial-flare
+sudo install -m 644 /opt/swx/deploy/nginx-clima-espacial-http.conf /etc/nginx/conf.d/clima-espacial-http.conf
+sudo install -m 644 /opt/swx/deploy/nginx-clima-espacial.conf /etc/nginx/snippets/clima-espacial.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Install the http file first: the snippet refers to its zones and maps, so
+`nginx -t` fails on the new snippet alone. `deploy.sh` reminds you when
+either installed file differs from the release's. The cache is capped at
+512 MB.
+
+**GoatCounter** skips the page's images and data
+(`goatcounter-import.service`, three new `-exclude` lines). After a deploy
+that changes the unit:
+
+```bash
+sudo install -m 644 /opt/swx/deploy/systemd/goatcounter-import.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl restart goatcounter-import
+```
+
+**Preview switch (D-099).** `SWX_FLARE_PAGE_PUBLIC` in `/etc/swx/swx.env`:
+
+- unset or `0` (default): the public keeps the old minimal page for
+  `usach.flare.nrt`; only a **logged-in staff user** sees the new one. Log in
+  at `https://helio.fisica.usach.cl/clima-espacial/gestion/` (from the USACH
+  network, D-051/P5), then open
+  `https://helio.fisica.usach.cl/clima-espacial/productos/usach.flare.nrt/`;
+  a "Vista previa" note at the top says you are seeing the preview. No URL
+  parameter shows it to anyone else. (Through the SSH tunnel to gunicorn the
+  page works, but its images don't: they are served by nginx.) The user
+  needs "Staff status" (`/gestion/` → Users), which a superuser has.
+- `1`: everyone sees the new page and the catalogue card links to it. Set
+  it, then `sudo systemctl restart swx-web`. Back to `0` the same way.
+
+The image locations and the `datos/` endpoint work in both modes: they only
+serve what the service already exposes.
+
 ## Caching and compression (D-055, D-057)
 
 - `/clima-espacial/static/`: hashed filenames from `collectstatic`
@@ -122,13 +191,14 @@ fewer processes also means fewer cold caches.
 | `provision.sh` | One-shot server prep (idempotent) |
 | `deploy.sh` | Install one tagged release; run again for every release |
 | `nginx-clima-espacial.conf` | `/clima-espacial/` location snippet for the existing `helio` vhost |
+| `nginx-clima-espacial-http.conf` | its `http{}`-context part: the flare image cache, rate limit and argument maps (`/etc/nginx/conf.d/`, D-100) |
 | `systemd/swx-web.service` | gunicorn |
 | `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest (`kyoto.ae`: daily 04:10 UT) |
 | `systemd/swx-verify.service` + `.timer` | daily 03:15 UT `manage.py verify_forecasts`: scores every forecast product (D-075) |
 | `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle incl. analytics (local; pulled off-machine, see below) |
 | `systemd/swx-export-nrt.service` + `.timer` | nightly 03:05 (local) `manage.py export_nrt`: stored rows per product and UTC day into `/srv/swx/backups/nrt/`, pulled off-machine with the dumps (D-091, `README-backup.md`) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |
-| `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051); skips `/hapi/` and `/api/` |
+| `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051); skips `/hapi/`, `/api/` and the flare page's images and data |
 | `hapi-verify.sh` | runs the HAPI verifier against the server (not CI; no sudo) |
 | `swx-dump.sh` | the nightly backup script itself |
 | `backup-pull.sh`, `README-backup.md` | runs on the **off-machine** backup host, not on helio (D-039) |

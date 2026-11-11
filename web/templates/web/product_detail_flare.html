@@ -1,0 +1,132 @@
+{% extends "web/base.html" %}
+{% load i18n %}
+{% load static %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+{% comment %}
+The flare detector's own page (D-101). Header and images: the latest result
+stored by the portal (modules/flare). Timeline and history: flare-nrt's JSON,
+read server-side (web/flare.py). Images: flare-nrt's PNGs through nginx's
+cached locations, never through Django (D-100).
+{% endcomment %}
+<div class="wrap flare-page">
+  <div class="crumb"><a href="{% url 'web:catalogue' %}">{% trans "Productos y modelos" %}</a> / {{ title }}</div>
+  {% if preview %}<p class="flare-note flare-preview" role="note">{% trans "Vista previa: esta página solo la ve el personal del sitio. El público ve todavía la página anterior." %}</p>{% endif %}
+  <div class="head">
+    <div>
+      <h1>{{ title }}</h1>
+      <div class="badges">
+        <span class="pill{% if status.status == 'ok' %} ok{% elif status.status == 'delayed' %} delayed{% endif %}"{% if status.title %} title="{{ status.title }}"{% endif %}><span class="dot" style="background:{{ status.color }}"></span>{{ status.label }}</span>
+        <span class="pill beta">{{ product.get_maturity_display }}</span>
+        {% if source_links %}<a class="pill" href="{{ source_links.0.url }}" rel="noopener nofollow">{{ product.source_provider }} {% include "web/_icon_ext.html" %}</a>{% else %}<span class="pill">{{ product.source_provider }}</span>{% endif %}
+        {% if header.state %}<span class="pill flare-state sv-{{ header.state.severity }}" data-state="{{ header.state.key }}">{{ header.state.label }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="now">
+      <div>
+        <small>{% trans "Probabilidad" %}</small>
+        <b>{% if header.has_result %}{{ header.probability }}{% if header.threshold %} <span>· {% trans "umbral" %} {{ header.threshold }}</span>{% endif %}{% else %}—{% endif %}</b>
+      </div>
+      {% if header.observed %}<p class="now-asof">{% blocktrans with when=header.observed age=header.age %}imagen de {{ when }} UT · {{ age }}{% endblocktrans %}</p>
+      {% elif header.result_time %}<p class="now-asof">{% blocktrans with when=header.result_time age=header.age %}resultado de {{ when }} UT · {{ age }}{% endblocktrans %}</p>{% endif %}
+      {% if header.flare_detected %}<p class="now-asof flare-open">{% if header.open_since %}{% blocktrans with when=header.open_since %}Alerta desde {{ when }} UT{% endblocktrans %}{% else %}{% trans "Alerta en curso" %}{% endif %}{% if header.location %} · {% trans "ubicación" %} {{ header.location }} <span class="flare-exp">{% trans "experimental" %}</span>{% endif %}</p>{% endif %}
+    </div>
+  </div>
+
+  {% if not service_available %}<p class="flare-note flare-nodata" role="status">{% trans "Sin datos del detector: el servicio no responde en este momento. Se muestra el último resultado guardado por el portal." %}</p>{% endif %}
+
+  {% include "web/_panel_stack.html" %}
+
+  <section class="flare-sec" aria-labelledby="flare-img-h">
+    <div class="flare-sec-head">
+      <h2 id="flare-img-h">{% trans "Imágenes del último resultado" %}</h2>
+      <div class="seg" role="group" aria-label="{% trans 'Tipo de imagen' %}" data-flare-kind>
+        <button type="button" class="on" aria-pressed="true" data-kind="img">{% trans "imagen" %}</button>
+        <button type="button" aria-pressed="false" data-kind="diff">{% trans "diferencia" %}</button>
+      </div>
+    </div>
+    {% if service_available %}
+    <div class="flare-figs">
+      <div class="flare-channels">
+        {% for c in images.channels %}
+        <figure class="flare-fig">
+          <div class="flare-frame">
+            <img src="{{ c.img }}" data-src-img="{{ c.img }}" data-src-diff="{{ c.diff }}" width="512" height="512" loading="lazy" decoding="async" alt="{% blocktrans with wave=c.wave %}SDO/AIA {{ wave }} Å{% endblocktrans %}">
+            {% if c.wave == "131" and header.bbox %}<span class="flare-box" style="left:{{ header.bbox.left }}%;top:{{ header.bbox.top }}%;width:{{ header.bbox.width }}%;height:{{ header.bbox.height }}%" title="{% trans 'Región detectada (experimental)' %}"></span>{% endif %}
+            <span class="flare-missing" hidden>{% trans "Imagen no disponible" %}</span>
+          </div>
+          <figcaption><b>{{ c.wave }} Å</b>{% if c.t_obs %} <span>{{ c.t_obs }} UT</span>{% endif %}</figcaption>
+        </figure>
+        {% endfor %}
+      </div>
+      <figure class="flare-fig flare-cam">
+        <div class="flare-frame">
+          <img src="{{ images.gradcam }}" width="512" height="512" loading="lazy" decoding="async" alt="{% trans 'Grad-CAM sobre 131 Å' %}">
+          <span class="flare-missing" hidden>{% trans "Imagen no disponible" %}</span>
+        </div>
+        <figcaption><b>{% trans "Grad-CAM sobre 131 Å" %}</b>{% if images.gradcam_time %} <span>{{ images.gradcam_time }} UT</span>{% endif %}</figcaption>
+        <p class="meta">{% trans "Grad-CAM marca las zonas de la imagen que más pesaron en la probabilidad de la red. Su color crece con probabilidad / umbral, así que en una imagen tranquila se ve tenue a propósito." %}</p>
+      </figure>
+    </div>
+    <p class="meta">{% trans "SDO/AIA (NASA), 512 px, norte arriba. «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo." %}{% if header.bbox %} {% trans "El recuadro sobre 131 Å es la región detectada (experimental)." %}{% endif %}</p>
+    {% else %}
+    <p class="flare-note">{% trans "Sin datos del detector." %}</p>
+    {% endif %}
+  </section>
+
+  <section class="flare-sec perf" aria-labelledby="flare-hist-h">
+    <h2 id="flare-hist-h">{% trans "Alertas de los últimos 30 días" %}</h2>
+    <p class="meta">{% trans "Un evento agrupa las alertas separadas por menos de 10 minutos. Clase GOES: el máximo del flujo 0,1–0,8 nm que guarda el portal entre el inicio y 10 minutos después del fin." %}</p>
+    {% if not history_available %}
+    <p class="flare-note">{% trans "Sin datos del detector." %}</p>
+    {% elif history %}
+    <div class="table-scroll">
+      <table class="status-table perf-table flare-hist">
+        <thead>
+          <tr>
+            <th>{% trans "Inicio (UT)" %}</th><th>{% trans "Máximo (UT)" %}</th><th>{% trans "Fin (UT)" %}</th>
+            <th class="num">{% trans "Prob. máx." %}</th><th class="num">{% trans "Imágenes en alerta" %}</th>
+            <th>{% trans "Ubicación" %}</th><th>{% trans "Clase GOES" %}</th><th>Grad-CAM</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in history %}
+          <tr>
+            <td>{{ r.start }}{% if r.open %} <span class="pill">{% trans "en curso" %}</span>{% endif %}</td>
+            <td>{{ r.peak }}</td><td>{{ r.end }}</td>
+            <td class="num">{{ r.p_max }}</td><td class="num">{{ r.n_frames }}</td>
+            <td>{{ r.location }}</td><td>{{ r.goes_class }}</td>
+            <td>{% if r.gradcam %}<a href="{{ r.gradcam }}">{% trans "ver" %}</a>{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="flare-note">{% trans "Sin alertas en los últimos 30 días." %}</p>
+    {% endif %}
+  </section>
+
+  <div class="below">
+    <section>
+      <h2>{% trans "Qué muestra" %}</h2>
+      {% if description %}<p>{{ description }}</p>{% endif %}
+      <h2>{% trans "Lo que se sabe de su desempeño" %}</h2>
+      <p>{% trans "Es un producto en beta. Contra la lista de fulguraciones de GOES, en un mes de prueba detectó el 72 % de las fulguraciones M y X (todas las de clase M2 o mayor) con 3 falsas alarmas, y su primera alerta llegó una mediana de 9 minutos después del inicio en GOES. Una regla simple sobre el brillo total del Sol en 131 Å detecta más: el 98 % en el mismo mes. Lo que el modelo aporta es la ubicación de la fulguración en el disco, a una mediana de 14″ de la posición de catálogo." %}</p>
+      <p>{% trans "Limitaciones: el umbral se fijó con el mismo mes de prueba, todavía no hay cifras del período en vivo, la ubicación es experimental y la probabilidad en Sol tranquilo no es cero." %} <a href="{{ model_card_url }}" rel="noopener">{% trans "Ficha completa del modelo" %} {% include "web/_icon_ext.html" %}</a></p>
+    </section>
+    {% if facts %}
+    <section>
+      <h2>{% trans "Ficha del producto" %}</h2>
+      <dl>
+        {% for f in facts %}
+        <dt>{{ f.label }}</dt><dd>{{ f.value }}</dd>
+        {% endfor %}
+        {% include "web/_provider_links_row.html" %}
+      </dl>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}<script defer src="{% static 'web/js/flare.js' %}"></script>{% endblock %}

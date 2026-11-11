@@ -40,6 +40,9 @@ PAGES = {
     # v0.5.2: a daily product (D-097): its own ranges, caption and day label,
     # and markers on its few points.
     "noaa.goes.electron_fluence": ("/productos/noaa.goes.electron_fluence/", 1, "daily"),
+    # v0.6.0: the flare detector's page (D-101), against the flare-nrt stub
+    # (.github/scripts/flare_nrt_stub.py) with SWX_FLARE_PAGE_PUBLIC=1.
+    "usach.flare.nrt": ("/productos/usach.flare.nrt/", 1, "flare"),
     # v0.5.0: the data-access page (no chart): its code examples must show.
     "datos-api": ("/datos-api/", 0, "code"),
 }
@@ -97,6 +100,42 @@ def check_daily(page, failures, label, lang):
                           ".filter(s => s.id === 'fluence-0').map(s => s.showSymbol)")
     if shown != [True]:
         failures.append(f"{label}: fluence line markers {shown}, expected [True]")
+
+
+FLARE_STATE = {"es": "Flare en curso", "en": "Flare in progress"}
+
+
+def check_flare(page, failures, label, lang, interactive):
+    """D-101: both panels drawn with the threshold line and the alert spans,
+    the five images loaded (none replaced by its placeholder), the state
+    badge, the box on 131 Å, and (once) the image/difference toggle."""
+    stack = "document.querySelector('.swx-stack').__swxStack"
+    marks = page.evaluate(f"""(() => {{
+        const s = {stack}.ec.getOption().series;
+        const prob = s.find(x => x.id === 'probability-0');
+        return {{lines: prob && prob.markLine ? prob.markLine.data.length : 0,
+                 spans: prob && prob.markArea ? prob.markArea.data.length : 0,
+                 xray: s.some(x => x.id === 'xray-0')}};
+    }})()""")
+    if not marks["lines"] or not marks["spans"] or not marks["xray"]:
+        failures.append(f"{label}: timeline incomplete {marks} (threshold line, alert spans, X-ray panel)")
+    page.wait_for_function("[...document.querySelectorAll('.flare-frame img')].every(i => i.complete)", timeout=15000)
+    loaded = page.evaluate("[...document.querySelectorAll('.flare-frame img')].filter(i => i.naturalWidth > 0).length")
+    missing = page.evaluate("document.querySelectorAll('.flare-frame.is-missing').length")
+    if loaded != 5 or missing:
+        failures.append(f"{label}: {loaded}/5 images loaded, {missing} placeholder(s)")
+    badge = page.evaluate("(document.querySelector('.flare-state') || {}).textContent")
+    if badge != FLARE_STATE[lang]:
+        failures.append(f"{label}: state badge {badge!r}, expected {FLARE_STATE[lang]!r}")
+    if not page.evaluate("!!document.querySelector('.flare-box')"):
+        failures.append(f"{label}: no detection box on 131 Å")
+    if interactive:
+        page.click('[data-kind="diff"]')
+        page.wait_for_function("[...document.querySelectorAll('img[data-src-img]')]"
+                               ".every(i => i.src.includes('kind=diff') && i.complete)", timeout=15000)
+        if page.evaluate("document.querySelectorAll('.flare-frame.is-missing').length"):
+            failures.append(f"{label}: a difference image failed to load")
+        page.click('[data-kind="img"]')
 
 
 def check_code_blocks(page, failures, label):
@@ -214,6 +253,9 @@ def main(base_url, out_dir):
                             check_code_blocks(page, failures, label)
                         if checks == "daily":
                             check_daily(page, failures, label, lang)
+                        if checks == "flare":
+                            check_flare(page, failures, label, lang,
+                                        interactive=(lang == "es" and theme == "day" and size == "desktop"))
                         context.close()
         browser.close()
     for f in failures:
