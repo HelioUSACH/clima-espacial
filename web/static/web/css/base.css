@@ -548,3 +548,35 @@ pre.code { background: var(--band); border: 1px solid var(--line); border-radius
 .csv-dialog .csv-hint { font-size: .85rem; color: var(--ink-soft); }
 .csv-dialog .csv-error { color: var(--severity-strong); font-size: .9rem; }
 .csv-dialog .csv-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---------- flare detector page (v0.6.0, D-101) ---------- */
+/* State badge: the shared severity tokens (D-062), soft fill + strong ink. */
+.pill.flare-state { border-color: transparent; font-weight: 600; }
+.pill.flare-state.sv-ok { background: var(--severity-ok-soft); color: var(--severity-ok); }
+.pill.flare-state.sv-moderate { background: var(--severity-moderate-soft); color: var(--severity-moderate); }
+.pill.flare-state.sv-strong { background: var(--severity-strong-soft); color: var(--severity-strong); }
+.flare-page .now .now-asof { margin-top: -18px; }
+.flare-page .now .flare-open { margin-top: -22px; color: var(--severity-strong); }
+.flare-exp { font-family: var(--font-ui); font-size: 11px; letter-spacing: .04em; color: var(--ink-faint); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+.flare-note { font-size: 14px; color: var(--ink-soft); background: var(--band); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 14px; margin: 0 0 16px; }
+.flare-preview { border-color: var(--accent); }
+.flare-sec { padding-top: 32px; }
+.flare-sec h2 { font-family: var(--font-ui); font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+.flare-sec-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-bottom: 12px; }
+.flare-sec > .meta { max-width: 80ch; margin: 10px 0 0; }
+.flare-figs { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.flare-channels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.flare-fig { margin: 0; display: grid; gap: 6px; }
+.flare-fig figcaption { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); display: flex; justify-content: space-between; gap: 8px; }
+.flare-fig figcaption b { font-weight: 500; color: var(--ink); }
+.flare-fig .meta { margin: 0; }
+/* Solar images are black-backed in both themes; the frame keeps the square
+ * while an image loads or is missing. */
+.flare-frame { position: relative; aspect-ratio: 1 / 1; background: #05080f; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.flare-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.flare-frame.is-missing img { visibility: hidden; }
+.flare-missing { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-ui); font-size: 12.5px; color: #8fa0b3; }
+.flare-missing[hidden] { display: none; }
+.flare-box { position: absolute; border: 2px solid var(--sun); border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); pointer-events: none; }
+.flare-hist td { white-space: nowrap; }
+@media (max-width: 900px) { .flare-figs { grid-template-columns: minmax(0, 1fr); } }

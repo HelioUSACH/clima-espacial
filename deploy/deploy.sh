@@ -23,6 +23,8 @@ DESTINO=$SANDBOX/opt/swx
 ARCHIVO_ENV=$SANDBOX/etc/swx/swx.env
 UNIT_DIR=$SANDBOX/etc/systemd/system
 SNIPPET_LIVE=$SANDBOX/etc/nginx/snippets/clima-espacial.conf
+HTTP_CONF_LIVE=$SANDBOX/etc/nginx/conf.d/clima-espacial-http.conf
+FLARE_CACHE_DIR=$SANDBOX/var/cache/nginx/clima-espacial-flare
 
 [[ -n $SANDBOX || $EUID -eq 0 ]] || { echo "Run with sudo." >&2; exit 1; }
 [[ -f $ARCHIVO_ENV ]] || { echo "$ARCHIVO_ENV is missing: run provision.sh first." >&2; exit 1; }
@@ -166,5 +168,16 @@ if ! cmp --silent "$SNIPPET_REPO" "$SNIPPET_LIVE"; then
     echo "NOTE: $SNIPPET_LIVE differs from this release's $SNIPPET_REPO"
     echo "      (or is missing). To install it:"
     echo "  sudo install -m 644 $SNIPPET_REPO $SNIPPET_LIVE"
+    echo "  sudo nginx -t && sudo systemctl reload nginx"
+fi
+# v0.6.0 (D-100): the snippet needs http{}-context directives (the flare
+# image cache) from a second file, and that cache's directory.
+HTTP_CONF_REPO="$DESTINO/deploy/nginx-clima-espacial-http.conf"
+if [[ -f $HTTP_CONF_REPO ]] && ! cmp --silent "$HTTP_CONF_REPO" "$HTTP_CONF_LIVE"; then
+    echo
+    echo "NOTE: $HTTP_CONF_LIVE differs from this release's $HTTP_CONF_REPO"
+    echo "      (or is missing). Install it BEFORE the snippet above (the snippet uses it):"
+    [[ -d $FLARE_CACHE_DIR ]] || echo "  sudo install -d -o www-data -g www-data -m 750 $FLARE_CACHE_DIR"
+    echo "  sudo install -m 644 $HTTP_CONF_REPO $HTTP_CONF_LIVE"
     echo "  sudo nginx -t && sudo systemctl reload nginx"
 fi

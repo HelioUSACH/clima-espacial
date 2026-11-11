@@ -43,7 +43,7 @@ product contract everything else in this repo already follows:
    than the producer's own staleness threshold if it publishes one (so this
    repo's heartbeat tracks, not fights, the producer's own notion of
    "stale") — `modules/flare/manifests/nrt.yaml` picks `10m` to match
-   flare-nrt's own `STALE_AFTER_SEC`. Never republish a field the model
+   flare-nrt's own `FLARE_NRT_STALE_AFTER_SEC` (600 s). Never republish a field the model
    itself flags as exploratory/low-confidence as if it were a validated
    signal (01-AUDIT.md §3.6 — `modules/flare/adapters.py` deliberately drops
    `severity` for exactly this reason). A product whose producer isn't
@@ -51,20 +51,48 @@ product contract everything else in this repo already follows:
    automatically, from its real heartbeat — never a hard-coded flag in the
    view (see `web/views.py::_flare_card_ready`, D-036).
 
-## Worked example: `modules/flare/`
+## Worked example: `modules/flare/` (flare-nrt 1.x)
 
-Polls `HelioUSACH/flare-nrt`'s internal `/api/status` (never exposed by
-nginx — docs/ARCHITECTURE.md §6) every minute and republishes
-`probability`/`flare_detected`/`location` as a `usach.flare.nrt` event. If
-the service isn't reachable, the collector marks the heartbeat `error`
-instead of crashing, and the portal's beta card falls back to "en
-preparación" (D-036) — launch was never blocked on this model being ready.
+The producer is [`HelioUSACH/flare-nrt`](https://github.com/HelioUSACH/flare-nrt)
+(v1.0.0 at the time of writing). Its integration sheet (`INTEGRATION.md`
+there, sections "GET /api/status" and "Display endpoints") is the contract;
+this repo uses only the fields and endpoints it lists.
+
+**The collector** polls the internal `/api/status` (never exposed by nginx,
+docs/ARCHITECTURE.md §6) every minute and republishes the result as a
+`usach.flare.nrt` event (manifest version 2, D-098):
+
+| event field | from `/api/status` |
+|---|---|
+| `issued` | `timestamp`: when the result was made, unique per result; the de-duplication key (D-096) |
+| `valid_from` | `observation_time`: the AIA slot the result is about (falls back to `timestamp` for a producer before 1.0) |
+| `payload` | `probability`, `threshold`, `alert`, `state` (`quiet`/`onset`/`active`/`decay`), `flare_detected`, `event_id`, `event_t_start`, `location` (experimental; its documented keys only) |
+| `quality` | `live_status`, `input_age_s`, `ensemble_std` |
+| `provenance` | `{"producer": "flare-nrt@<model_version>", "inputs": {"131": T_OBS, "171": …, "304": …, "1600": …}}` |
+
+Events stored before version 2 (only `probability`, `flare_detected`,
+`location`, with `valid_from = issued`) stay as they are and still render.
+Service-health fields (`ensemble_scores`, latency, loop counters) are not
+republished; neither was `severity` while the producer sent it (01-AUDIT.md
+§3.6).
 
 The producer's own `live_status` decides (D-096): only `live` is published,
-and a result already stored (same `issued`, the producer updates every ~3 min)
-is not stored again; `stale` turns the heartbeat `stale` with the producer's
-`seconds_since_update` in its detail; `no_data`, `unknown` or a missing value
-is `no_data`. A naive `timestamp` is read as UTC.
+and a result already stored (same `issued`; the producer updates every
+2 min) is not stored again; `stale` turns the heartbeat `stale` with the
+producer's `seconds_since_update` in its detail; `no_data`, `unknown` or a
+missing value is `no_data`. A naive `timestamp` is read as UTC. If the
+service isn't reachable, the heartbeat is `error`, which the public sees as
+"en preparación" (D-036).
+
+**The product page** (D-099..D-101) also shows what only the service has:
+the probability per slot, the alert history and the images. Django reads
+`/api/series`, `/api/events` and `/api/frames` server-side (whitelisted,
+2 s timeout, 30 s cache, `web/flare.py`); the PNGs
+(`/api/image/…`, `/api/gradcam/…`) reach the browser through cached nginx
+locations, never through Django (docs/ARCHITECTURE.md §6.1). A model whose
+page needs images or other display data can follow the same split: the
+product store for what the portal publishes, server-side JSON for the rest,
+nginx for anything binary.
 
 ## Forecast models
 

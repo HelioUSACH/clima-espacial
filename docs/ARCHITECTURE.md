@@ -246,14 +246,47 @@ nginx
  └─ /clima-espacial/               → gunicorn (FORCE_SCRIPT_NAME=/clima-espacial) 127.0.0.1:8100
       ├─ /clima-espacial/static/    → hashed static files served by nginx, cached immutable (D-055)
       ├─ /clima-espacial/…/serie.json → gunicorn; bucketed in SQL, cached 60 s (D-056/D-057)
-      └─ (internal) flare FastAPI   127.0.0.1:5050, not exposed; portal reads its JSON
+      ├─ /clima-espacial/productos/usach.flare.nrt/{img,gradcam}/…png
+      │                             → flare-nrt 127.0.0.1:5050 via nginx proxy_cache (D-100)
+      └─ (internal) flare-nrt FastAPI 127.0.0.1:5050, otherwise not exposed; Django reads its JSON
 
 /opt/swx/            code (root-owned, read-only to the service user)
 /srv/swx/data/       rolling product files (images, downloads) with retention
 /etc/swx/swx.env     secrets
 systemd: swx-web, swx-collect@<product>.timer, swx-dump.timer, swx-verify.timer
-          (+ the flare repo's own units, started independently)
+          (+ the flare repo's own units, flare-nrt-loop and flare-nrt-api, started independently)
 ```
+
+### 6.1 How flare-nrt's data reach the browser (D-100)
+
+flare-nrt is a separate service on the same VM (its own repository and
+units). Three paths, and no other:
+
+```
+ collector (every minute)  ── GET /api/status ──────────────► core_event (usach.flare.nrt), heartbeat
+ Django, product page      ── GET /api/{status,series,events,frames}  (server-side,
+                               whitelisted, 2 s timeout, 30 s cache, None on any failure)
+ browser <img>             ── /clima-espacial/productos/usach.flare.nrt/img|gradcam/…png
+                               ── nginx proxy_cache (60 s latest, 7 d per slot, stale on error)
+                               ── GET /api/image/{wave}.png?kind=&slot= | /api/gradcam/{…}.png
+```
+
+- **Images never pass through Django**: a PNG through gunicorn would hold one
+  of its 8 threads (D-069) for as long as the model's server takes.
+  nginx accepts only the documented paths (wave ∈ 131/171/304/1600, slot in
+  ISO form or `latest`), forwards only `kind` and `slot`, rate-limits per
+  address, and answers from its cache when the service is slow or down.
+  The cache zone and argument maps are `http{}`-context directives, so they
+  live in `deploy/nginx-clima-espacial-http.conf` (`/etc/nginx/conf.d/`), not
+  in the snippet included inside `server{}` (D-051).
+- **JSON is read server-side** (`web/flare.py`): only four endpoints and
+  their integer parameters, one fetch per key per worker at a time (others
+  get the previous answer or nothing, never a wait), failures cached too.
+  The page's header and image slot come from the product store, so the
+  page renders with the service down and says "sin datos del detector"
+  where it needs the service.
+- **The browser never addresses the service.** The page's own timeline data
+  is `productos/usach.flare.nrt/datos/probabilidad.json`, Django's.
 
 Indicative RAM budget (15 GiB): PostgreSQL 2–3 GB · gunicorn 2 gthread workers × 4 threads (D-069)
 · flare loop (CPU) 2–3 GB · collectors <0.5 GB · OS/cache rest. Disk (96 GB

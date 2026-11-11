@@ -102,6 +102,9 @@ cat <<'INSTRUCTIONS'
    live group-site vhost): install the snippet, then add ONE line inside
    the existing TLS server{} block for helio.fisica.usach.cl:
 
+     install -d -o www-data -g www-data -m 750 /var/cache/nginx/clima-espacial-flare
+     install -o root -g root -m 644 deploy/nginx-clima-espacial-http.conf \
+         /etc/nginx/conf.d/clima-espacial-http.conf
      install -o root -g root -m 644 deploy/nginx-clima-espacial.conf \
          /etc/nginx/snippets/clima-espacial.conf
      # then edit /etc/nginx/sites-available/helio and add:

@@ -90,7 +90,8 @@ jobs:
         run: python manage.py check --deploy --fail-level WARNING
 
   # D-058 / 13-AUDIT §5 B.2: what the browser actually shows, on every PR —
-  # home + one product page + the forecast baseline page × 1440/390 px ×
+  # home + one product page + the forecast baseline page + the flare
+  # detector's page (against a flare-nrt stub) × 1440/390 px ×
   # day/night × ES/EN, uploaded as
   # artifacts for review. Fails on a wrong chart count, a visible panel
   # error/empty state, a JS error, or a regression of the range-click race
@@ -137,7 +138,17 @@ jobs:
           python manage.py migrate --noinput
           python manage.py seed_dev_data --days 7.1
 
+      # v0.6.0: a stand-in for flare-nrt (D-100/D-101), and one collector
+      # run against it, so the flare page has a stored result to show.
+      - name: Start the flare-nrt stub + collect one result
+        run: |
+          python .github/scripts/flare_nrt_stub.py --scenario active > flare-stub.log 2>&1 &
+          curl --silent --fail --retry 20 --retry-connrefused --retry-delay 1 -o /dev/null http://127.0.0.1:5050/api/status
+          python manage.py collect usach.flare.nrt
+
       - name: Start the portal
+        env:
+          SWX_FLARE_PAGE_PUBLIC: "1"
         run: |
           python manage.py runserver 127.0.0.1:8000 --noreload > runserver.log 2>&1 &
           curl --silent --fail --retry 20 --retry-connrefused --retry-delay 1 -o /dev/null http://127.0.0.1:8000/
@@ -153,4 +164,5 @@ jobs:
           path: |
             screenshots/
             runserver.log
+            flare-stub.log
           if-no-files-found: warn

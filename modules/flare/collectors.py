@@ -39,8 +39,10 @@ def collect_nrt() -> None:
         swxkit.heartbeat(PRODUCT_ID, "no_data", detail="flare-nrt has no result yet")
         return
 
-    # The producer updates every ~3 min and this runs every minute: the
-    # same result is seen two or three times. Store it once (D-096).
+    # The producer updates every ~2 min and this runs every minute: the
+    # same result is seen once or twice more. Store it once (D-096); the
+    # key is `issued` (the producer's `timestamp`), unique per result,
+    # while `valid_from` is the AIA slot it is about (D-098).
     if Event.objects.filter(product_id=PRODUCT_ID, issued=parsed["issued"]).exists():
         swxkit.heartbeat(PRODUCT_ID, "ok", detail="no new result since the last poll")
         return
@@ -51,6 +53,7 @@ def collect_nrt() -> None:
         valid_from=parsed["valid_from"],
         issued=parsed["issued"],
         quality=parsed["quality"],
+        provenance=parsed["provenance"],
     )
 
 

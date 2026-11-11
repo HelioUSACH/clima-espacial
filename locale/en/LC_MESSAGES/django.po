@@ -425,8 +425,8 @@ msgstr "Solar wind in L1"
 msgid "Datos abiertos y API"
 msgstr "Open data and API"
 
-msgid "Detección automática de fulguraciones solares en tiempo casi real a partir del flujo de rayos X de GOES."
-msgstr "Automatic near-real-time solar flare detection from GOES X-ray flux."
+msgid "Detección automática de fulguraciones solares en tiempo casi real a partir de imágenes del Sol de SDO/AIA."
+msgstr "Automatic near-real-time detection of solar flares in SDO/AIA images of the Sun."
 
 msgid "Línea discontinua: cambio de nave activa"
 msgstr "Dashed line: change of active spacecraft"
@@ -875,3 +875,134 @@ msgstr "The datasets are the series in the table below: each identifier links to
 
 msgid "<code>about</code>, <code>capabilities</code>, <code>catalog</code> e <code>info</code> no piden llave. <code>data</code> pide una llave de API (encabezado <code>X-API-Key</code> o parámetro <code>api_key</code>), salvo tramos de hasta %(h)s h que terminen dentro de los últimos %(d)s días (<a href=\"#acceso\">ver «Sin llave»</a>)."
 msgstr "<code>about</code>, <code>capabilities</code>, <code>catalog</code> and <code>info</code> need no key. <code>data</code> needs an API key (header <code>X-API-Key</code> or parameter <code>api_key</code>), except spans of up to %(h)s h ending within the last %(d)s days (<a href=\"#acceso\">see “Without a key”</a>)."
+
+# v0.6.0: the flare detector's page (D-101)
+msgid "Probabilidad de fulguración y rayos X de GOES"
+msgstr "Flare probability and GOES X-rays"
+
+#, python-format
+msgid "hace %(n)s min"
+msgstr "%(n)s min ago"
+
+#, python-format
+msgid "hace %(n)s h"
+msgstr "%(n)s h ago"
+
+#, python-format
+msgid "hace %(n)s días"
+msgstr "%(n)s days ago"
+
+msgid "umbral"
+msgstr "threshold"
+
+msgid "Sin datos del detector."
+msgstr "No data from the detector."
+
+msgid "Vista previa: esta página solo la ve el personal del sitio. El público ve todavía la página anterior."
+msgstr "Preview: only site staff see this page. The public still sees the previous page."
+
+msgid "Probabilidad"
+msgstr "Probability"
+
+#, python-format
+msgid "imagen de %(when)s UT · %(age)s"
+msgstr "image of %(when)s UT · %(age)s"
+
+#, python-format
+msgid "resultado de %(when)s UT · %(age)s"
+msgstr "result of %(when)s UT · %(age)s"
+
+#, python-format
+msgid "Alerta desde %(when)s UT"
+msgstr "Alert since %(when)s UT"
+
+msgid "Alerta en curso"
+msgstr "Alert in progress"
+
+msgid "ubicación"
+msgstr "location"
+
+msgid "Sin datos del detector: el servicio no responde en este momento. Se muestra el último resultado guardado por el portal."
+msgstr "No data from the detector: the service is not answering right now. The last result stored by the portal is shown."
+
+msgid "Imágenes del último resultado"
+msgstr "Images of the latest result"
+
+msgid "Tipo de imagen"
+msgstr "Image type"
+
+msgid "imagen"
+msgstr "image"
+
+msgid "diferencia"
+msgstr "difference"
+
+#, python-format
+msgid "SDO/AIA %(wave)s Å"
+msgstr "SDO/AIA %(wave)s Å"
+
+msgid "Región detectada (experimental)"
+msgstr "Detected region (experimental)"
+
+msgid "Imagen no disponible"
+msgstr "Image not available"
+
+msgid "Grad-CAM sobre 131 Å"
+msgstr "Grad-CAM over 131 Å"
+
+msgid "Grad-CAM marca las zonas de la imagen que más pesaron en la probabilidad de la red. Su color crece con probabilidad / umbral, así que en una imagen tranquila se ve tenue a propósito."
+msgstr "Grad-CAM marks the parts of the image that weighed most in the network's probability. Its colour grows with probability / threshold, so on a quiet image it is faint by design."
+
+msgid "SDO/AIA (NASA), 512 px, norte arriba. «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo."
+msgstr "SDO/AIA (NASA), 512 px, north up. “difference”: the current image minus the mean of those 8 to 12 minutes earlier, which is what the model looks at."
+
+msgid "El recuadro sobre 131 Å es la región detectada (experimental)."
+msgstr "The box on 131 Å is the detected region (experimental)."
+
+msgid "Alertas de los últimos 30 días"
+msgstr "Alerts in the last 30 days"
+
+msgid "Un evento agrupa las alertas separadas por menos de 10 minutos. Clase GOES: el máximo del flujo 0,1–0,8 nm que guarda el portal entre el inicio y 10 minutos después del fin."
+msgstr "An event groups alerts less than 10 minutes apart. GOES class: the highest 0.1–0.8 nm flux stored by the portal between the start and 10 minutes after the end."
+
+msgid "Inicio (UT)"
+msgstr "Start (UT)"
+
+msgid "Máximo (UT)"
+msgstr "Peak (UT)"
+
+msgid "Fin (UT)"
+msgstr "End (UT)"
+
+msgid "Prob. máx."
+msgstr "Peak prob."
+
+msgid "Imágenes en alerta"
+msgstr "Alert images"
+
+msgid "Ubicación"
+msgstr "Location"
+
+msgid "Clase GOES"
+msgstr "GOES class"
+
+msgid "en curso"
+msgstr "ongoing"
+
+msgid "ver"
+msgstr "view"
+
+msgid "Sin alertas en los últimos 30 días."
+msgstr "No alerts in the last 30 days."
+
+msgid "Lo que se sabe de su desempeño"
+msgstr "What is known about its performance"
+
+msgid "Es un producto en beta. Contra la lista de fulguraciones de GOES, en un mes de prueba detectó el 72 %% de las fulguraciones M y X (todas las de clase M2 o mayor) con 3 falsas alarmas, y su primera alerta llegó una mediana de 9 minutos después del inicio en GOES. Una regla simple sobre el brillo total del Sol en 131 Å detecta más: el 98 %% en el mismo mes. Lo que el modelo aporta es la ubicación de la fulguración en el disco, a una mediana de 14″ de la posición de catálogo."
+msgstr "It is a beta product. Against the GOES flare list, over a test month it detected 72 %% of M and X flares (all of those of class M2 or above) with 3 false alarms, and its first alert came a median 9 minutes after the GOES start. A simple rule on the Sun's total 131 Å brightness detects more: 98 %% in the same month. What the model adds is the flare's location on the disk, a median 14″ from the catalogue position."
+
+msgid "Limitaciones: el umbral se fijó con el mismo mes de prueba, todavía no hay cifras del período en vivo, la ubicación es experimental y la probabilidad en Sol tranquilo no es cero."
+msgstr "Limitations: the threshold was set on that same test month, there are no live-period figures yet, the location is experimental, and the probability in quiet Sun is not zero."
+
+msgid "Ficha completa del modelo"
+msgstr "Full model card"

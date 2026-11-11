@@ -5,7 +5,7 @@ import re
 from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -25,7 +25,7 @@ from api.keys import issue_key
 from core.manifests.loader import discover_manifests, get_manifest
 from core.models import Event, Forecast, ForecastScore, Heartbeat, Product, TimeSeriesPoint
 
-from . import charts, forecasts, series
+from . import charts, flare, forecasts, series
 from .forms import RegistrationForm
 from .models import RegistrationRequest
 from .numfmt import fmt_number, fmt_sci
@@ -45,6 +45,16 @@ def _flare_card_ready():
     except Heartbeat.DoesNotExist:
         return False
     return hb.effective_status() == "ok"
+
+
+def flare_page_visible(request):
+    """D-099: the flare detector's new page is public only once
+    SWX_FLARE_PAGE_PUBLIC is on; until then only a logged-in staff user
+    (a Django admin session) sees it. Nothing in the URL can force it."""
+    if settings.SWX_FLARE_PAGE_PUBLIC:
+        return True
+    user = getattr(request, "user", None)
+    return bool(user is not None and user.is_authenticated and user.is_staff)
 
 
 def _lang(request):
@@ -115,7 +125,7 @@ def _offer_cards(lang):
         {
             "pill": flare_pill, "pill_class": "beta",
             "title": gettext("Detección de fulguraciones (NRT)"),
-            "text": gettext("Detección automática de fulguraciones solares en tiempo casi real a partir del flujo de rayos X de GOES."),
+            "text": gettext("Detección automática de fulguraciones solares en tiempo casi real a partir de imágenes del Sol de SDO/AIA."),
         },
         {
             "pill": gettext("en desarrollo"), "pill_class": "",
@@ -338,7 +348,11 @@ def catalogue(request):
         }
         for p in products
     ]
-    return render(request, "web/catalogue.html", {"rows": rows, "flare_card_ready": _flare_card_ready()})
+    return render(request, "web/catalogue.html", {
+        "rows": rows, "flare_card_ready": _flare_card_ready(),
+        # The card links to the product page once its new page is visible to this visitor (D-099).
+        "flare_page_link": flare_page_visible(request) and Product.objects.filter(id=FLARE_PRODUCT_ID).exists(),
+    })
 
 
 def _headline_value(label_es, label_en, value, unit, lang):
@@ -435,6 +449,8 @@ def product_detail(request, product_id):
         "source_license": _license_text(product.source_license),
         "source_links": product.source_links,
     }
+    if product_id == FLARE_PRODUCT_ID and flare_page_visible(request):
+        return _flare_page(request, product, context, lang)
     if product.kind == "event":
         event = Event.objects.filter(product=product).order_by("-issued").first()
         context["latest_event"] = event
@@ -470,6 +486,80 @@ def product_detail(request, product_id):
     context["description"] = product.description(lang)
     context["facts"] = _facts_list(product, lang)
     return render(request, "web/product_detail.html", context)
+
+
+def _flare_page(request, product, context, lang):
+    """The flare detector's own page (D-101): header and images from the
+    stored product, timeline/history from flare-nrt's JSON read server-side
+    (web/flare.py), images from nginx. Renders (HTTP 200, "sin datos del
+    detector") whatever the service's state."""
+    stack_id = _dom_id(product.id)
+    endpoint = reverse("web:flare_datos_json", args=["probabilidad"])
+    xray_endpoint = reverse("web:product_series_json", args=[flare.XRAY_PRODUCT_ID])
+    context.update(flare.page_context(lang))
+    context.update({
+        "panels": flare.timeline_panels(lang, endpoint, xray_endpoint),
+        "chart_i18n": _chart_i18n(),
+        "stack_id": stack_id,
+        "panels_id": stack_id + "-panels",
+        "i18n_id": stack_id + "-i18n",
+        "tall": True,
+        "stack_aria_label": gettext("Probabilidad de fulguración y rayos X de GOES"),
+        "ranges": [{"key": key, "label": label_en if lang == "en" else label_es, "enabled": True, "title": ""}
+                   for key, label_es, label_en, _days in charts.RANGE_CHOICES if key in flare.SERIES_RANGES],
+        "default_range": flare.DEFAULT_RANGE,
+        "description": product.description(lang),
+        "facts": _facts_list(product, lang),
+        "model_card_url": "https://github.com/HelioUSACH/flare-nrt/blob/v1.0.0/docs/model-card.md",
+        "preview": not settings.SWX_FLARE_PAGE_PUBLIC,
+    })
+    response = render(request, "web/product_detail_flare.html", context)
+    if not settings.SWX_FLARE_PAGE_PUBLIC:
+        # A staff-only preview: never stored by a shared cache.
+        patch_cache_control(response, private=True)
+    return response
+
+
+# productos/usach.flare.nrt/datos/<name>.json: the page's own data, read
+# server-side from flare-nrt (D-100). Only these names exist.
+FLARE_DATOS = {"probabilidad"}
+
+
+def flare_datos_json(request, name):
+    """The probability per slot for the timeline (web/flare.py contract),
+    cached 30 s here and in the browser. Served whatever the preview switch
+    (it only shows what the service already exposes) and whatever the
+    service's state: unreachable is empty data, not an error."""
+    if name not in FLARE_DATOS:
+        raise Http404("unknown data")
+    range_key = request.GET.get("range", flare.DEFAULT_RANGE)
+    if range_key not in flare.SERIES_RANGES:
+        range_key = flare.DEFAULT_RANGE
+    response = HttpResponse(flare.probability_series_body(range_key), content_type="application/json")
+    patch_cache_control(response, public=True, max_age=flare.CACHE_SECONDS)
+    return response
+
+
+def flare_media_dev(request, path):
+    """DEBUG only (registered in climaespacial/urls.py like Django's own
+    static serving): stands in for nginx's image locations so runserver and
+    the CI screenshots show the service's PNGs. In production these paths
+    are answered by nginx and never reach Django (D-100)."""
+    import httpx
+
+    match = re.fullmatch(r"img/(131|171|304|1600)\.png|gradcam/(latest|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)\.png",
+                         path)
+    if not settings.DEBUG or not match:
+        raise Http404()
+    params = {k: request.GET[k] for k in ("kind", "slot") if k in request.GET}
+    upstream = f"/api/image/{match.group(1)}.png" if match.group(1) else f"/api/gradcam/{match.group(2)}.png"
+    try:
+        reply = httpx.get(settings.SWX_FLARE_NRT_URL.rstrip("/") + upstream, params=params, timeout=5.0)
+    except httpx.HTTPError as exc:
+        raise Http404() from exc
+    if reply.status_code != 200:
+        raise Http404()
+    return HttpResponse(reply.content, content_type="image/png")
 
 
 def _download_context(product):
