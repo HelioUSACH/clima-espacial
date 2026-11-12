@@ -90,9 +90,10 @@ jobs:
         run: python manage.py check --deploy --fail-level WARNING
 
   # D-058 / 13-AUDIT §5 B.2: what the browser actually shows, on every PR —
-  # home + one product page + the forecast baseline page + the flare
-  # detector's page (against a flare-nrt stub) × 1440/390 px ×
-  # day/night × ES/EN, uploaded as
+  # home (with "El Sol ahora") + one product page + the forecast baseline
+  # page + the flare detector's page (against a flare-nrt stub; active and
+  # quiet, its 6-h loop and an event replay) × 1440/390 px ×
+  # day/night × ES/EN, local time checked in America/Santiago, uploaded as
   # artifacts for review. Fails on a wrong chart count, a visible panel
   # error/empty state, a JS error, or a regression of the range-click race
   # (16-PERF B1) / client cache (B2). See .github/scripts/screenshots.py.
@@ -155,6 +156,16 @@ jobs:
 
       - name: Screenshots + browser checks
         run: python .github/scripts/screenshots.py http://127.0.0.1:8000 screenshots
+
+      # v0.6.1: the flare page again with the detector quiet. The stub
+      # switches scenario, the collector stores the new result, and the
+      # portal's 30 s cache of the service's JSON (D-100) runs out first.
+      - name: Screenshots, flare detector quiet
+        run: |
+          curl --silent --fail -o /dev/null "http://127.0.0.1:5050/_stub/scenario?set=quiet"
+          python manage.py collect usach.flare.nrt
+          sleep 31
+          python .github/scripts/screenshots.py http://127.0.0.1:8000 screenshots --quiet-flare
 
       - name: Upload screenshots
         if: always()

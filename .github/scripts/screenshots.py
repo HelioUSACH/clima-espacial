@@ -1,7 +1,7 @@
 """Release screenshots + browser smoke checks (18-HANDOFF-v0.2.0.md §3;
 supersedes the uPlot-era version, D-058).
 
-    python .github/scripts/screenshots.py http://127.0.0.1:8000 shots/
+    python .github/scripts/screenshots.py http://127.0.0.1:8000 shots/ [--quiet-flare]
 
 Against a running portal with seeded data (`manage.py seed_dev_data`), for
 home, a few product pages and the forecast baseline's page x 1440/390 px x
@@ -103,12 +103,51 @@ def check_daily(page, failures, label, lang):
 
 
 FLARE_STATE = {"es": "Flare en curso", "en": "Flare in progress"}
+QUIET_STATE = {"es": "Calma", "en": "Quiet"}
+LOCAL_LABEL = {"es": "hora local", "en": "local time"}
+PLAYER = "document.getElementById('{id}').__swxPlayer"
 
 
-def check_flare(page, failures, label, lang, interactive):
-    """D-101: both panels drawn with the threshold line and the alert spans,
-    the five images loaded (none replaced by its placeholder), the state
-    badge, the box on 131 Å, and (once) the image/difference toggle."""
+def check_local_time(page, failures, label, lang):
+    """D-105: every <time> gets the visitor's local time next to its UT text
+    (this browser runs in America/Santiago), computed from `datetime`; the
+    switch is shown; with "hora local" first the order flips."""
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+
+    times = page.evaluate("""[...document.querySelectorAll('time[data-ut]')].map(t => ({
+        iso: t.getAttribute('datetime'), kind: t.dataset.ut, text: t.textContent}))""")
+    if not times:
+        failures.append(f"{label}: no <time> element")
+        return
+    for t in times[:5]:
+        when = dt.datetime.fromisoformat(t["iso"].replace("Z", "+00:00")).astimezone(ZoneInfo("America/Santiago"))
+        clock = f"{when:%H:%M:%S}" if t["kind"].endswith("s") else f"{when:%H:%M}"
+        if f"{clock} {LOCAL_LABEL[lang]}" not in t["text"] or " UT" not in t["text"]:
+            failures.append(f"{label}: <time {t['iso']}> reads {t['text']!r}, expected local {clock}")
+    if not page.evaluate("!document.querySelector('[data-tz-switch]').hidden"):
+        failures.append(f"{label}: the UT / hora local switch is hidden")
+
+
+def check_local_switch(page, failures, label):
+    page.locator('[data-tz="local"]:visible').first.click()
+    first = page.evaluate("document.querySelector('time[data-ut]').textContent")
+    stored = page.evaluate("localStorage.getItem('swx-time')")
+    if not first.split("(")[0].strip().endswith("hora local") or stored != "local":
+        failures.append(f"{label}: after 'hora local' the first time reads {first!r} (stored {stored!r})")
+    page.locator('[data-tz="ut"]:visible').first.click()
+
+
+def wait_images(page, selector, timeout=15000):
+    page.wait_for_function(f"[...document.querySelectorAll({selector!r})].every(i => i.complete)", timeout=timeout)
+    return page.evaluate(f"[...document.querySelectorAll({selector!r})].map(i => i.naturalWidth > 0)")
+
+
+def check_flare(page, failures, label, lang, interactive, quiet=False):
+    """D-101/D-102: the timeline (threshold line, alert spans, X-ray panel),
+    the large image, the Grad-CAM section (heat map over 131 Å for an alert
+    frame, or the "no recent alerts" text), the state badge and the box,
+    and (once) the channel and image/difference buttons."""
     stack = "document.querySelector('.swx-stack').__swxStack"
     marks = page.evaluate(f"""(() => {{
         const s = {stack}.ec.getOption().series;
@@ -119,23 +158,100 @@ def check_flare(page, failures, label, lang, interactive):
     }})()""")
     if not marks["lines"] or not marks["spans"] or not marks["xray"]:
         failures.append(f"{label}: timeline incomplete {marks} (threshold line, alert spans, X-ray panel)")
-    page.wait_for_function("[...document.querySelectorAll('.flare-frame img')].every(i => i.complete)", timeout=15000)
-    loaded = page.evaluate("[...document.querySelectorAll('.flare-frame img')].filter(i => i.naturalWidth > 0).length")
-    missing = page.evaluate("document.querySelectorAll('.flare-frame.is-missing').length")
-    if loaded != 5 or missing:
-        failures.append(f"{label}: {loaded}/5 images loaded, {missing} placeholder(s)")
+    loaded = wait_images(page, "[data-flare-main], .flare-cam-heat, .flare-cam-base")
+    if not loaded or not all(loaded):
+        failures.append(f"{label}: images loaded {loaded} (large image, Grad-CAM heat and its 131 Å)")
     badge = page.evaluate("(document.querySelector('.flare-state') || {}).textContent")
-    if badge != FLARE_STATE[lang]:
-        failures.append(f"{label}: state badge {badge!r}, expected {FLARE_STATE[lang]!r}")
-    if not page.evaluate("!!document.querySelector('.flare-box')"):
-        failures.append(f"{label}: no detection box on 131 Å")
+    expected = (QUIET_STATE if quiet else FLARE_STATE)[lang]
+    if badge != expected:
+        failures.append(f"{label}: state badge {badge!r}, expected {expected!r}")
+    if page.evaluate("!!document.querySelector('.flare-box')") is quiet:
+        failures.append(f"{label}: detection box {'shown' if quiet else 'missing'}")
+    cam = page.evaluate("document.querySelector('.flare-cam-when') && document.querySelector('.flare-cam-when').textContent")
+    if not cam:
+        failures.append(f"{label}: no Grad-CAM alert frame shown (the stub has alerts in the last 30 days)")
     if interactive:
+        page.click('[data-wave="304"]')
         page.click('[data-kind="diff"]')
-        page.wait_for_function("[...document.querySelectorAll('img[data-src-img]')]"
-                               ".every(i => i.src.includes('kind=diff') && i.complete)", timeout=15000)
-        if page.evaluate("document.querySelectorAll('.flare-frame.is-missing').length"):
-            failures.append(f"{label}: a difference image failed to load")
+        page.wait_for_function("(() => { const i = document.querySelector('[data-flare-main]');"
+                               " return i.src.includes('304.png?kind=diff') && i.complete; })()", timeout=15000)
+        if page.evaluate("document.querySelector('[data-flare-main]').naturalWidth") == 0:
+            failures.append(f"{label}: the 304 Å difference failed to load")
         page.click('[data-kind="img"]')
+        page.click('[data-wave="171"]')
+
+
+def check_loop(page, failures, label, out, keyboard):
+    """The 6-h loop: nothing loaded before play; then every frame preloaded
+    (4 at a time), playing; the screenshot is taken paused mid-loop."""
+    before = page.evaluate("performance.getEntriesByType('resource').filter(e => e.name.includes('/render/')).length")
+    if before:
+        failures.append(f"{label}: {before} loop frame(s) fetched before play was pressed")
+    page.click("#flare-loop [data-fp-start]")
+    player = PLAYER.format(id="flare-loop")
+    page.wait_for_function(f"{player}.frames.length > 0", timeout=30000)
+    n = page.evaluate(f"{player}.frames.length")
+    ok = page.evaluate(f"{player}.frames.filter(f => f.ok).length")
+    if n < 100 or ok != n:
+        failures.append(f"{label}: loop {ok}/{n} frames loaded")
+    page.wait_for_timeout(400)
+    if not page.evaluate(f"{player}.playing"):
+        failures.append(f"{label}: the loop did not start playing once loaded")
+    page.evaluate(f"{player}.pause(); {player}.show(Math.floor({player}.frames.length / 2))")
+    if keyboard:
+        page.focus("#flare-loop [data-fp-slider]")
+        before = page.evaluate(f"{player}.index")
+        page.keyboard.press("ArrowRight")
+        if page.evaluate(f"{player}.index") != before + 1:
+            failures.append(f"{label}: ArrowRight on the slider did not step a frame")
+        page.click("#flare-loop [data-fp-play]")
+        page.wait_for_timeout(300)
+        page.keyboard.press("k")
+        if page.evaluate(f"{player}.playing"):
+            failures.append(f"{label}: K did not pause the player")
+        page.evaluate(f"{player}.show(Math.floor({player}.frames.length / 2))")
+    label_text = page.evaluate("document.querySelector('#flare-loop [data-fp-label]').textContent")
+    if " UT" not in label_text or "prob." not in label_text:
+        failures.append(f"{label}: frame label {label_text!r}")
+    page.locator(".flare-images").screenshot(path=str(out / f"{label}-loop.png"))
+
+
+def check_replay(page, failures, label, out):
+    """A replay: 171 Å frames with the heat map on alert frames, the event's
+    marks on the slider, the incomplete note, the X-ray chart with its cursor."""
+    page.click("[data-replay]")
+    player = PLAYER.format(id="flare-replay-player")
+    page.wait_for_function(f"{player}.frames.length > 0", timeout=30000)
+    page.wait_for_function(COUNT_READY_STACKS + " >= 2", timeout=20000)
+    page.wait_for_load_state("networkidle")
+    peak = page.evaluate(f"{player}.nearest({player}.data.marks.peak)")
+    page.evaluate(f"{player}.pause(); {player}.show({peak})")
+    state = page.evaluate("""({heat: !document.querySelector('#flare-replay-frame .fp-heat').hidden,
+        marks: document.querySelectorAll('#flare-replay .fp-mark').length,
+        cursor: document.querySelector('.flare-replay-xray').__swxStack.ec.getOption().series
+                  .some(s => s.id === 'swx-cursor')})""")
+    if not state["heat"] or state["marks"] != 3 or not state["cursor"]:
+        failures.append(f"{label}: replay at its peak {state} (heat map, 3 marks, X-ray cursor)")
+    page.wait_for_timeout(200)
+    page.locator("#flare-replay").screenshot(path=str(out / f"{label}-replay.png"))
+
+
+def check_sun_now(page, failures, label, interactive):
+    """D-104: the home page's "El Sol ahora": the large image loaded with the
+    page (with its size set), the thumbnails, and (once) a thumbnail swap."""
+    if not page.evaluate("!!document.querySelector('[data-sun-now]:not([hidden])')"):
+        failures.append(f"{label}: no 'El Sol ahora' block")
+        return
+    page.locator("[data-sun-now]").scroll_into_view_if_needed()
+    loaded = wait_images(page, "[data-sun-now] img")
+    if not all(loaded) or len(loaded) != 4:
+        failures.append(f"{label}: Sun block images loaded {loaded}")
+    if interactive:
+        page.click('[data-sun-thumb][data-wave="304"]')
+        main = page.evaluate("document.querySelector('[data-sun-main]').dataset.wave")
+        back = page.evaluate("!!document.querySelector('[data-sun-thumb][data-wave=\"171\"]')")
+        if main != "304" or not back:
+            failures.append(f"{label}: thumbnail swap left the large image at {main!r}")
 
 
 def check_code_blocks(page, failures, label):
@@ -206,7 +322,17 @@ def check_forecast_views(page, failures, label):
         failures.append(f"{label}: 'Restablecer zoom' left dataZoom at {dz['start']}-{dz['end']}, not 0-100")
 
 
-def main(base_url, out_dir):
+QUIET_PAGES = {
+    # v0.6.1: the same page with the stub switched to its quiet scenario
+    # (the workflow does that and collects again, then runs --quiet-flare).
+    "usach.flare.nrt-quiet": ("/productos/usach.flare.nrt/", 1, "flare-quiet"),
+}
+
+
+def main(base_url, out_dir, mode=None):
+    global PAGES
+    if mode == "--quiet-flare":
+        PAGES = QUIET_PAGES
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     failures = []
@@ -240,6 +366,14 @@ def main(base_url, out_dir):
                             failures.append(f"{label}: panel status visible: {statuses}")
                         if errors:
                             failures.append(f"{label}: JS errors: {errors}")
+                        if checks != "code":
+                            try:
+                                check_local_time(page, failures, label, lang)
+                            except Exception as exc:  # noqa: BLE001
+                                failures.append(f"{label}: local time check failed ({exc})")
+                        if page_name == "home":
+                            check_sun_now(page, failures, label,
+                                          interactive=(lang == "es" and theme == "day" and size == "desktop"))
                         page.screenshot(path=str(out / f"{label}.png"), full_page=True)
                         if lang == "es" and theme == "day" and size == "desktop":
                             if checks == "stack":
@@ -253,9 +387,14 @@ def main(base_url, out_dir):
                             check_code_blocks(page, failures, label)
                         if checks == "daily":
                             check_daily(page, failures, label, lang)
-                        if checks == "flare":
-                            check_flare(page, failures, label, lang,
-                                        interactive=(lang == "es" and theme == "day" and size == "desktop"))
+                        if checks in ("flare", "flare-quiet"):
+                            first = lang == "es" and theme == "day" and size == "desktop"
+                            check_flare(page, failures, label, lang, interactive=first, quiet=checks == "flare-quiet")
+                            if first:
+                                check_local_switch(page, failures, label)
+                            if checks == "flare" and lang == "es":
+                                check_loop(page, failures, label, out, keyboard=first)
+                                check_replay(page, failures, label, out)
                         context.close()
         browser.close()
     for f in failures:
@@ -265,4 +404,4 @@ def main(base_url, out_dir):
 
 
 if __name__ == "__main__":
-    sys.exit(main(*sys.argv[1:3]))
+    sys.exit(main(*sys.argv[1:4]))

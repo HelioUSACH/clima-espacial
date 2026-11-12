@@ -4,11 +4,15 @@
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 {% comment %}
-The flare detector's own page (D-101). Header and images: the latest result
-stored by the portal (modules/flare). Timeline and history: flare-nrt's JSON,
-read server-side (web/flare.py). Images: flare-nrt's PNGs through nginx's
-cached locations, never through Django (D-100).
+The flare detector's own page (D-101, redesigned in v0.6.1, D-102). Top to
+bottom: header, images (one large image, channel and image/difference
+buttons, the 6-h loop player), "Qué miró el modelo" (Grad-CAM of an alert
+frame only), timeline, alert history with replays, then the product text.
+Header and images: the latest result stored by the portal (modules/flare).
+Grad-CAM, history, loop and replays: flare-nrt's JSON read server-side
+(web/flare.py). Images: through nginx's cached locations, never Django (D-100).
 {% endcomment %}
+{{ player_i18n|json_script:"fp-i18n" }}
 <div class="wrap flare-page">
   <div class="crumb"><a href="{% url 'web:catalogue' %}">{% trans "Productos y modelos" %}</a> / {{ title }}</div>
   {% if preview %}<p class="flare-note flare-preview" role="note">{% trans "Vista previa: esta página solo la ve el personal del sitio. El público ve todavía la página anterior." %}</p>{% endif %}
@@ -27,51 +31,81 @@ cached locations, never through Django (D-100).
         <small>{% trans "Probabilidad" %}</small>
         <b>{% if header.has_result %}{{ header.probability }}{% if header.threshold %} <span>· {% trans "umbral" %} {{ header.threshold }}</span>{% endif %}{% else %}—{% endif %}</b>
       </div>
-      {% if header.observed %}<p class="now-asof">{% blocktrans with when=header.observed age=header.age %}imagen de {{ when }} UT · {{ age }}{% endblocktrans %}</p>
-      {% elif header.result_time %}<p class="now-asof">{% blocktrans with when=header.result_time age=header.age %}resultado de {{ when }} UT · {{ age }}{% endblocktrans %}</p>{% endif %}
-      {% if header.flare_detected %}<p class="now-asof flare-open">{% if header.open_since %}{% blocktrans with when=header.open_since %}Alerta desde {{ when }} UT{% endblocktrans %}{% else %}{% trans "Alerta en curso" %}{% endif %}{% if header.location %} · {% trans "ubicación" %} {{ header.location }} <span class="flare-exp">{% trans "experimental" %}</span>{% endif %}</p>{% endif %}
+      {% if header.observed %}<p class="now-asof">{% blocktrans with when=header.observed age=header.age %}imagen de {{ when }} · {{ age }}{% endblocktrans %}</p>
+      {% elif header.result_time %}<p class="now-asof">{% blocktrans with when=header.result_time age=header.age %}resultado de {{ when }} · {{ age }}{% endblocktrans %}</p>{% endif %}
+      {% if header.flare_detected %}<p class="now-asof flare-open">{% if header.open_since %}{% blocktrans with when=header.open_since %}Alerta desde {{ when }}{% endblocktrans %}{% else %}{% trans "Alerta en curso" %}{% endif %}{% if header.location %} · {% trans "ubicación" %} {{ header.location }} <span class="flare-exp">{% trans "experimental" %}</span>{% endif %}</p>{% endif %}
     </div>
   </div>
 
   {% if not service_available %}<p class="flare-note flare-nodata" role="status">{% trans "Sin datos del detector: el servicio no responde en este momento. Se muestra el último resultado guardado por el portal." %}</p>{% endif %}
 
-  {% include "web/_panel_stack.html" %}
-
-  <section class="flare-sec" aria-labelledby="flare-img-h">
+  <section class="flare-sec flare-images" aria-labelledby="flare-img-h">
     <div class="flare-sec-head">
-      <h2 id="flare-img-h">{% trans "Imágenes del último resultado" %}</h2>
-      <div class="seg" role="group" aria-label="{% trans 'Tipo de imagen' %}" data-flare-kind>
-        <button type="button" class="on" aria-pressed="true" data-kind="img">{% trans "imagen" %}</button>
-        <button type="button" aria-pressed="false" data-kind="diff">{% trans "diferencia" %}</button>
-      </div>
+      <h2 id="flare-img-h">{% trans "El Sol en el último resultado" %}</h2>
     </div>
     {% if service_available %}
-    <div class="flare-figs">
-      <div class="flare-channels">
-        {% for c in images.channels %}
-        <figure class="flare-fig">
-          <div class="flare-frame">
-            <img src="{{ c.img }}" data-src-img="{{ c.img }}" data-src-diff="{{ c.diff }}" width="512" height="512" loading="lazy" decoding="async" alt="{% blocktrans with wave=c.wave %}SDO/AIA {{ wave }} Å{% endblocktrans %}">
-            {% if c.wave == "131" and header.bbox %}<span class="flare-box" style="left:{{ header.bbox.left }}%;top:{{ header.bbox.top }}%;width:{{ header.bbox.width }}%;height:{{ header.bbox.height }}%" title="{% trans 'Región detectada (experimental)' %}"></span>{% endif %}
-            <span class="flare-missing" hidden>{% trans "Imagen no disponible" %}</span>
-          </div>
-          <figcaption><b>{{ c.wave }} Å</b>{% if c.t_obs %} <span>{{ c.t_obs }} UT</span>{% endif %}</figcaption>
-        </figure>
-        {% endfor %}
-      </div>
-      <figure class="flare-fig flare-cam">
-        <div class="flare-frame">
-          <img src="{{ images.gradcam }}" width="512" height="512" loading="lazy" decoding="async" alt="{% trans 'Grad-CAM sobre 131 Å' %}">
+    <div class="flare-viewer" data-flare-viewer>
+      <figure class="flare-fig flare-main">
+        <div class="flare-frame" id="flare-main-frame">
+          <img data-flare-main src="{{ images.default.img }}" width="1024" height="1024" decoding="async" alt="{% blocktrans with wave=images.default.wave %}SDO/AIA {{ wave }} Å{% endblocktrans %}">
+          {% if header.bbox %}<span class="flare-box" style="left:{{ header.bbox.left }}%;top:{{ header.bbox.top }}%;width:{{ header.bbox.width }}%;height:{{ header.bbox.height }}%" title="{% trans 'Región detectada (experimental)' %}"></span>{% endif %}
           <span class="flare-missing" hidden>{% trans "Imagen no disponible" %}</span>
         </div>
-        <figcaption><b>{% trans "Grad-CAM sobre 131 Å" %}</b>{% if images.gradcam_time %} <span>{{ images.gradcam_time }} UT</span>{% endif %}</figcaption>
-        <p class="meta">{% trans "Grad-CAM marca las zonas de la imagen que más pesaron en la probabilidad de la red. Su color crece con probabilidad / umbral, así que en una imagen tranquila se ve tenue a propósito." %}</p>
+        <figcaption>
+          <b data-flare-caption>{{ images.default.wave }} Å</b>
+          {% for c in images.channels %}{% if c.t_obs %}<span data-tobs-for="{{ c.wave }}"{% if c.wave != images.default.wave %} hidden{% endif %}>{{ c.t_obs }}</span>{% endif %}{% endfor %}
+        </figcaption>
       </figure>
+      <div class="flare-side">
+        <div class="seg flare-waves" role="group" aria-label="{% trans 'Canal' %}" data-flare-waves>
+          {% for c in images.channels %}<button type="button" data-wave="{{ c.wave }}" data-img="{{ c.img }}" data-diff="{{ c.diff }}" aria-pressed="{% if c.wave == images.default.wave %}true{% else %}false{% endif %}"{% if c.wave == images.default.wave %} class="on"{% endif %}>{{ c.wave }} Å</button>{% endfor %}
+        </div>
+        <div class="seg" role="group" aria-label="{% trans 'Tipo de imagen' %}" data-flare-kind>
+          <button type="button" class="on" aria-pressed="true" data-kind="img">{% trans "imagen" %}</button>
+          <button type="button" aria-pressed="false" data-kind="diff">{% trans "diferencia" %}</button>
+        </div>
+        <p class="meta">{% trans "SDO/AIA (NASA), norte arriba. «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo." %}{% if header.bbox %} {% trans "El recuadro es la región detectada (experimental)." %}{% endif %}</p>
+        {% trans "Ver las últimas 6 h (171 Å)" as start_label %}
+        {% include "web/_flare_player.html" with player_id="flare-loop" target="flare-main-frame" src=loop_url start_label=start_label heat=False %}
+      </div>
     </div>
-    <p class="meta">{% trans "SDO/AIA (NASA), 512 px, norte arriba. «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo." %}{% if header.bbox %} {% trans "El recuadro sobre 131 Å es la región detectada (experimental)." %}{% endif %}</p>
     {% else %}
     <p class="flare-note">{% trans "Sin datos del detector." %}</p>
     {% endif %}
+  </section>
+
+  <section class="flare-sec flare-cam-sec" aria-labelledby="flare-cam-h">
+    <h2 id="flare-cam-h">{% trans "Qué miró el modelo" %}</h2>
+    {% if gradcam.mode == "open" or gradcam.mode == "last" %}
+    <p class="flare-cam-when">{% if gradcam.mode == "open" %}{% blocktrans with when=gradcam.when %}Alerta en curso: imagen de mayor probabilidad, {{ when }}{% endblocktrans %}{% else %}{% blocktrans with when=gradcam.when %}Última alerta: {{ when }}{% endblocktrans %}{% endif %} · {% trans "probabilidad" %} {{ gradcam.probability }}</p>
+    <div class="flare-cam-grid" data-flare-cam>
+      <figure class="flare-fig">
+        <div class="flare-frame flare-cam-frame">
+          <img class="flare-cam-base" src="{{ gradcam.base }}" width="512" height="512" loading="lazy" decoding="async" alt="{% trans 'SDO/AIA 131 Å en el mismo momento' %}">
+          <img class="flare-cam-heat" src="{{ gradcam.heat }}" width="512" height="512" loading="lazy" decoding="async" style="opacity:.6" alt="{% trans 'Mapa Grad-CAM de la alerta' %}">
+          <span class="flare-missing" hidden>{% trans "Mapa no disponible" %}</span>
+        </div>
+      </figure>
+      <div class="flare-cam-side">
+        <label class="fp-opt">{% trans "Opacidad del mapa" %} <input type="range" min="0" max="100" step="5" value="60" data-cam-opacity></label>
+        <div class="cam-bar" aria-hidden="true"></div>
+        <p class="meta cam-bar-label"><span>0</span><span>{% trans "máximo del mapa" %}</span></p>
+        <p class="meta">{% trans "Grad-CAM marca las zonas de la imagen de 131 Å que más pesaron en la probabilidad de la red. Los colores son relativos al máximo del propio mapa, no una probabilidad. Es una grilla gruesa (16 px), por eso solo se muestra para una imagen en alerta." %}</p>
+        <p class="meta flare-cam-note" data-cam-nobase hidden>{% trans "La imagen de 131 Å de ese momento ya no está disponible: se muestra solo el mapa." %}</p>
+      </div>
+    </div>
+    {% elif gradcam.mode == "pending" %}
+    <p class="flare-note">{% trans "El mapa de la alerta en curso todavía no está disponible." %}</p>
+    {% elif gradcam.mode == "unavailable" %}
+    <p class="flare-note">{% trans "Sin datos del detector." %}</p>
+    {% else %}
+    <p class="flare-note">{% trans "Sin alertas recientes: el mapa se muestra durante una alerta." %}</p>
+    {% endif %}
+  </section>
+
+  <section class="flare-sec" aria-labelledby="flare-time-h">
+    <h2 id="flare-time-h">{% trans "Probabilidad y rayos X" %}</h2>
+    {% include "web/_panel_stack.html" %}
   </section>
 
   <section class="flare-sec perf" aria-labelledby="flare-hist-h">
@@ -84,9 +118,9 @@ cached locations, never through Django (D-100).
       <table class="status-table perf-table flare-hist">
         <thead>
           <tr>
-            <th>{% trans "Inicio (UT)" %}</th><th>{% trans "Máximo (UT)" %}</th><th>{% trans "Fin (UT)" %}</th>
+            <th>{% trans "Inicio" %}</th><th>{% trans "Máximo" %}</th><th>{% trans "Fin" %}</th>
             <th class="num">{% trans "Prob. máx." %}</th><th class="num">{% trans "Imágenes en alerta" %}</th>
-            <th>{% trans "Ubicación" %}</th><th>{% trans "Clase GOES" %}</th><th>Grad-CAM</th>
+            <th>{% trans "Ubicación" %}</th><th>{% trans "Clase GOES" %}</th><th>Grad-CAM</th><th>{% trans "Repetición" %}</th>
           </tr>
         </thead>
         <tbody>
@@ -97,11 +131,37 @@ cached locations, never through Django (D-100).
             <td class="num">{{ r.p_max }}</td><td class="num">{{ r.n_frames }}</td>
             <td>{{ r.location }}</td><td>{{ r.goes_class }}</td>
             <td>{% if r.gradcam %}<a href="{{ r.gradcam }}">{% trans "ver" %}</a>{% else %}—{% endif %}</td>
+            <td>{% if r.replay %}<button type="button" class="sbtn" data-replay="{{ r.replay }}" data-replay-xray="{{ r.replay_xray }}" data-replay-when="{{ r.start|striptags }}" aria-controls="flare-replay" hidden>{% trans "ver repetición" %}</button>{% else %}—{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    {{ replay_panels|json_script:"flare-replay-xray-panels" }}
+    <section class="card flare-replay" id="flare-replay" aria-labelledby="flare-replay-h" tabindex="-1" hidden>
+      <div class="flare-sec-head">
+        <h3 id="flare-replay-h" data-replay-title>{% trans "Repetición" %}</h3>
+        <button type="button" class="sbtn" data-replay-close>{% trans "Cerrar" %}</button>
+      </div>
+      <p class="meta" data-replay-note hidden></p>
+      <div class="flare-replay-grid">
+        <div class="flare-frame" id="flare-replay-frame"><span class="flare-missing" hidden>{% trans "Imagen no disponible" %}</span></div>
+        <div>
+          {% include "web/_flare_player.html" with player_id="flare-replay-player" target="flare-replay-frame" src="" start_label="" heat=True %}
+          <p class="meta">{% trans "171 Å; en las imágenes en alerta, el mapa Grad-CAM encima (colores relativos al máximo de cada mapa). Las marcas son el inicio, el máximo y el fin de la alerta." %}</p>
+        </div>
+      </div>
+      <div class="swx-stack readout-below flare-replay-xray" data-mount-later data-sync-key="flare-replay-xray" data-range="window"
+           data-panels-id="flare-replay-xray-panels" data-i18n-id="{{ i18n_id }}" data-tall="0" data-aria-label="{% trans 'Rayos X de GOES durante la repetición' %}">
+        <div class="figwrap">
+          <div class="stage">
+            <div class="plot" data-stack-plot role="img" aria-label="{% trans 'Rayos X de GOES durante la repetición' %}"></div>
+            <div class="read" data-stack-read></div>
+          </div>
+          <p class="meta read-when" data-stack-when></p>
+        </div>
+      </div>
+    </section>
     {% else %}
     <p class="flare-note">{% trans "Sin alertas en los últimos 30 días." %}</p>
     {% endif %}
@@ -129,4 +189,5 @@ cached locations, never through Django (D-100).
   </div>
 </div>
 {% endblock %}
-{% block extra_scripts %}<script defer src="{% static 'web/js/flare.js' %}"></script>{% endblock %}
+{% block extra_scripts %}<script defer src="{% static 'web/js/flare-player.js' %}"></script>
+<script defer src="{% static 'web/js/flare.js' %}"></script>{% endblock %}

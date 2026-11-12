@@ -14,7 +14,8 @@ Response contract (D-056):
      "min": {field: [...]}, "max": {field: [...]},
      "source": [last non-empty source in the bucket, or null, ...],
      "bucket_seconds": N,
-     "anchor": "now" | "latest"}         # D-082: where the range ends
+     "anchor": "now" | "latest" | "window"}  # D-082: where the range ends;
+                                         # "window": a fixed past window (window_series)
 
 A delayed product (`anchor="latest"` in its panels, kyoto.ae) measures the
 range back from its latest stored datum instead of from now, so "7 días"
@@ -82,13 +83,16 @@ def _window(range_key: str, now: dt.datetime) -> tuple[dt.datetime, int]:
 # for each of avg/min/max — measured 3x slower on a 7-day mag query.
 _POINTS_CTE = (
     "WITH pts AS MATERIALIZED (SELECT extract(epoch FROM date_bin(%s, time_tag, %s))::bigint AS b, "
-    "time_tag, source, {columns} FROM core_timeseries WHERE product_id = %s AND time_tag >= %s{extra}) "
+    "time_tag, source, {columns} FROM core_timeseries WHERE product_id = %s AND time_tag >= %s "
+    "AND time_tag < %s{extra}) "
 )
+# No upper bound: the open end of a range that ends now.
+FAR_FUTURE = dt.datetime(9999, 1, 1, tzinfo=dt.UTC)
 _FLUX_SQL = _number_sql("'flux'")
 _LAST_SOURCE_SQL = "(array_agg(source ORDER BY time_tag DESC) FILTER (WHERE source <> ''))[1]"
 
 
-def _query_fields(product_id, specs, since, bucket):
+def _query_fields(product_id, specs, since, bucket, until=FAR_FUTURE):
     """Products with one column per field (mag, wind, Kp, Dst)."""
     columns, column_params, aggregates, aggregate_params = [], [], [], []
     for i, (s, floor) in enumerate(specs):
@@ -100,7 +104,8 @@ def _query_fields(product_id, specs, since, bucket):
         _POINTS_CTE.format(columns=", ".join(columns), extra="")
         + "SELECT b, " + ", ".join(aggregates) + f", {_LAST_SOURCE_SQL} FROM pts GROUP BY b ORDER BY b"
     )
-    params = [dt.timedelta(seconds=bucket), BUCKET_ORIGIN, *column_params, product_id, since, *aggregate_params]
+    params = [dt.timedelta(seconds=bucket), BUCKET_ORIGIN, *column_params, product_id, since, until,
+              *aggregate_params]
     with connection.cursor() as cursor:
         cursor.execute(sql, params)
         rows = cursor.fetchall()
@@ -113,7 +118,7 @@ def _query_fields(product_id, specs, since, bucket):
     return out
 
 
-def _query_channels(product_id, specs, since, bucket):
+def _query_channels(product_id, specs, since, bucket, until=FAR_FUTURE):
     """Energy-channel products (X-ray, protons) store one row per channel per
     timestamp; the channel is `payload->>'energy'` and the value is always
     `flux`. Grouping by (bucket, channel) keeps channels aligned on the same
@@ -126,7 +131,7 @@ def _query_channels(product_id, specs, since, bucket):
         + f"SELECT b, ch, {_aggregates_sql('v')}, {_LAST_SOURCE_SQL} FROM pts GROUP BY b, ch ORDER BY b"
     )
     with connection.cursor() as cursor:
-        cursor.execute(sql, [dt.timedelta(seconds=bucket), BUCKET_ORIGIN, product_id, since, channels,
+        cursor.execute(sql, [dt.timedelta(seconds=bucket), BUCKET_ORIGIN, product_id, since, until, channels,
                              floor, floor, floor])
         rows = cursor.fetchall()
     values_by_bucket: dict[int, dict] = {}
@@ -158,15 +163,38 @@ def _latest_time_tag(product_id: str) -> dt.datetime | None:
 
 
 def bucketed_series(product_id: str, range_key: str, now: dt.datetime | None = None) -> dict:
-    specs = _series_specs(product_id)
     anchor = charts.product_anchor(product_id)
     if now is None and anchor == "latest":
         now = _latest_time_tag(product_id)
     since, bucket = _window(range_key, now or timezone.now())
+    return _bucketed(product_id, since, FAR_FUTURE, bucket, anchor)
+
+
+# A past window (the flare replay's ~2 h, D-102): 1-min buckets, the
+# provider's own cadence for GOES X-rays, so nothing is averaged away.
+WINDOW_BUCKET_SECONDS = 60
+
+
+def window_series(product_id: str, start: dt.datetime, end: dt.datetime,
+                  bucket: int = WINDOW_BUCKET_SECONDS) -> dict:
+    """The same contract for [start, end), whatever the product's ranges."""
+    offset = (start - BUCKET_ORIGIN).total_seconds() % bucket
+    return _bucketed(product_id, start - dt.timedelta(seconds=offset), end, bucket, "window")
+
+
+def empty_series(product_id: str) -> dict:
+    specs = _series_specs(product_id)
+    return {"time": [], "series": {s.field: [] for s, _f in specs}, "min": {s.field: [] for s, _f in specs},
+            "max": {s.field: [] for s, _f in specs}, "source": [], "bucket_seconds": WINDOW_BUCKET_SECONDS,
+            "anchor": "window"}
+
+
+def _bucketed(product_id: str, since: dt.datetime, until: dt.datetime, bucket: int, anchor: str) -> dict:
+    specs = _series_specs(product_id)
     if product_id in charts.ENERGY_CHANNEL_PRODUCTS:
-        buckets = _query_channels(product_id, specs, since, bucket)
+        buckets = _query_channels(product_id, specs, since, bucket, until)
     else:
-        buckets = _query_fields(product_id, specs, since, bucket)
+        buckets = _query_fields(product_id, specs, since, bucket, until)
 
     step = _cadence_seconds([b for b, _v, _s in buckets], bucket)
     empty = {s.field: (None, None, None) for s, _floor in specs}

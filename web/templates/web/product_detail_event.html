@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n swx_time %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 <div class="wrap page">
@@ -17,7 +17,7 @@
 
 {% if latest_event %}
 <h2>{% trans "Último evento" %}</h2>
-<p>{% blocktrans with issued=latest_event.issued %}Emitido: {{ issued }}{% endblocktrans %}</p>
+<p>{% blocktrans with issued=latest_event.issued|ut_time %}Emitido: {{ issued }}{% endblocktrans %}</p>
 {% if scales_badges %}
 {% include "web/_scale_badges.html" %}
 {% endif %}

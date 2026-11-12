@@ -298,11 +298,15 @@
         // labels existed at any width). An auto-scaled log axis (proton/
         // temperature panels) keeps the old, already-correct default.
         splitNumber: (isLog && panel.y_range) ? Math.round(Math.log10(panel.y_range[1] / panel.y_range[0])) : 3,
+        // A fixed tick step (the flare probability's 0, 0.2 … 1, D-102).
+        interval: panel.y_interval || undefined,
         axisLine: { show: false }, axisTick: { show: false },
         axisLabel: {
           color: P["--ink-faint"], fontFamily: MONO, fontSize: 10,
           formatter: function (v) {
-            if (nearEdge(v)) return "";
+            // edge_labels: a panel whose extremes mean something (0 and 1
+            // of a probability) keeps them; a stacked panel's would collide.
+            if (!panel.edge_labels && nearEdge(v)) return "";
             // A linear axis keeps ECharts' own tick-value stringification
             // (it already picks clean "nice" numbers) -- only the edge
             // filter above is new here. A fixed y_range gets one label per
@@ -348,7 +352,7 @@
         if (value == null) return;
         ml.push({
           yAxis: value, lineStyle: { color: P["--ref"], width: 1, type: "dashed" },
-          label: { show: true, formatter: r.label.replace("{v}", fmtDecimal(value, stack.i18n.lang, 2)), color: P["--ink-faint"], fontFamily: MONO, fontSize: 9, position: "insideEndTop" },
+          label: { show: true, formatter: r.label.replace("{v}", fmtDecimal(value, stack.i18n.lang, 2)), color: P["--ink-soft"], fontFamily: MONO, fontSize: 10, position: r.position || "insideEndTop" },
         });
       });
 
@@ -527,6 +531,7 @@
     this.readEl = root.querySelector("[data-stack-read]");
     this.metaEl = root.querySelector("[data-stack-meta]");
     this.snapEl = root.querySelector("[data-stack-snap]");
+    this.whenEl = root.querySelector("[data-stack-when]");
     this.ec = null;
     this.lastDataById = null;
     this.cache = new Map(); // range -> {data, fetchedAt}
@@ -609,8 +614,32 @@
     return (d && d.time) || [];
   };
 
+  // The readout's time (D-105): the hovered instant, else the latest
+  // datum, in UT and the visitor's local time (localtime.js); the axis
+  // itself stays UT. A daily product's datum is a day, never a time.
+  Stack.prototype.setWhen = function (tsSec, hovered) {
+    if (!this.whenEl) return;
+    if (tsSec == null) { this.whenEl.textContent = ""; return; }
+    this.whenTs = tsSec;
+    this.whenHovered = !!hovered;
+    var daily = this.panels.some(function (p) { return p.daily; });
+    var prefix = hovered ? "" : this.i18n.last_datum_label + " ";
+    if (daily) { this.whenEl.textContent = prefix + fmtDay(tsSec, this.i18n); return; }
+    this.whenEl.innerHTML = escapeHtml(prefix) + (window.swxTime ? window.swxTime.html(tsSec, { date: true }) : escapeHtml(fmtUT(tsSec, this.i18n)));
+  };
+
+  Stack.prototype.latestTs = function () {
+    var self = this, latest = null;
+    this.panels.forEach(function (p) {
+      var d = self.lastDataById && self.lastDataById[p.product_id];
+      if (d && d.time && d.time.length) latest = Math.max(latest == null ? -Infinity : latest, d.time[d.time.length - 1]);
+    });
+    return latest;
+  };
+
   Stack.prototype.setReadoutAt = function (tsSec) {
     var self = this;
+    this.setWhen(tsSec, true);
     this.panels.forEach(function (p) {
       var times = self.timeArrayFor(p.product_id);
       var idx = -1, best = Infinity;
@@ -630,6 +659,7 @@
 
   Stack.prototype.setReadoutLatest = function () {
     var self = this;
+    this.setWhen(this.latestTs(), false);
     this.panels.forEach(function (p) {
       var d = self.lastDataById && self.lastDataById[p.product_id];
       p.series.forEach(function (s) {
@@ -1145,15 +1175,53 @@
   }
 
   function initAll() {
-    document.querySelectorAll(".swx-stack").forEach(initStack);
+    document.querySelectorAll(".swx-stack").forEach(function (root) {
+      if (!root.hasAttribute("data-mount-later")) initStack(root);
+    });
     document.querySelectorAll(".swx-forecast").forEach(initForecast);
   }
+
+  // For a stack whose data is chosen later (the flare replay's X-ray chart,
+  // D-102): markup with data-mount-later, mounted with its endpoint once
+  // known. cursor() draws a vertical line at a time (UNIX seconds) and
+  // sets the readout there, e.g. following a player's frame.
+  window.swxCharts = {
+    mount: function (root, endpoint) {
+      var panels = JSON.parse(document.getElementById(root.dataset.panelsId).textContent);
+      panels.forEach(function (p) { p.endpoint = endpoint; });
+      document.getElementById(root.dataset.panelsId).textContent = JSON.stringify(panels);
+      var old = root.__swxStack;
+      if (old) {
+        if (old.ec) { old.ec.dispose(); old.ec = null; }
+        liveStacks = liveStacks.filter(function (s) { return s !== old; });
+        root.querySelectorAll(".swx-stack-status").forEach(function (el) { el.remove(); });
+      }
+      initStack(root);
+      return root.__swxStack;
+    },
+    cursor: function (stack, tsSec) {
+      if (!stack || !stack.ec || tsSec == null) return;
+      var P = readPalette();
+      stack.ec.setOption({ series: [{
+        id: "swx-cursor", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: [], silent: true,
+        markLine: { silent: true, symbol: "none", animation: false, label: { show: false },
+                    lineStyle: { color: P["--accent"], width: 1.5, type: "solid" },
+                    data: [{ xAxis: tsSec * 1000 }] },
+      }] }, { lazyUpdate: true });
+      stack.setReadoutAt(tsSec);
+    },
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initAll);
   } else {
     initAll();
   }
+  document.addEventListener("swx:timechange", function () {
+    liveStacks.forEach(function (stack) {
+      if (stack.whenTs != null) stack.setWhen(stack.whenTs, stack.whenHovered);
+    });
+  });
   document.addEventListener("swx:themechange", function () {
     liveStacks.forEach(function (stack) {
       if (stack.ec) { stack.ec.dispose(); stack.ec = null; }

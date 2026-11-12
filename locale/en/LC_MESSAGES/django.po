@@ -1006,3 +1006,182 @@ msgstr "Limitations: the threshold was set on that same test month, there are no
 
 msgid "Ficha completa del modelo"
 msgstr "Full model card"
+
+# --- v0.6.1: flare page redesign, El Sol ahora, local time (D-102..D-105) ---
+msgid "Carga de imágenes"
+msgstr "Loading images"
+
+msgid "Imagen anterior"
+msgstr "Previous image"
+
+msgid "Reproducir"
+msgstr "Play"
+
+msgid "Imagen siguiente"
+msgstr "Next image"
+
+msgid "Velocidad"
+msgstr "Speed"
+
+msgid "img/s"
+msgstr "img/s"
+
+msgid "Repetir"
+msgstr "Loop"
+
+msgid "Opacidad del mapa"
+msgstr "Map opacity"
+
+msgid "Imagen"
+msgstr "Image"
+
+msgid "Hora mostrada"
+msgstr "Time shown"
+
+msgid "hora local"
+msgstr "local time"
+
+msgid "El Sol ahora"
+msgstr "The Sun now"
+
+#, python-format
+msgid "imagen de %(when)s · %(age)s"
+msgstr "image of %(when)s · %(age)s"
+
+#, python-format
+msgid "Ver %(wave)s Å en grande"
+msgstr "Show %(wave)s Å large"
+
+msgid "Ver las últimas 6 h (171 Å)"
+msgstr "Play the last 6 h (171 Å)"
+
+msgid "Imágenes SDO/AIA (NASA), las mismas que analiza el detector de fulguraciones de USACH."
+msgstr "SDO/AIA images (NASA), the same ones USACH's flare detector analyses."
+
+msgid "Ver el detector de fulguraciones"
+msgstr "See the flare detector"
+
+#, python-format
+msgid "resultado de %(when)s · %(age)s"
+msgstr "result of %(when)s · %(age)s"
+
+#, python-format
+msgid "Alerta desde %(when)s"
+msgstr "Alert since %(when)s"
+
+msgid "El Sol en el último resultado"
+msgstr "The Sun in the latest result"
+
+msgid "Canal"
+msgstr "Channel"
+
+msgid "SDO/AIA (NASA), norte arriba. «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo."
+msgstr "SDO/AIA (NASA), north up. “difference”: the current image minus the mean of those 8 to 12 minutes earlier, which is what the model looks at."
+
+msgid "El recuadro es la región detectada (experimental)."
+msgstr "The box is the detected region (experimental)."
+
+msgid "Qué miró el modelo"
+msgstr "What the model looked at"
+
+#, python-format
+msgid "Alerta en curso: imagen de mayor probabilidad, %(when)s"
+msgstr "Alert in progress: highest-probability image, %(when)s"
+
+#, python-format
+msgid "Última alerta: %(when)s"
+msgstr "Last alert: %(when)s"
+
+msgid "probabilidad"
+msgstr "probability"
+
+msgid "SDO/AIA 131 Å en el mismo momento"
+msgstr "SDO/AIA 131 Å at the same time"
+
+msgid "Mapa Grad-CAM de la alerta"
+msgstr "Grad-CAM map of the alert"
+
+msgid "Mapa no disponible"
+msgstr "Map not available"
+
+msgid "máximo del mapa"
+msgstr "map maximum"
+
+msgid "Grad-CAM marca las zonas de la imagen de 131 Å que más pesaron en la probabilidad de la red. Los colores son relativos al máximo del propio mapa, no una probabilidad. Es una grilla gruesa (16 px), por eso solo se muestra para una imagen en alerta."
+msgstr "Grad-CAM marks the parts of the 131 Å image that weighed most in the network's probability. The colours are relative to the map's own maximum, not a probability. It is a coarse grid (16 px), so it is shown only for an image in alert."
+
+msgid "La imagen de 131 Å de ese momento ya no está disponible: se muestra solo el mapa."
+msgstr "The 131 Å image of that time is no longer available: only the map is shown."
+
+msgid "El mapa de la alerta en curso todavía no está disponible."
+msgstr "The map of the alert in progress is not available yet."
+
+msgid "Sin alertas recientes: el mapa se muestra durante una alerta."
+msgstr "No recent alerts: the map is shown during an alert."
+
+msgid "Probabilidad y rayos X"
+msgstr "Probability and X-rays"
+
+msgid "Máximo"
+msgstr "Peak"
+
+msgid "Fin"
+msgstr "End"
+
+msgid "Repetición"
+msgstr "Replay"
+
+msgid "ver repetición"
+msgstr "watch replay"
+
+msgid "Cerrar"
+msgstr "Close"
+
+msgid "171 Å; en las imágenes en alerta, el mapa Grad-CAM encima (colores relativos al máximo de cada mapa). Las marcas son el inicio, el máximo y el fin de la alerta."
+msgstr "171 Å; on the images in alert, the Grad-CAM map over it (colours relative to each map's maximum). The marks are the alert's start, peak and end."
+
+msgid "Rayos X de GOES durante la repetición"
+msgstr "GOES X-rays during the replay"
+
+msgid "Pausa"
+msgstr "Pause"
+
+#, python-format
+msgid "Cargando %(n)s de %(total)s imágenes"
+msgstr "Loading %(n)s of %(total)s images"
+
+msgid "No hay imágenes para este período."
+msgstr "There are no images for this period."
+
+msgid "No se pudieron cargar las imágenes del detector."
+msgstr "The detector's images could not be loaded."
+
+msgid "prob."
+msgstr "prob."
+
+#, python-format
+msgid "imagen %(i)s de %(n)s"
+msgstr "image %(i)s of %(n)s"
+
+msgid "imagen no disponible"
+msgstr "image not available"
+
+msgid "inicio"
+msgstr "start"
+
+msgid "máximo"
+msgstr "peak"
+
+msgid "fin"
+msgstr "end"
+
+#, python-format
+msgid "Repetición de la alerta del %(when)s"
+msgstr "Replay of the alert of %(when)s"
+
+#, python-format
+msgid "Repetición incompleta: faltan %(n171)s de %(slots)s imágenes de 171 Å y %(ncam)s mapas Grad-CAM."
+msgstr "Incomplete replay: %(n171)s of %(slots)s 171 Å images and %(ncam)s Grad-CAM maps are missing."
+
+msgid "La repetición no está disponible en este momento."
+msgstr "The replay is not available right now."

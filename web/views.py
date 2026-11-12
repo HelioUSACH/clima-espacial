@@ -25,7 +25,7 @@ from api.keys import issue_key
 from core.manifests.loader import discover_manifests, get_manifest
 from core.models import Event, Forecast, ForecastScore, Heartbeat, Product, TimeSeriesPoint
 
-from . import charts, flare, forecasts, series
+from . import charts, flare, forecasts, series, timefmt
 from .forms import RegistrationForm
 from .models import RegistrationRequest
 from .numfmt import fmt_number, fmt_sci
@@ -149,10 +149,17 @@ def home(request):
         for product_id in charts.HOME_PRODUCT_ORDER
         for panel in charts.PRODUCT_PANELS[product_id]
     ]
-    return render(
+    # "El Sol ahora" (D-104): with the flare page, behind the same switch
+    # (D-099), and only from the product store (never a wait on the service).
+    sun_now = flare.sun_now_context(lang) if flare_page_visible(request) else None
+    response = render(
         request,
         "web/home.html",
         {
+            "sun_now": sun_now,
+            "loop_url": reverse("web:flare_datos_json", args=["bucle"]) if sun_now else None,
+            "flare_url": reverse("web:product_detail", args=[FLARE_PRODUCT_ID]) if sun_now else None,
+            "player_i18n": _player_i18n() if sun_now else None,
             "offer_cards": _offer_cards(lang),
             "panels": panels,
             "chart_i18n": _chart_i18n(),
@@ -163,6 +170,30 @@ def home(request):
             **_range_buttons(charts.HOME_PRODUCT_ORDER, charts.DEFAULT_CHART.ranges, charts.DEFAULT_RANGE_HOME, lang),
         },
     )
+    if sun_now and not settings.SWX_FLARE_PAGE_PUBLIC:
+        # A staff-only preview of the block: never stored by a shared cache.
+        patch_cache_control(response, private=True)
+    return response
+
+
+def _player_i18n():
+    """Strings for the frame player (web/static/web/js/flare-player.js)."""
+    return {
+        "play": gettext("Reproducir"),
+        "pause": gettext("Pausa"),
+        "loading": gettext("Cargando %(n)s de %(total)s imágenes"),
+        "empty": gettext("No hay imágenes para este período."),
+        "error": gettext("No se pudieron cargar las imágenes del detector."),
+        "probability": gettext("prob."),
+        "frame_of": gettext("imagen %(i)s de %(n)s"),
+        "missing_frame": gettext("imagen no disponible"),
+        "states": {key: (en if get_language() == "en" else es) for key, (es, en) in flare.STATE_LABELS.items()},
+        "marks": {"start": gettext("inicio"), "peak": gettext("máximo"), "end": gettext("fin")},
+        "replay_title": gettext("Repetición de la alerta del %(when)s"),
+        "incomplete": gettext("Repetición incompleta: faltan %(n171)s de %(slots)s imágenes de 171 Å y %(ncam)s mapas Grad-CAM."),
+        "unavailable": gettext("La repetición no está disponible en este momento."),
+        "lang": "en" if get_language() == "en" else "es",
+    }
 
 
 def _panel_json(product_id, panel, lang):
@@ -423,7 +454,8 @@ def _headline_asof(product, badge, lang):
         return ""
     if daily:
         return f"{gettext('día')} {_fmt_day(latest, lang)}"
-    return gettext("al %(when)s") % {"when": _fmt_ut(latest, lang)}
+    # D-105: the time is a <time> element (local time added in the browser).
+    return mark_safe(escape(gettext("al %(when)s")) % {"when": timefmt.time_html(latest, lang)})
 
 
 # D-081: a retired product's page moves to its successor for good. Its
@@ -498,6 +530,10 @@ def _flare_page(request, product, context, lang):
     xray_endpoint = reverse("web:product_series_json", args=[flare.XRAY_PRODUCT_ID])
     context.update(flare.page_context(lang))
     context.update({
+        "loop_url": reverse("web:flare_datos_json", args=["bucle"]),
+        "player_i18n": _player_i18n(),
+        "replay_panels": flare.replay_xray_panels(lang),
+        "readout_below": True,
         "panels": flare.timeline_panels(lang, endpoint, xray_endpoint),
         "chart_i18n": _chart_i18n(),
         "stack_id": stack_id,
@@ -510,7 +546,7 @@ def _flare_page(request, product, context, lang):
         "default_range": flare.DEFAULT_RANGE,
         "description": product.description(lang),
         "facts": _facts_list(product, lang),
-        "model_card_url": "https://github.com/HelioUSACH/flare-nrt/blob/v1.0.0/docs/model-card.md",
+        "model_card_url": "https://github.com/HelioUSACH/flare-nrt/blob/v1.1.0/docs/model-card.md",
         "preview": not settings.SWX_FLARE_PAGE_PUBLIC,
     })
     response = render(request, "web/product_detail_flare.html", context)
@@ -521,45 +557,116 @@ def _flare_page(request, product, context, lang):
 
 
 # productos/usach.flare.nrt/datos/<name>.json: the page's own data, read
-# server-side from flare-nrt (D-100). Only these names exist.
-FLARE_DATOS = {"probabilidad"}
+# server-side from flare-nrt (D-100, D-103). Only these names exist.
+FLARE_DATOS = {"probabilidad", "bucle"}
+# The player's channels: 171 Å and its difference (the browser never asks
+# for the Grad-CAM loop, though the server-side whitelist allows it).
+PLAYER_CHANNELS = ("171", "171-diff")
+REPLAY_CACHE_SECONDS = 300
+
+
+def _int_param(request, name, default, lo, hi):
+    try:
+        value = int(request.GET.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if lo <= value <= hi else default
+
+
+def _json_response(body, max_age):
+    response = HttpResponse(body, content_type="application/json")
+    patch_cache_control(response, public=True, max_age=max_age)
+    return response
 
 
 def flare_datos_json(request, name):
-    """The probability per slot for the timeline (web/flare.py contract),
-    cached 30 s here and in the browser. Served whatever the preview switch
-    (it only shows what the service already exposes) and whatever the
-    service's state: unreachable is empty data, not an error."""
+    """The probability per slot for the timeline (web/flare.py contract), or
+    the player's loop frames (`bucle`, `?channel=171|171-diff&hours=1..24`,
+    default 171 and 6 h), cached 30 s here and in the browser. Served
+    whatever the preview switch (it only shows what the service already
+    exposes) and whatever the service's state: unreachable is empty data,
+    not an error. Frame URLs are the public nginx paths, never the service's."""
     if name not in FLARE_DATOS:
         raise Http404("unknown data")
+    if name == "bucle":
+        channel = request.GET.get("channel", PLAYER_CHANNELS[0])
+        if channel not in PLAYER_CHANNELS:
+            channel = PLAYER_CHANNELS[0]
+        hours = _int_param(request, "hours", flare.LOOP_DEFAULT_HOURS, 1, 24)
+        body = json.dumps(flare.loop_payload(channel, hours), separators=(",", ":"))
+        return _json_response(body, flare.CACHE_SECONDS)
     range_key = request.GET.get("range", flare.DEFAULT_RANGE)
     if range_key not in flare.SERIES_RANGES:
         range_key = flare.DEFAULT_RANGE
-    response = HttpResponse(flare.probability_series_body(range_key), content_type="application/json")
-    patch_cache_control(response, public=True, max_age=flare.CACHE_SECONDS)
-    return response
+    return _json_response(flare.probability_series_body(range_key), flare.CACHE_SECONDS)
+
+
+def flare_replay_json(request, event_id):
+    """One event's replay for the player (`datos/repeticion-<id>.json`):
+    frames as public nginx paths, the event's marks, the threshold (the
+    latest stored result's), completeness."""
+    if not 1 <= event_id <= 999_999_999:
+        raise Http404("unknown event")
+    threshold = flare.stored_threshold(flare._latest_event())
+    body = json.dumps(flare.replay_payload(event_id, threshold), separators=(",", ":"))
+    return _json_response(body, flare.CACHE_SECONDS)
+
+
+def flare_replay_xray_json(request, event_id):
+    """GOES 0.1–0.8 nm over a replay's window (`datos/rayosx-<id>.json`),
+    serie.json's contract. A past window doesn't change: 5 min here and in
+    the browser."""
+    if not 1 <= event_id <= 999_999_999:
+        raise Http404("unknown event")
+    cache_key = f"swx:flare-replay-xray:v1:{event_id}"
+    body = cache.get(cache_key)
+    if body is None:
+        data = flare.replay_xray(event_id)
+        body = json.dumps(data, separators=(",", ":"))
+        if not data["time"]:
+            # The window wasn't known (service busy or down) or nothing is
+            # stored there: not worth keeping, and not for 5 minutes.
+            return _json_response(body, flare.CACHE_SECONDS)
+        cache.set(cache_key, body, REPLAY_CACHE_SECONDS)
+    return _json_response(body, REPLAY_CACHE_SECONDS)
+
+
+# DEBUG only: the paths nginx answers in production (D-100, D-103), and
+# the service path each maps to.
+_DEV_MEDIA = (
+    (re.compile(r"img/(131|171|304|1600)\.png"), "/api/image/{0}.png", ("kind", "slot", "format", "size")),
+    (re.compile(r"gradcam/(latest|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)\.png"), "/api/gradcam/{0}.png",
+     ("style", "format")),
+    (re.compile(r"render/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)/(171|171-diff|gradcam-heat)\.webp"),
+     "/api/render/{0}/{1}.webp", ()),
+    (re.compile(r"replay/(\d{1,9})/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)/(171|gradcam-heat)\.webp"),
+     "/api/events/{0}/frames/{1}/{2}.webp", ()),
+)
 
 
 def flare_media_dev(request, path):
     """DEBUG only (registered in climaespacial/urls.py like Django's own
     static serving): stands in for nginx's image locations so runserver and
-    the CI screenshots show the service's PNGs. In production these paths
+    the CI screenshots show the service's images. In production these paths
     are answered by nginx and never reach Django (D-100)."""
     import httpx
 
-    match = re.fullmatch(r"img/(131|171|304|1600)\.png|gradcam/(latest|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)\.png",
-                         path)
-    if not settings.DEBUG or not match:
+    if not settings.DEBUG:
         raise Http404()
-    params = {k: request.GET[k] for k in ("kind", "slot") if k in request.GET}
-    upstream = f"/api/image/{match.group(1)}.png" if match.group(1) else f"/api/gradcam/{match.group(2)}.png"
+    found = next(((m, upstream, allowed) for pattern, upstream, allowed in _DEV_MEDIA
+                  if (m := pattern.fullmatch(path))), None)
+    if found is None:
+        raise Http404()
+    match, upstream, allowed = found
+    params = {k: request.GET[k] for k in allowed if k in request.GET}
     try:
-        reply = httpx.get(settings.SWX_FLARE_NRT_URL.rstrip("/") + upstream, params=params, timeout=5.0)
+        reply = httpx.get(settings.SWX_FLARE_NRT_URL.rstrip("/") + upstream.format(*match.groups()), params=params,
+                          timeout=5.0)
     except httpx.HTTPError as exc:
         raise Http404() from exc
     if reply.status_code != 200:
         raise Http404()
-    return HttpResponse(reply.content, content_type="image/png")
+    return HttpResponse(reply.content, content_type=reply.headers.get("content-type", "image/png"))
 
 
 def _download_context(product):

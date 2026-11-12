@@ -2,7 +2,7 @@
 {{ panels|json_script:panels_id }}
 {{ chart_i18n|json_script:i18n_id }}
 
-<section class="card swx-stack" data-sync-key="{{ stack_id }}" data-range="{{ default_range }}"
+<section class="card swx-stack{% if readout_below %} readout-below{% endif %}" data-sync-key="{{ stack_id }}" data-range="{{ default_range }}"
          data-panels-id="{{ panels_id }}" data-i18n-id="{{ i18n_id }}"
          data-tall="{% if tall %}1{% else %}0{% endif %}" data-aria-label="{{ stack_aria_label }}">
   <div class="card-top">
@@ -23,6 +23,7 @@
       <div class="plot" data-stack-plot role="img" aria-label="{{ stack_aria_label }}"></div>
       <div class="read" data-stack-read></div>
     </div>
+    <p class="meta read-when" data-stack-when aria-live="off"></p>
     <div class="snap meta" data-stack-snap hidden></div>
   </div>
 </section>

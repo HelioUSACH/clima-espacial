@@ -17,8 +17,8 @@
 # Part 1 — found running this for real). The /hapi/ and /api/ globs (D-090)
 # are belt and braces: nginx doesn't log those paths at all, and API use is
 # counted per key in the database instead. The flare detector page's images
-# (img/, gradcam/) and data (datos/, ES and /en/) are not page views either
-# (D-100).
+# (img/, gradcam/), the player's frames (render/, replay/, v0.6.1, D-103)
+# and data (datos/, ES and /en/) are not page views either (D-100).
 [Unit]
 Description=Clima Espacial USACH: import pageviews from nginx's access log into GoatCounter
 After=network.target goatcounter.service
@@ -40,6 +40,8 @@ ExecStart=/opt/goatcounter/goatcounter import -site http://stats.clima-espacial.
     -exclude "path:glob:/clima-espacial/api/**" \
     -exclude "path:glob:/clima-espacial/productos/usach.flare.nrt/img/**" \
     -exclude "path:glob:/clima-espacial/productos/usach.flare.nrt/gradcam/**" \
+    -exclude "path:glob:/clima-espacial/productos/usach.flare.nrt/render/**" \
+    -exclude "path:glob:/clima-espacial/productos/usach.flare.nrt/replay/**" \
     -exclude "path:glob:/clima-espacial/**usach.flare.nrt/datos/**" \
     -follow /var/log/nginx/access.log
 Restart=on-failure

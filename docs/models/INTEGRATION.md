@@ -54,9 +54,10 @@ product contract everything else in this repo already follows:
 ## Worked example: `modules/flare/` (flare-nrt 1.x)
 
 The producer is [`HelioUSACH/flare-nrt`](https://github.com/HelioUSACH/flare-nrt)
-(v1.0.0 at the time of writing). Its integration sheet (`INTEGRATION.md`
-there, sections "GET /api/status" and "Display endpoints") is the contract;
-this repo uses only the fields and endpoints it lists.
+(v1.1.0 at the time of writing). Its integration sheet (`INTEGRATION.md`
+there, sections "GET /api/status", "Display endpoints" and "Display files
+(1.1.0)") is the contract; this repo uses only the fields and endpoints it
+lists.
 
 **The collector** polls the internal `/api/status` (never exposed by nginx,
 docs/ARCHITECTURE.md §6) every minute and republishes the result as a
@@ -84,15 +85,27 @@ missing value is `no_data`. A naive `timestamp` is read as UTC. If the
 service isn't reachable, the heartbeat is `error`, which the public sees as
 "en preparación" (D-036).
 
-**The product page** (D-099..D-101) also shows what only the service has:
-the probability per slot, the alert history and the images. Django reads
-`/api/series`, `/api/events` and `/api/frames` server-side (whitelisted,
-2 s timeout, 30 s cache, `web/flare.py`); the PNGs
-(`/api/image/…`, `/api/gradcam/…`) reach the browser through cached nginx
-locations, never through Django (docs/ARCHITECTURE.md §6.1). A model whose
-page needs images or other display data can follow the same split: the
-product store for what the portal publishes, server-side JSON for the rest,
-nginx for anything binary.
+**The product page** (D-099..D-104) also shows what only the service has:
+the probability per slot, the alert history, the images, the last hours as
+a loop and each event's replay. Django reads `/api/series`, `/api/events`,
+`/api/loop` and `/api/events/{id}/replay` server-side (whitelisted, 2 s
+timeout, 30 s cache, `web/flare.py`) and hands the browser its own
+`datos/*.json` with every image URL rewritten to a public nginx path. The
+images reach the browser through cached nginx locations, never through
+Django (docs/ARCHITECTURE.md §6.1):
+
+| public path (under `/clima-espacial/productos/usach.flare.nrt/`) | flare-nrt 1.1.0 |
+|---|---|
+| `img/{wave}.png?kind=img\|diff&slot=ISO&format=webp&size=1024` | `/api/image/{wave}.png` (1024 px with `kind=img` only) |
+| `gradcam/{latest\|ISO}.png?style=heat&format=webp` | `/api/gradcam/…` (the map alone, inferno, normalised to its own maximum) |
+| `render/{ISO}/{171\|171-diff\|gradcam-heat}.webp` | `/api/render/…`, the frames `/api/loop` lists |
+| `replay/{event_id}/{ISO}/{171\|gradcam-heat}.webp` | `/api/events/{id}/frames/…`, the frames of `replay.json` |
+
+The page uses the heat style only for an alert frame (D-102): normalised
+to its own maximum, a quiet frame's map looks as strong as a flare's. A
+model whose page needs images or other display data can follow the same
+split: the product store for what the portal publishes, server-side JSON
+for the rest, nginx for anything binary.
 
 ## Forecast models
 

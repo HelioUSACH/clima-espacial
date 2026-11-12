@@ -97,7 +97,7 @@ def strip(request):
     # Imported here, not at module level: web.views doesn't import this
     # module, so there's no real cycle, but keeping it local makes that
     # non-cycle obvious on read.
-    from .views import _fmt_ut
+    from .timefmt import time_html
 
     lang = "en" if get_language() == "en" else "es"
     raw = _strip_raw()
@@ -136,7 +136,7 @@ def strip(request):
         "strip_kp": kp_chip,
         "strip_dst": dst_chip,
         "strip_source": raw["source"],
-        "strip_last_seen_at": _fmt_ut(raw["last_seen_at"], lang) if raw["last_seen_at"] else None,
+        "strip_last_seen_at": time_html(raw["last_seen_at"], lang) if raw["last_seen_at"] else None,
         "strip_mag_url": reverse("web:product_detail", args=["noaa.rtsw.mag"]),
         "strip_no_alert_text": gettext("sin alertas NOAA"),
     }

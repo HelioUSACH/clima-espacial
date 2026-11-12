@@ -151,7 +151,7 @@ def test_unexpected_shape_is_no_data(service):
 
 def test_a_second_thread_never_waits(service):
     """While one thread is fetching a key, another gets None at once."""
-    key = "swx:flare-nrt:status"
+    key = "swx:flare-nrt:/api/status"
     lock = flare._lock_for(key)
     lock.acquire()
     try:
@@ -321,11 +321,11 @@ def test_page_es_with_open_event(client, service, public):
     assert "Flare en curso" in html
     assert "0,93" in html and "umbral" in html and "0,80" in html
     assert "imagen de " in html and "hace " in html
-    assert f"Alerta desde {start:%H:%M} UT" in html
+    assert f'Alerta desde <time datetime="{_iso(start)}" data-ut="t">{start:%H:%M} UT</time>' in html
     assert "(−412″, 269″)" in html and "experimental" in html
     assert 'class="flare-box" style="left:' in html and "," not in html.split('class="flare-box" style="')[1][:60]
     # Images: the stored slot, through the public (nginx) paths, never the service's address.
-    assert "/productos/usach.flare.nrt/img/131.png?kind=img&amp;slot=" in html
+    assert "/productos/usach.flare.nrt/img/171.png?kind=img&amp;slot=" in html
     assert "/productos/usach.flare.nrt/img/1600.png?kind=diff&amp;slot=" in html
     assert "/productos/usach.flare.nrt/gradcam/" in html
     assert "5050" not in html and "/api/" not in html.replace("/api/v1/", "")
@@ -341,7 +341,7 @@ def test_page_en(client, service, public):
     assert "Decay" in html and "threshold" in html
     assert "image of " in html and " min ago" in html
     assert "Alerts in the last 30 days" in html and "Product fact sheet" in html
-    assert "Grad-CAM over 131 Å" in html
+    assert "What the model looked at" in html
     assert "0.05" in html
     # "72 %" in a {% trans %} literal is looked up as "72 %%" (Django doubles it).
     assert "It is a beta product." in html and "98 %" in html and "Es un producto" not in html
@@ -390,7 +390,8 @@ def test_version_1_event_still_renders(client, service, public):
     assert "0,09" in html and "resultado de " in html
     assert "umbral" not in html.split('class="now"')[1].split("</div>")[1]  # no threshold in the headline
     assert "flare-state" not in html  # no state badge without a state
-    assert "/img/131.png?kind=img\"" in html or "/img/131.png?kind=img&" not in html  # latest images, no slot
+    main = html.split("data-flare-main", 1)[1].split(">", 1)[0]
+    assert 'src="/productos/usach.flare.nrt/img/171.png?kind=img&amp;format=webp&amp;size=1024"' in main  # latest
 
 
 @pytest.mark.django_db

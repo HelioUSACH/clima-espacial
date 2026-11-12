@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n static %}
 {% block title %}{% trans "Inicio" %}{% endblock %}
 {% block content %}
 
@@ -27,6 +27,40 @@
 </section>
 </div>
 
+{% if sun_now %}
+{% comment %}
+"El Sol ahora" (D-104): the latest stored result's 171 Å image at 1024 px
+(the only image loaded with the page; thumbnails are lazy), from nginx's
+cache, behind the flare page's preview switch (D-099). flare.js hides the
+block if the image can't be had; the 6-h loop loads only when asked.
+{% endcomment %}
+{{ player_i18n|json_script:"fp-i18n" }}
+<section class="sunband" aria-labelledby="sun-h" data-sun-now>
+  <div class="wrap sun-now">
+    <figure class="sun-fig">
+      <div class="flare-frame sun-frame" id="sun-frame">
+        <img data-sun-main data-wave="{{ sun_now.main.wave }}" data-thumb="{{ sun_now.main.thumb }}" src="{{ sun_now.main.large }}" width="1024" height="1024" decoding="async" fetchpriority="high" alt="SDO/AIA {{ sun_now.main.wave }} Å">
+      </div>
+    </figure>
+    <div class="sun-side">
+      <div class="eyebrow">{% trans "En vivo" %}</div>
+      <h2 id="sun-h">{% trans "El Sol ahora" %}</h2>
+      <p class="sun-when"><b data-sun-wave>{{ sun_now.main.wave }} Å</b> · {% blocktrans with when=sun_now.observed age=sun_now.age %}imagen de {{ when }} · {{ age }}{% endblocktrans %}</p>
+      <div class="sun-thumbs">
+        {% for t in sun_now.thumbs %}
+        <button type="button" class="sun-thumb" data-sun-thumb data-wave="{{ t.wave }}" data-large="{{ t.large }}" data-label="{% blocktrans with wave="%s" %}Ver {{ wave }} Å en grande{% endblocktrans %}" aria-label="{% blocktrans with wave=t.wave %}Ver {{ wave }} Å en grande{% endblocktrans %}">
+          <img src="{{ t.thumb }}" width="512" height="512" loading="lazy" decoding="async" alt="SDO/AIA {{ t.wave }} Å"><span>{{ t.wave }} Å</span>
+        </button>
+        {% endfor %}
+      </div>
+      {% trans "Ver las últimas 6 h (171 Å)" as start_label %}
+      {% include "web/_flare_player.html" with player_id="sun-loop" target="sun-frame" src=loop_url start_label=start_label heat=False %}
+      <p class="meta">{% trans "Imágenes SDO/AIA (NASA), las mismas que analiza el detector de fulguraciones de USACH." %} <a href="{{ flare_url }}">{% trans "Ver el detector de fulguraciones" %}</a></p>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <section class="wrap sec sec-live" aria-labelledby="l1-h">
   <div class="sec-head">
     <div>
@@ -49,3 +83,5 @@
 </section>
 </div>
 {% endblock %}
+{% block extra_scripts %}{% if sun_now %}<script defer src="{% static 'web/js/flare-player.js' %}"></script>
+<script defer src="{% static 'web/js/flare.js' %}"></script>{% endif %}{% endblock %}

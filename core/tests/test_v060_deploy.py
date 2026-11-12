@@ -37,7 +37,9 @@ def test_http_context_directives_live_only_in_the_http_file():
 
 
 def _image_locations():
-    return {k: v for k, v in _locations(SNIPPET).items() if "usach" in k and ("img" in k or "gradcam" in k)}
+    # The stills (v0.6.0); v0.6.1's .webp frame locations are tested in test_v061_deploy.py.
+    return {k: v for k, v in _locations(SNIPPET).items()
+            if "usach" in k and ("img" in k or "gradcam" in k) and ".webp" not in k}
 
 
 def test_image_locations_accept_only_the_documented_paths():
@@ -76,12 +78,13 @@ def test_latest_is_60s_and_a_slot_is_long():
     assert 'if ($swx_flare_kind = "") { return 400; }' in latest_img
     slot_img = locs["= /clima-espacial/_flare/img-slot"]
     assert "internal;" in slot_img and "proxy_cache_valid 200 7d;" in slot_img
-    assert "kind=$swx_flare_kind&slot=$arg_slot" in slot_img
+    assert "kind=$swx_flare_kind&" in slot_img and "&slot=$arg_slot" in slot_img
 
 
 def test_flare_data_endpoint_has_no_added_cache_control():
     locs = _locations(SNIPPET)
-    key = r"~ ^/clima-espacial/((?:en/)?productos/usach\.flare\.nrt/datos/[a-z]+\.json)$"
+    # [a-z0-9-] since v0.6.1 (repeticion-<id>, rayosx-<id>).
+    key = r"~ ^/clima-espacial/((?:en/)?productos/usach\.flare\.nrt/datos/[a-z0-9-]+\.json)$"
     assert key in locs
     assert "add_header" not in locs[key] and "proxy_pass http://127.0.0.1:8100;" in locs[key]
 
