@@ -246,8 +246,9 @@ nginx
  └─ /clima-espacial/               → gunicorn (FORCE_SCRIPT_NAME=/clima-espacial) 127.0.0.1:8100
       ├─ /clima-espacial/static/    → hashed static files served by nginx, cached immutable (D-055)
       ├─ /clima-espacial/…/serie.json → gunicorn; bucketed in SQL, cached 60 s (D-056/D-057)
-      ├─ /clima-espacial/productos/usach.flare.nrt/{img,gradcam}/…png
-      │                             → flare-nrt 127.0.0.1:5050 via nginx proxy_cache (D-100)
+      ├─ /clima-espacial/productos/usach.flare.nrt/{img,gradcam}/…png[?format=webp…]
+      │  /clima-espacial/productos/usach.flare.nrt/{render,replay}/…webp
+      │                             → flare-nrt 127.0.0.1:5050 via nginx proxy_cache (D-100, D-103)
       └─ (internal) flare-nrt FastAPI 127.0.0.1:5050, otherwise not exposed; Django reads its JSON
 
 /opt/swx/            code (root-owned, read-only to the service user)
@@ -257,18 +258,22 @@ systemd: swx-web, swx-collect@<product>.timer, swx-dump.timer, swx-verify.timer
           (+ the flare repo's own units, flare-nrt-loop and flare-nrt-api, started independently)
 ```
 
-### 6.1 How flare-nrt's data reach the browser (D-100)
+### 6.1 How flare-nrt's data reach the browser (D-100, D-103)
 
 flare-nrt is a separate service on the same VM (its own repository and
 units). Three paths, and no other:
 
 ```
  collector (every minute)  ── GET /api/status ──────────────► core_event (usach.flare.nrt), heartbeat
- Django, product page      ── GET /api/{status,series,events,frames}  (server-side,
-                               whitelisted, 2 s timeout, 30 s cache, None on any failure)
- browser <img>             ── /clima-espacial/productos/usach.flare.nrt/img|gradcam/…png
-                               ── nginx proxy_cache (60 s latest, 7 d per slot, stale on error)
-                               ── GET /api/image/{wave}.png?kind=&slot= | /api/gradcam/{…}.png
+ Django, product page      ── GET /api/{status,series,events,frames,loop}, /api/events/{id}/replay
+                               (server-side, whitelisted, 2 s timeout, 30 s cache, None on any failure)
+ browser <img>             ── /clima-espacial/productos/usach.flare.nrt/
+                                 img/{wave}.png?kind=&slot=&format=&size=   → /api/image/{wave}.png
+                                 gradcam/{latest|ISO}.png?style=&format=     → /api/gradcam/{…}.png
+                                 render/{ISO}/{171|171-diff|gradcam-heat}.webp → /api/render/…
+                                 replay/{id}/{ISO}/{171|gradcam-heat}.webp     → /api/events/{id}/frames/…
+                               ── nginx proxy_cache (60 s latest, 7 d per slot; frames immutable;
+                                  stale on error)
 ```
 
 - **Images never pass through Django**: a PNG through gunicorn would hold one
@@ -285,8 +290,19 @@ units). Three paths, and no other:
   The page's header and image slot come from the product store, so the
   page renders with the service down and says "sin datos del detector"
   where it needs the service.
-- **The browser never addresses the service.** The page's own timeline data
-  is `productos/usach.flare.nrt/datos/probabilidad.json`, Django's.
+- **The browser never addresses the service.** The page's own data is
+  Django's: `productos/usach.flare.nrt/datos/probabilidad.json` (timeline),
+  `datos/bucle.json` (the 6-h loop), `datos/repeticion-<id>.json` (an event
+  replay) and `datos/rayosx-<id>.json` (GOES X-rays over a replay's window,
+  from the portal's own store). Frame URLs in them are the public nginx
+  paths above, rewritten server-side; anything else the service sends is
+  dropped.
+- **Two rate zones** (D-103): stills 30 r/s (burst 100) and frames 100 r/s
+  (burst 400) per address, since a player loads ~130 frames in seconds and
+  a campus shares one address. The cache holds up to 1 GB.
+- **The home page's "El Sol ahora"** (D-104) uses the same image paths for
+  the latest stored result and the same loop, and reads only the product
+  store, never the service.
 
 Indicative RAM budget (15 GiB): PostgreSQL 2–3 GB · gunicorn 2 gthread workers × 4 threads (D-069)
 · flare loop (CPU) 2–3 GB · collectors <0.5 GB · OS/cache rest. Disk (96 GB

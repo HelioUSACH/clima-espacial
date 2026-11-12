@@ -1,0 +1,50 @@
+{% load i18n %}
+{% comment %}
+The frame player's controls (web/static/web/js/flare-player.js, D-102).
+Include with: player_id, target (the id of the .flare-frame it plays in),
+src (the datos/*.json URL; may be set later by the page script), start_label
+(omit for a player started by the page, e.g. a replay), heat (an opacity
+slider for the Grad-CAM heat map). The page includes the strings once:
+{{ player_i18n|json_script:"fp-i18n" }}. Nothing loads until started.
+{% endcomment %}
+<div class="fplayer" id="{{ player_id }}" data-player data-target="{{ target }}" data-i18n-id="fp-i18n"{% if src %} data-src="{{ src }}"{% endif %}>
+  {% if start_label %}<button type="button" class="sbtn fp-start" data-fp-start>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>
+    <span>{{ start_label }}</span>
+  </button>{% endif %}
+  <div class="fp-progress" data-fp-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="{% trans 'Carga de imágenes' %}" hidden>
+    <div class="fp-bar"><span data-fp-bar></span></div>
+    <span class="meta" data-fp-progress-text aria-live="polite"></span>
+  </div>
+  <div class="fp-controls" data-fp-controls hidden>
+    <div class="fp-row">
+      <button type="button" class="ibtn" data-fp-prev aria-label="{% trans 'Imagen anterior' %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg>
+      </button>
+      <button type="button" class="ibtn fp-play" data-fp-play aria-label="{% trans 'Reproducir' %}" aria-pressed="false" aria-keyshortcuts="Space K">
+        <svg class="i-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>
+        <svg class="i-pause" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+      </button>
+      <button type="button" class="ibtn" data-fp-next aria-label="{% trans 'Imagen siguiente' %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg>
+      </button>
+      <label class="fp-opt">{% trans "Velocidad" %}
+        <select data-fp-speed>
+          <option value="5">5 {% trans "img/s" %}</option>
+          <option value="10" selected>10 {% trans "img/s" %}</option>
+          <option value="20">20 {% trans "img/s" %}</option>
+        </select>
+      </label>
+      <label class="fp-opt"><input type="checkbox" data-fp-loop checked> {% trans "Repetir" %}</label>
+      {% if heat %}<label class="fp-opt fp-opacity">{% trans "Opacidad del mapa" %}
+        <input type="range" min="0" max="100" step="5" value="60" data-fp-opacity>
+      </label>{% endif %}
+    </div>
+    <div class="fp-track">
+      <input type="range" min="0" max="0" step="1" value="0" data-fp-slider aria-label="{% trans 'Imagen' %}" aria-keyshortcuts="ArrowLeft ArrowRight">
+      <div class="fp-marks" data-fp-marks aria-hidden="true"></div>
+    </div>
+    <p class="fp-label" data-fp-label></p>
+  </div>
+  <p class="meta fp-msg" data-fp-msg role="status" hidden></p>
+</div>

@@ -9,6 +9,10 @@ urlpatterns = [
     path("productos/", views.catalogue, name="catalogue"),
     path("productos/<str:product_id>/", views.product_detail, name="product_detail"),
     # The flare page's own data, read server-side from flare-nrt (D-100).
+    path("productos/usach.flare.nrt/datos/repeticion-<int:event_id>.json", views.flare_replay_json,
+         name="flare_replay_json"),
+    path("productos/usach.flare.nrt/datos/rayosx-<int:event_id>.json", views.flare_replay_xray_json,
+         name="flare_replay_xray_json"),
     path("productos/usach.flare.nrt/datos/<slug:name>.json", views.flare_datos_json, name="flare_datos_json"),
     path("productos/<str:product_id>/serie.json", views.product_series_json, name="product_series_json"),
     path("productos/<str:product_id>/forecast.json", views.product_forecast_json, name="product_forecast_json"),

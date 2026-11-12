@@ -1,5 +1,5 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load i18n swx_time %}
 {% block title %}{% trans "Estado" %}{% endblock %}
 {% block content %}
 <div class="wrap page">
@@ -23,7 +23,7 @@
           {{ row.status.label }}{% if row.status.title %} <small class="status-badge__note">({{ row.status.title }})</small>{% endif %}
         </span>
       </td>
-      <td>{{ row.last_seen_at|default:"—" }}</td>
+      <td>{{ row.last_seen_at|ut_time|default:"—" }}</td>
     </tr>
     {% empty %}
     <tr><td colspan="3">{% trans "Todavía no hay productos recolectados en este ambiente." %}</td></tr>

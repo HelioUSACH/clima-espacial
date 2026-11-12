@@ -83,11 +83,14 @@ def test_delayed_status_on_catalogue_pill_and_status_page(client, lang, label, t
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("lang,asof", [("es", "al 05/10 23:55 UT"), ("en", "as of 05 Oct 23:55 UT")])
+@pytest.mark.parametrize("lang,asof", [("es", "al {} 05/10 23:55 UT"), ("en", "as of {} 05 Oct 23:55 UT")])
 def test_headline_carries_its_time_when_delayed(client, lang, asof):
     swxkit.publish_timeseries("kyoto.ae", _ae_rows(dt.datetime(2026, 10, 5, 23, 55, tzinfo=dt.UTC)))
     html = client.get(_url("web:product_detail", "kyoto.ae", lang=lang)).content.decode()
-    assert f'<p class="now-asof">{asof}</p>' in html
+    # D-105: the time is a <time> element; its text is still UT.
+    prefix, rest = asof.split(" {} ")
+    assert (f'<p class="now-asof">{prefix} <time datetime="2026-10-05T23:55:00Z" data-ut="dt">{rest}</time></p>'
+            in html)
 
 
 @pytest.mark.django_db

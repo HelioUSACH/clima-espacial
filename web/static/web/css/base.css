@@ -228,6 +228,16 @@ a.natl:hover { background: var(--accent); color: var(--accent-ink); }
 :root[data-theme='night'] .theme-toggle .icon-day { display: none; }
 :root[data-theme='night'] .theme-toggle .icon-night { display: inline; }
 .menu-toggle { display: none; }
+/* UT / hora local (D-105), shown by localtime.js. */
+.tz-switch { padding: 2px; flex-shrink: 0; }
+.tz-switch button { padding: 4px 9px; font-size: 12px; white-space: nowrap; }
+/* Two copies: in the header's tools on wide screens, in the menu on narrow
+ * ones (the header bar has no room left there). */
+.nav .tz-switch { display: none !important; }
+@media (max-width: 900px) {
+  .tools .tz-switch { display: none !important; }
+  .nav .tz-switch:not([hidden]) { display: inline-flex !important; align-self: flex-start; margin: .75rem 0 .25rem; }
+}
 
 @media (max-width: 900px) {
   .nav { display: none; }
@@ -401,6 +411,15 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-h
   position: absolute; left: 0; right: 0; display: flex; align-items: center; justify-content: center;
   color: var(--ink-faint); font-size: .85rem; text-align: center; padding: 0 1rem; pointer-events: none;
 }
+
+/* The readout's time (D-105): hovered instant or latest datum, UT and local. */
+.read-when { margin: 6px 0 0; font-family: var(--font-mono); font-size: 12px; min-height: 1.4em; }
+.t-alt { color: var(--ink-faint); }
+/* A page that wants its readout under the chart, full width (the flare
+ * page, D-102): values side by side instead of a narrow column. */
+.readout-below .stage { grid-template-columns: minmax(0, 1fr); }
+.readout-below .read { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; }
+.readout-below .rrow { height: auto !important; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 12px; }
 
 @media (max-width: 680px) {
   .stage { grid-template-columns: minmax(0, 1fr); }
@@ -579,4 +598,85 @@ pre.code { background: var(--band); border: 1px solid var(--line); border-radius
 .flare-missing[hidden] { display: none; }
 .flare-box { position: absolute; border: 2px solid var(--sun); border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); pointer-events: none; }
 .flare-hist td { white-space: nowrap; }
-@media (max-width: 900px) { .flare-figs { grid-template-columns: minmax(0, 1fr); } }
+
+/* v0.6.1 (D-102): one large image with its controls beside it. */
+.flare-viewer { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: start; }
+.flare-main { max-width: 720px; }
+.flare-side { display: grid; gap: 14px; align-content: start; }
+.flare-side .seg { flex-wrap: wrap; }
+.flare-frame.is-playing > img:not(.fp-img):not(.fp-heat), .flare-frame.is-playing .flare-box { visibility: hidden; }
+.flare-frame .fp-img, .flare-frame .fp-heat, .flare-cam-heat { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.flare-frame .fp-heat[hidden] { display: none; }
+.flare-frame:not(.is-playing) .fp-img { display: none; }
+
+/* The frame player (flare-player.js). */
+.fplayer { display: grid; gap: 10px; }
+.fp-start { justify-self: start; }
+.fp-start[hidden], .fp-controls[hidden], .fp-progress[hidden], .fp-msg[hidden] { display: none; }
+.fp-progress { display: grid; gap: 4px; }
+.fp-bar { height: 6px; border-radius: 3px; background: var(--band); overflow: hidden; }
+.fp-bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
+@media (prefers-reduced-motion: reduce) { .fp-bar span { transition: none; } }
+.fp-controls { display: grid; gap: 8px; }
+.fp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.fp-play .i-pause, .fp-play.is-playing .i-play { display: none; }
+.fp-play.is-playing .i-pause { display: inline; }
+.fp-opt { font-family: var(--font-ui); font-size: 12.5px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 6px; }
+.fp-opt select { font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.fp-track { position: relative; }
+.fp-track:has(.fp-mark) { padding-bottom: 30px; }
+.fp-track input[type='range'] { width: 100%; accent-color: var(--accent); }
+.fp-marks { position: absolute; left: 8px; right: 8px; top: 26px; height: 18px; pointer-events: none; }
+.fp-mark { position: absolute; transform: translateX(-50%); display: grid; justify-items: center; font-family: var(--font-ui); font-size: 10.5px; color: var(--ink-faint); }
+.fp-mark i { width: 2px; height: 6px; background: var(--severity-strong); }
+.fp-mark-peak b { color: var(--severity-strong); }
+/* The peak's label on a second row: start, peak and end are often a few
+ * frames apart, and their labels would overlap on one line. */
+.fp-mark-peak i { height: 18px; }
+.fp-label { margin: 0; font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+input[type='range']:focus-visible, .fp-opt select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* "Qué miró el modelo": the heat map over 131 Å, its colour bar. */
+.flare-cam-when { margin: 0 0 12px; font-family: var(--font-ui); font-size: 14px; }
+.flare-cam-grid { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.flare-cam-side { display: grid; gap: 10px; align-content: start; max-width: 60ch; }
+.flare-cam-side .meta { margin: 0; }
+.cam-bar { height: 12px; border-radius: 3px; border: 1px solid var(--line);
+  background: linear-gradient(to right, #000004 0%, #0b0724 6.25%, #210c4a 12.5%, #3d0965 18.75%, #57106e 25%, #71196e 31.25%,
+    #8a226a 37.5%, #a32c61 43.75%, #bc3754 50%, #d24644 56.25%, #e45a31 62.5%, #f1731d 68.75%, #f98e09 75%, #fcac11 81.25%,
+    #f9cb35 87.5%, #f2ea69 93.75%, #fcffa4 100%); }
+.cam-bar-label { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; }
+.flare-cam-base[hidden] { display: none; }
+
+/* The replay player. */
+.flare-replay { margin-top: 16px; padding: 16px; }
+.flare-replay[hidden] { display: none; }
+.flare-replay h3 { font-family: var(--font-ui); font-size: 16px; font-weight: 600; margin: 0; }
+.flare-replay-grid { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.flare-replay-xray { margin-top: 12px; }
+.flare-replay-xray .figwrap { padding: 0; }
+
+/* Home: El Sol ahora (D-104). */
+.sunband { background: var(--space); color: var(--space-ink); }
+.sunband[hidden] { display: none; }
+.sun-now { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 32px; align-items: center; padding-top: 40px; padding-bottom: 40px; }
+.sun-fig { margin: 0; }
+.sun-frame { border-color: rgba(255, 255, 255, .12); }
+.sun-side { display: grid; gap: 14px; align-content: start; }
+.sun-side h2 { color: #ffffff; margin: 0; }
+.sun-side .eyebrow { color: var(--sun); }
+.sun-side .meta, .sun-when { color: var(--space-soft); margin: 0; }
+.sun-side .meta a { color: #ffffff; }
+.sun-side .t-alt, .sun-side .fp-label .t-alt { color: var(--space-soft); }
+.sun-side .fp-label { color: var(--space-ink); }
+.sun-side .sbtn, .sun-side .ibtn, .sun-side .fp-opt { color: var(--space-ink); border-color: rgba(255, 255, 255, .25); }
+.sun-thumbs { display: grid; grid-template-columns: repeat(3, minmax(0, 120px)); gap: 10px; }
+.sun-thumb { padding: 0; border: 1px solid rgba(255, 255, 255, .18); border-radius: var(--radius-sm); background: #05080f; cursor: pointer; overflow: hidden; display: grid; color: var(--space-soft); font-family: var(--font-mono); font-size: 11px; }
+.sun-thumb:hover, .sun-thumb:focus-visible { border-color: var(--sun); }
+.sun-thumb img { width: 100%; height: auto; aspect-ratio: 1 / 1; display: block; }
+.sun-thumb span { padding: 3px 0 4px; }
+
+@media (max-width: 900px) {
+  .flare-figs, .flare-viewer, .flare-cam-grid, .flare-replay-grid, .sun-now { grid-template-columns: minmax(0, 1fr); }
+  .sun-now { gap: 18px; padding-top: 24px; padding-bottom: 28px; }
+}

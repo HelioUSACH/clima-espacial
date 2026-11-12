@@ -123,7 +123,7 @@ sudo nginx -t && sudo systemctl reload nginx
 Install the http file first: the snippet refers to its zones and maps, so
 `nginx -t` fails on the new snippet alone. `deploy.sh` reminds you when
 either installed file differs from the release's. The cache is capped at
-512 MB.
+512 MB (1 GB since v0.6.1, D-103).
 
 **GoatCounter** skips the page's images and data
 (`goatcounter-import.service`, three new `-exclude` lines). After a deploy
@@ -150,6 +150,51 @@ sudo systemctl daemon-reload && sudo systemctl restart goatcounter-import
 
 The image locations and the `datos/` endpoint work in both modes: they only
 serve what the service already exposes.
+
+### v0.6.1: the redesigned page, "El Sol ahora", local time (D-102..D-105)
+
+Needs **flare-nrt 1.1.0** running (its display files: `/api/loop`,
+`/api/render/…`, `/api/events/{id}/replay`, `style=heat`, `size=1024`,
+`format=webp`). Both nginx files changed:
+
+- the image locations also accept `format=png|webp` and `size=512|1024`
+  (1024 only with `kind=img`), Grad-CAM `style=overlay|heat` and `format`;
+  anything else is a 400;
+- new locations for the loop's frames
+  (`…/usach.flare.nrt/render/<ISO>/{171|171-diff|gradcam-heat}.webp`) and the
+  replays' (`…/usach.flare.nrt/replay/<event id>/<ISO>/{171|gradcam-heat}.webp`),
+  cached and sent as immutable;
+- rate limits: stills 30 r/s (burst 100), frames a new zone at 100 r/s
+  (burst 400), per address; the cache may grow to 1 GB (was 512 MB).
+
+```bash
+sudo bash /opt/swx/deploy/deploy.sh v0.6.1
+sudo install -m 644 /opt/swx/deploy/nginx-clima-espacial-http.conf /etc/nginx/conf.d/clima-espacial-http.conf
+sudo install -m 644 /opt/swx/deploy/nginx-clima-espacial.conf /etc/nginx/snippets/clima-espacial.conf
+sudo nginx -t && sudo systemctl reload nginx
+sudo install -m 644 /opt/swx/deploy/systemd/goatcounter-import.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl restart goatcounter-import
+```
+
+Quick checks from the server (expect 200, then 400, then 200 with
+`Cache-Control: … immutable`):
+
+```bash
+B=https://helio.fisica.usach.cl/clima-espacial/productos/usach.flare.nrt
+curl -sI "$B/img/171.png?format=webp&size=1024" | head -1
+curl -sI "$B/img/171.png?kind=diff&size=1024" | head -1
+F=$(curl -s "$B/datos/bucle.json" | python3 -c "import json,sys; print(json.load(sys.stdin)['frames'][-1]['url'])")
+curl -sI "https://helio.fisica.usach.cl$F" | grep -i "^HTTP\|cache-control"
+```
+
+**Preview** (the switch is unchanged, D-099): with `SWX_FLARE_PAGE_PUBLIC`
+unset, log in as staff (`/clima-espacial/gestion/`), then open both the flare
+page and the **home page**: the home page's "El Sol ahora" block is behind
+the same switch, so you review them together. The times on every page now
+show local time next to UT (anyone, switch or not); the "UT / hora local"
+switch in the header picks which comes first. When both look right, set
+`SWX_FLARE_PAGE_PUBLIC=1` in `/etc/swx/swx.env` and
+`sudo systemctl restart swx-web`.
 
 ## Caching and compression (D-055, D-057)
 
@@ -191,14 +236,14 @@ fewer processes also means fewer cold caches.
 | `provision.sh` | One-shot server prep (idempotent) |
 | `deploy.sh` | Install one tagged release; run again for every release |
 | `nginx-clima-espacial.conf` | `/clima-espacial/` location snippet for the existing `helio` vhost |
-| `nginx-clima-espacial-http.conf` | its `http{}`-context part: the flare image cache, rate limit and argument maps (`/etc/nginx/conf.d/`, D-100) |
+| `nginx-clima-espacial-http.conf` | its `http{}`-context part: the flare image cache, rate limits and argument maps (`/etc/nginx/conf.d/`, D-100, D-103) |
 | `systemd/swx-web.service` | gunicorn |
 | `systemd/swx-collect@.service` + `swx-collect@<product>.timer` | one collector run per product, cadence from its manifest (`kyoto.ae`: daily 04:10 UT) |
 | `systemd/swx-verify.service` + `.timer` | daily 03:15 UT `manage.py verify_forecasts`: scores every forecast product (D-075) |
 | `systemd/swx-dump.service` + `.timer` | nightly `pg_dump` + config bundle incl. analytics (local; pulled off-machine, see below) |
 | `systemd/swx-export-nrt.service` + `.timer` | nightly 03:05 (local) `manage.py export_nrt`: stored rows per product and UTC day into `/srv/swx/backups/nrt/`, pulled off-machine with the dumps (D-091, `README-backup.md`) |
 | `systemd/goatcounter.service` | cookieless analytics (D-043), bound to localhost |
-| `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051); skips `/hapi/`, `/api/` and the flare page's images and data |
+| `systemd/goatcounter-import.service` | imports pageviews from nginx's access log (no browser JS, D-051); skips `/hapi/`, `/api/` and the flare page's images, frames and data |
 | `hapi-verify.sh` | runs the HAPI verifier against the server (not CI; no sudo) |
 | `swx-dump.sh` | the nightly backup script itself |
 | `backup-pull.sh`, `README-backup.md` | runs on the **off-machine** backup host, not on helio (D-039) |

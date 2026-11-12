@@ -33,7 +33,6 @@ import math
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from django.conf import settings
@@ -46,6 +45,7 @@ from core.models import Event
 
 from . import charts
 from .numfmt import fmt_number
+from .timefmt import time_html
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +62,19 @@ CACHE_SECONDS = 30
 STALE_SECONDS = 300
 MAX_BYTES = 2_000_000
 
-# endpoint name -> (path, {parameter: (min, max)}, top-level key that must be a list).
-# Only these four, only these parameters, only integers in these ranges
-# (flare-nrt INTEGRATION.md "Display endpoints").
+# endpoint name -> (path, {parameter: rule}, top-level key that must be a list).
+# Only these endpoints, only these parameters (flare-nrt INTEGRATION.md
+# "Display endpoints" and "Display files (1.1.0)"). A rule is (min, max) for
+# an integer or a frozenset of allowed strings. A parameter named in the
+# path ("{event_id}") goes into the path, never the query.
+LOOP_CHANNELS = frozenset({"171", "171-diff", "gradcam-heat"})
 ENDPOINTS = {
     "status": ("/api/status", {}, None),
     "series": ("/api/series", {"days": (1, 14)}, "points"),
     "events": ("/api/events", {"days": (1, 400)}, "events"),
     "frames": ("/api/frames", {"hours": (1, 168)}, "frames"),
+    "loop": ("/api/loop", {"channel": LOOP_CHANNELS, "hours": (1, 24)}, "frames"),
+    "replay": ("/api/events/{event_id}/replay", {"event_id": (1, 999_999_999)}, "frames"),
 }
 
 _locks: dict[str, threading.Lock] = {}
@@ -86,17 +91,27 @@ def _lock_for(key: str) -> threading.Lock:
 
 
 def _validated(name: str, params: dict) -> tuple[str, dict]:
+    """(path with its path parameters filled in, query parameters)."""
     if name not in ENDPOINTS:
         raise NotAllowed(f"endpoint {name!r} is not whitelisted")
     path, allowed, _key = ENDPOINTS[name]
     clean = {}
     for key, value in params.items():
-        if key not in allowed or not isinstance(value, int) or isinstance(value, bool):
+        rule = allowed.get(key)
+        if isinstance(rule, frozenset):
+            if not isinstance(value, str) or value not in rule:
+                raise NotAllowed(f"parameter {key}={value!r} is not allowed for {name}")
+        elif rule is None or not isinstance(value, int) or isinstance(value, bool):
             raise NotAllowed(f"parameter {key}={value!r} is not allowed for {name}")
-        lo, hi = allowed[key]
-        if not lo <= value <= hi:
-            raise NotAllowed(f"parameter {key}={value} is outside {lo}..{hi}")
+        else:
+            lo, hi = rule
+            if not lo <= value <= hi:
+                raise NotAllowed(f"parameter {key}={value} is outside {lo}..{hi}")
         clean[key] = value
+    for key in re.findall(r"\{(\w+)\}", path):
+        if key not in clean:
+            raise NotAllowed(f"parameter {key} is required for {name}")
+        path = path.replace("{" + key + "}", str(clean.pop(key)))
     return path, clean
 
 
@@ -122,7 +137,7 @@ def service_json(name: str, **params):
     Only one thread per process fetches a given key at a time; the others
     get the previous answer (if still recent) or None, never a wait."""
     path, clean = _validated(name, params)
-    key = "swx:flare-nrt:" + name + "".join(f":{k}={v}" for k, v in sorted(clean.items()))
+    key = "swx:flare-nrt:" + path + "".join(f":{k}={v}" for k, v in sorted(clean.items()))
     entry = cache.get(key)
     now = time.monotonic()
     if entry is not None and now - entry["at"] < CACHE_SECONDS:
@@ -142,7 +157,6 @@ def service_json(name: str, **params):
 
 # --- formatting -----------------------------------------------------------------
 
-_MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 ISO_SLOT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?Z$")
 _GRADCAM_PATH_RE = re.compile(r"^/api/gradcam/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)\.png$")
 
@@ -161,17 +175,6 @@ def parse_time(value) -> dt.datetime | None:
 
 def iso_z(when: dt.datetime) -> str:
     return when.astimezone(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def fmt_ut(when: dt.datetime | None, lang: str, *, date: bool = True, seconds: bool = False) -> str:
-    if when is None:
-        return "—"
-    when = when.astimezone(dt.UTC)
-    clock = f"{when:%H:%M:%S}" if seconds else f"{when:%H:%M}"
-    if not date:
-        return clock
-    day = f"{when.day:02d} {_MONTHS_EN[when.month - 1]}" if lang == "en" else f"{when:%d/%m}"
-    return f"{day} {clock}"
 
 
 def fmt_prob(value, lang: str) -> str:
@@ -291,7 +294,9 @@ def goes_classes(windows: list[tuple[dt.datetime, dt.datetime]]) -> list[str | N
     return [charts.xray_class(peak.get(i + 1)) for i in range(len(windows))]
 
 
-# --- public URLs of the service's images (served by nginx, D-100) -------------------
+# --- public URLs of the service's images (served by nginx, D-100, D-103) -------------
+
+_RENDER_PATH_RE = re.compile(r"^/api/render/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)/(171|171-diff|gradcam-heat)\.webp$")
 
 
 def media_base() -> str:
@@ -301,13 +306,23 @@ def media_base() -> str:
     return f"{prefix.rstrip('/')}/productos/{PRODUCT_ID}"
 
 
-def image_url(wave: str, kind: str, slot: str | None) -> str:
+def image_url(wave: str, kind: str, slot: str | None, *, fmt: str | None = None, size: int | None = None) -> str:
+    """img/<wave>.png?kind=…[&slot=…][&format=webp][&size=1024]. The path
+    keeps '.png' (nginx's location); `format` says what comes back."""
     url = f"{media_base()}/img/{wave}.png?kind={kind}"
-    return url + f"&slot={slot}" if slot else url
+    if slot:
+        url += f"&slot={slot}"
+    if fmt:
+        url += f"&format={fmt}"
+    if size:
+        url += f"&size={size}"
+    return url
 
 
-def gradcam_url(slot: str | None) -> str:
-    return f"{media_base()}/gradcam/{slot or 'latest'}.png"
+def gradcam_url(slot: str | None, *, style: str | None = None, fmt: str | None = None) -> str:
+    url = f"{media_base()}/gradcam/{slot or 'latest'}.png"
+    query = "&".join(f"{k}={v}" for k, v in (("style", style), ("format", fmt)) if v)
+    return url + ("?" + query if query else "")
 
 
 def public_gradcam(service_path) -> str | None:
@@ -319,13 +334,53 @@ def public_gradcam(service_path) -> str | None:
     return gradcam_url(match.group(1)) if match else None
 
 
+def public_render(service_path, channel: str) -> str | None:
+    """The service's `/api/render/<ISO>/<channel>.webp` (a loop frame's
+    `url`) -> the public nginx path; None for anything else, including a
+    frame of another channel."""
+    if not isinstance(service_path, str):
+        return None
+    match = _RENDER_PATH_RE.match(service_path)
+    if not match or match.group(2) != channel:
+        return None
+    return f"{media_base()}/render/{match.group(1)}/{channel}.webp"
+
+
+def replay_frame_url(event_id: int, slot: str, name: str) -> str:
+    """One replay frame's public path (the service's
+    /api/events/<id>/frames/<ISO>/<name>.webp, through nginx)."""
+    return f"{media_base()}/replay/{int(event_id)}/{slot}/{name}.webp"
+
+
 # --- the page ---------------------------------------------------------------------
 
 WAVES = ("131", "171", "304", "1600")
+DEFAULT_WAVE = "171"
+DEFAULT_THRESHOLD = 0.8  # flare-nrt's own (INTEGRATION.md), when nothing better is known
+LARGE_PX = 1024
+
+
+def _number(value) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return float(value)
 
 
 def _latest_event():
     return Event.objects.filter(product_id=PRODUCT_ID).order_by("-issued").first()
+
+
+def stored_threshold(event) -> float:
+    value = _number((event.payload or {}).get("threshold")) if event is not None else None
+    return value if value is not None else DEFAULT_THRESHOLD
+
+
+def _event_slot(event) -> str | None:
+    """The stored result's AIA slot (version-2 events only: v1 has none)."""
+    if event is None or not (event.provenance or {}).get("inputs"):
+        return None
+    slot = iso_z(event.valid_from)
+    return slot if ISO_SLOT_RE.match(slot) else None
 
 
 def header_context(event, lang: str, now: dt.datetime) -> dict:
@@ -335,8 +390,7 @@ def header_context(event, lang: str, now: dt.datetime) -> dict:
     if event is None:
         return {"has_result": False}
     payload = event.payload or {}
-    provenance = event.provenance or {}
-    has_slot = bool(provenance.get("inputs"))  # v2: valid_from is the AIA slot
+    has_slot = _event_slot(event) is not None
     location = payload.get("location") if payload.get("flare_detected") else None
     open_since = parse_time(payload.get("event_t_start")) if payload.get("flare_detected") else None
     return {
@@ -344,10 +398,10 @@ def header_context(event, lang: str, now: dt.datetime) -> dict:
         "probability": fmt_prob(payload.get("probability"), lang),
         "threshold": fmt_prob(payload.get("threshold"), lang) if payload.get("threshold") is not None else None,
         "state": state_badge(payload.get("state"), lang),
-        "observed": fmt_ut(event.valid_from, lang) if has_slot else None,
-        "result_time": None if has_slot else fmt_ut(event.issued, lang),
+        "observed": time_html(event.valid_from, lang) if has_slot else None,
+        "result_time": None if has_slot else time_html(event.issued, lang),
         "age": fmt_age(event.valid_from if has_slot else event.issued, now),
-        "open_since": fmt_ut(open_since, lang, date=False) if open_since else None,
+        "open_since": time_html(open_since, lang, date=False) if open_since else None,
         "flare_detected": bool(payload.get("flare_detected")),
         "location": fmt_location(location, lang),
         "on_limb": bool(isinstance(location, dict) and location.get("on_limb")),
@@ -355,44 +409,84 @@ def header_context(event, lang: str, now: dt.datetime) -> dict:
     }
 
 
-def images_context(event, frames, lang: str) -> dict:
-    """The four channels of the latest stored result, each with its T_OBS,
-    and the newest Grad-CAM the service has. With a version-1 event (no
-    slot) the images are the service's latest."""
-    provenance = (event.provenance or {}) if event else {}
-    inputs = provenance.get("inputs") or {}
-    slot = iso_z(event.valid_from) if event is not None and inputs else None
-    if slot and not ISO_SLOT_RE.match(slot):
-        slot = None
+def images_context(event, lang: str) -> dict:
+    """The four channels of the latest stored result (its slot; the
+    service's latest for a version-1 event), each as a large image (1024 px
+    WebP) and a difference (512 px: the service makes no 1024 px
+    difference), with its T_OBS. 171 Å is shown first."""
+    slot = _event_slot(event)
+    inputs = (event.provenance or {}).get("inputs") or {} if event is not None else {}
     channels = []
     for wave in WAVES:
         t_obs = parse_time(inputs.get(wave))
         channels.append({
             "wave": wave,
-            "img": image_url(wave, "img", slot),
-            "diff": image_url(wave, "diff", slot),
-            "t_obs": fmt_ut(t_obs, lang, seconds=True) if t_obs else None,
+            "img": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
+            "diff": image_url(wave, "diff", slot, fmt="webp"),
+            "t_obs": time_html(t_obs, lang, date=False, seconds=True) if t_obs else None,
         })
-    cam_slot = None
-    if frames:
-        with_cam = [f.get("slot") for f in frames.get("frames", []) if isinstance(f, dict) and f.get("gradcam")]
-        with_cam = [s for s in with_cam if isinstance(s, str) and ISO_SLOT_RE.match(s)]
-        if slot in with_cam:
-            cam_slot = slot
-        elif with_cam:
-            cam_slot = max(with_cam)
-    cam_time = parse_time(cam_slot)
+    by_wave = {c["wave"]: c for c in channels}
+    return {"slot": slot, "channels": channels, "default": by_wave[DEFAULT_WAVE]}
+
+
+def _gradcam_slot(event: dict) -> str | None:
+    """The slot of an event's peak Grad-CAM: the service's own `gradcam`
+    path when it names one, else `t_pmax`."""
+    path = event.get("gradcam")
+    if isinstance(path, str):
+        match = _GRADCAM_PATH_RE.match(path)
+        if match:
+            return match.group(1)
+    peak = parse_time(event.get("t_pmax"))
+    return iso_z(peak) if peak is not None else None
+
+
+def gradcam_context(events_json, threshold: float, lang: str) -> dict:
+    """"Qué miró el modelo" (D-102). Grad-CAM is coarse (a 16-px grid,
+    upsampled) and normalised to its own maximum, so a quiet frame's map
+    looks as bright as a flare's and means nothing: only an alert frame is
+    shown. During an open event, its peak frame; otherwise the last event's
+    peak ("Última alerta: …"); with no event in 30 days, nothing.
+
+    mode: "unavailable" (service down) | "none" | "pending" (open event, no
+    map yet) | "open" | "last"."""
+    if events_json is None:
+        return {"mode": "unavailable"}
+    events = []
+    for e in events_json.get("events", []):
+        if isinstance(e, dict) and parse_time(e.get("t_start")) is not None:
+            events.append(e)
+    open_events = [e for e in events if e.get("closed") is False]
+    if open_events:
+        chosen, mode = max(open_events, key=lambda e: parse_time(e["t_start"])), "open"
+    else:
+        closed = [e for e in events if e.get("closed") is not False]
+        if not closed:
+            return {"mode": "none"}
+        chosen = max(closed, key=lambda e: parse_time(e.get("t_pmax")) or parse_time(e["t_start"]))
+        mode = "last"
+    slot = _gradcam_slot(chosen)
+    p_max = _number(chosen.get("p_max"))
+    if slot is None or not ISO_SLOT_RE.match(slot):
+        return {"mode": "pending" if mode == "open" else "none"}
+    if p_max is not None and p_max < threshold:
+        return {"mode": "none"}  # never a heat map for a frame below the threshold
     return {
+        "mode": mode,
         "slot": slot,
-        "channels": channels,
-        "gradcam": gradcam_url(cam_slot),
-        "gradcam_time": fmt_ut(cam_time, lang) if cam_time else None,
+        "heat": gradcam_url(slot, style="heat", fmt="webp"),
+        "base": image_url("131", "img", slot, fmt="webp"),
+        "when": time_html(parse_time(slot), lang),
+        "probability": fmt_prob(p_max, lang),
     }
 
 
 def history_rows(events_json, lang: str) -> list[dict]:
     """flare-nrt's `/api/events` -> table rows, newest first, with the GOES
-    class the portal measured between t_start and t_end + 10 min."""
+    class the portal measured between t_start and t_end + 10 min, and the
+    replay's data URL when the service has one (`replay: true`, 1.1.0)."""
+    from django.urls import reverse
+
     raw = [e for e in (events_json or {}).get("events", []) if isinstance(e, dict)]
     parsed = []
     for e in raw:
@@ -406,18 +500,157 @@ def history_rows(events_json, lang: str) -> list[dict]:
     rows = []
     for (e, start, peak, end), goes_class in zip(parsed, classes, strict=True):
         n_frames = e.get("n_alert_frames")
+        event_id = e.get("event_id")
+        has_replay = e.get("replay") is True and isinstance(event_id, int) and not isinstance(event_id, bool) \
+            and 1 <= event_id <= 999_999_999
         rows.append({
-            "start": fmt_ut(start, lang),
-            "peak": fmt_ut(peak, lang, date=peak is not None and peak.date() != start.date()) if peak else "—",
-            "end": fmt_ut(end, lang, date=end is not None and end.date() != start.date()) if end else "—",
+            "event_id": event_id if has_replay else None,
+            "start": time_html(start, lang),
+            "peak": time_html(peak, lang, date=peak.date() != start.date()) if peak else "—",
+            "end": time_html(end, lang, date=end.date() != start.date()) if end else "—",
             "open": e.get("closed") is False,
             "p_max": fmt_prob(e.get("p_max"), lang),
             "n_frames": n_frames if isinstance(n_frames, int) else "—",
             "location": fmt_location(e.get("location"), lang) or "—",
             "goes_class": goes_class or "—",
             "gradcam": public_gradcam(e.get("gradcam")),
+            "replay": reverse("web:flare_replay_json", args=[event_id]) if has_replay else None,
+            "replay_xray": reverse("web:flare_replay_xray_json", args=[event_id]) if has_replay else None,
         })
     return rows
+
+
+# --- the frame player's data (datos/bucle.json, datos/repeticion-<id>.json) -----------
+
+LOOP_DEFAULT_HOURS = 6
+REPLAY_STATES = frozenset(STATE_LABELS)
+
+
+def _unix(value) -> int | None:
+    when = parse_time(value)
+    return int(when.timestamp()) if when is not None else None
+
+
+def loop_payload(channel: str, hours: int) -> dict:
+    """The last `hours` of one pre-rendered channel, oldest first, for the
+    player: {"channel", "hours", "frames": [{"t", "obs", "p", "state",
+    "url"}], "unavailable"}. `t` is the slot and `obs` the 171 Å T_OBS (UNIX
+    seconds, `obs` null without a result row); `url` is the public nginx
+    path, never the service's (a frame whose `url` isn't the documented
+    /api/render/<ISO>/<channel>.webp is dropped)."""
+    data = service_json("loop", channel=channel, hours=hours)
+    out = {"channel": channel, "hours": hours, "frames": [], "unavailable": data is None}
+    if data is None:
+        return out
+    seen = set()
+    for f in data.get("frames", []):
+        if not isinstance(f, dict):
+            continue
+        url = public_render(f.get("url"), channel)
+        t = _unix(f.get("slot"))
+        if url is None or t is None or t in seen:
+            continue
+        seen.add(t)
+        state = f.get("state")
+        out["frames"].append({"t": t, "obs": _unix(f.get("t_obs")), "p": _number(f.get("probability")),
+                              "state": state if state in REPLAY_STATES else None, "url": url})
+    out["frames"].sort(key=lambda f: f["t"])
+    return out
+
+
+def replay_payload(event_id: int, threshold: float) -> dict:
+    """One event's replay (flare-nrt `replay.json`, schema flare-nrt-replay/1)
+    for the player: every frame with its 171 Å image and, at or above the
+    threshold, its Grad-CAM heat map (public nginx paths); the event's
+    start, peak and end; whether it is complete, with the service's note
+    and missing counts when it isn't."""
+    data = service_json("replay", event_id=event_id)
+    out = {"event_id": event_id, "frames": [], "marks": {}, "threshold": threshold, "complete": True,
+           "note": None, "missing": {"171": 0, "gradcam-heat": 0}, "n_slots": None, "window": None,
+           "unavailable": data is None}
+    if data is None:
+        return out
+    for f in data.get("frames", []):
+        if not isinstance(f, dict):
+            continue
+        slot = f.get("slot")
+        images = f.get("images") if isinstance(f.get("images"), list) else []
+        t = _unix(slot)
+        if t is None or not isinstance(slot, str) or not ISO_SLOT_RE.match(slot) or "171" not in images:
+            continue
+        p = _number(f.get("probability"))
+        heat = p is not None and p >= threshold and "gradcam-heat" in images
+        state = f.get("state")
+        out["frames"].append({
+            "t": t, "obs": _unix(f.get("t_obs")), "p": p, "state": state if state in REPLAY_STATES else None,
+            "url": replay_frame_url(event_id, slot, "171"),
+            "heat": replay_frame_url(event_id, slot, "gradcam-heat") if heat else None,
+        })
+    out["frames"].sort(key=lambda f: f["t"])
+    event = data.get("event") if isinstance(data.get("event"), dict) else {}
+    out["marks"] = {k: _unix(event.get(src)) for k, src in (("start", "t_start"), ("peak", "t_peak"),
+                                                           ("end", "t_end"))}
+    window = data.get("window") if isinstance(data.get("window"), dict) else {}
+    start, end = _unix(window.get("start")), _unix(window.get("end"))
+    out["window"] = [start, end] if start is not None and end is not None and start < end else None
+    out["complete"] = data.get("complete") is not False
+    missing = data.get("missing") if isinstance(data.get("missing"), dict) else {}
+    for name in ("171", "gradcam-heat"):
+        out["missing"][name] = len(missing[name]) if isinstance(missing.get(name), list) else 0
+    n_slots = data.get("n_slots")
+    out["n_slots"] = n_slots if isinstance(n_slots, int) and not isinstance(n_slots, bool) else None
+    note = data.get("note")
+    if not out["complete"] and isinstance(note, str):
+        out["note"] = note[:600]
+    return out
+
+
+REPLAY_XRAY_MARGIN = dt.timedelta(minutes=0)
+REPLAY_XRAY_MAX = dt.timedelta(hours=12)
+
+
+def replay_xray(event_id: int) -> dict:
+    """GOES 0.1–0.8 nm from the portal's own store over the replay's window,
+    in serie.json's contract (web/series.py), for the chart under the
+    player. Empty lists when the replay or its window is unknown."""
+    from . import series
+
+    data = replay_payload(event_id, DEFAULT_THRESHOLD)
+    if not data["window"]:
+        return series.empty_series(XRAY_PRODUCT_ID)
+    start = dt.datetime.fromtimestamp(data["window"][0], dt.UTC)
+    end = min(dt.datetime.fromtimestamp(data["window"][1], dt.UTC), start + REPLAY_XRAY_MAX)
+    return series.window_series(XRAY_PRODUCT_ID, start, end)
+
+
+# --- the home page's "El Sol ahora" (D-104) -------------------------------------------
+
+SUN_NOW_MAX_AGE = dt.timedelta(days=3)  # the service keeps 4 days of FITS
+SUN_NOW_THUMBS = ("131", "304", "1600")
+
+
+def sun_now_context(lang: str, now: dt.datetime | None = None) -> dict | None:
+    """The latest stored result's images for the home page, from the product
+    store only (the home page never waits on the service): the 171 Å image
+    at 1024 px and 512 px thumbnails of the other three, all for that
+    result's slot. None (the block is not rendered) without a version-2
+    result in the last 3 days."""
+    now = now or timezone.now()
+    event = _latest_event()
+    slot = _event_slot(event)
+    if slot is None or now - event.valid_from > SUN_NOW_MAX_AGE:
+        return None
+
+    def channel(wave):
+        return {"wave": wave, "large": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
+                "thumb": image_url(wave, "img", slot, fmt="webp", size=512)}
+
+    return {
+        "main": channel(DEFAULT_WAVE),
+        "thumbs": [channel(w) for w in SUN_NOW_THUMBS],
+        "observed": time_html(event.valid_from, lang),
+        "age": fmt_age(event.valid_from, now),
+    }
 
 
 # --- the probability series for the timeline (datos/probabilidad.json) --------------
@@ -508,8 +741,13 @@ def timeline_panels(lang: str, endpoint: str, xray_endpoint: str) -> list[dict]:
             "kind": "line", "y": "linear",
             "series": [{"field": "probability", "label": "Probability" if en else "Probabilidad",
                         "color": charts.SLOT_COLOR_VARS[1]}],
-            "zero_line": False, "ref_lines": [{"value": None, "label": gettext("umbral") + " {v}"}], "log_bands": [],
+            # D-102: the whole 0–1 axis, labelled at 0 and 1 too, and the
+            # threshold line labelled at its left end (the newest data,
+            # at the right, never covers it).
+            "zero_line": False, "ref_lines": [{"value": None, "label": gettext("umbral") + " {v}",
+                                               "position": "insideStartTop"}], "log_bands": [],
             "show_source": False, "kp_bucket": False, "envelope": False, "y_range": [0, 1], "anchor": "now",
+            "y_interval": 0.2, "edge_labels": True,
             "caption": ("probability: one per AIA image (2 min)" if en
                         else "probabilidad: una por imagen AIA (2 min)"),
             "daily": False, "spans": True, "readout_decimals": 2,
@@ -529,19 +767,26 @@ def timeline_panels(lang: str, endpoint: str, xray_endpoint: str) -> list[dict]:
     ]
 
 
+def replay_xray_panels(lang: str) -> list[dict]:
+    """The replay player's X-ray chart: the timeline's GOES panel on its own,
+    without an endpoint (the player sets `datos/rayosx-<id>.json` per event)."""
+    panel = dict(timeline_panels(lang, "", "")[1])
+    panel.update(caption=None, caption_prefix=None, anchor="window", endpoint="")
+    return [panel]
+
+
 def page_context(lang: str) -> dict:
     now = timezone.now()
     event = _latest_event()
-    # In parallel: a dead or slow service costs one 2 s timeout, not two.
-    # (Neither call touches the database, only the per-process cache.)
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        events_future = pool.submit(service_json, "events", days=30)
-        frames_future = pool.submit(service_json, "frames", hours=1)
-        events_json, frames = events_future.result(), frames_future.result()
+    # One service call: the alert history, which also decides the Grad-CAM
+    # section. The header and the images come from the product store.
+    events_json = service_json("events", days=30)
     return {
         "header": header_context(event, lang, now),
-        "images": images_context(event, frames, lang),
+        "images": images_context(event, lang),
+        "gradcam": gradcam_context(events_json, stored_threshold(event), lang),
         "history": history_rows(events_json, lang),
         "history_available": events_json is not None,
-        "service_available": events_json is not None or frames is not None,
+        "service_available": events_json is not None,
+        "loop_url": None,  # filled by the view (reverse)
     }

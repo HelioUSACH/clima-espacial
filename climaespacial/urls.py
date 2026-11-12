@@ -18,7 +18,9 @@ if settings.DEBUG:
     # production nginx answers these paths and Django never sees them.
     from web.views import flare_media_dev
 
-    urlpatterns.append(re_path(r"^productos/usach\.flare\.nrt/(?P<path>(?:img|gradcam)/[^/]+)$", flare_media_dev))
+    urlpatterns.append(re_path(
+        r"^productos/usach\.flare\.nrt/(?P<path>(?:img|gradcam)/[^/]+|render/[^/]+/[^/]+|replay/\d+/[^/]+/[^/]+)$",
+        flare_media_dev))
 
 urlpatterns += i18n_patterns(
     path("", include("web.urls")),
