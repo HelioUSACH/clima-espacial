@@ -621,7 +621,12 @@ def flare_replay_xray_json(request, event_id):
     cache_key = f"swx:flare-replay-xray:v1:{event_id}"
     body = cache.get(cache_key)
     if body is None:
-        body = json.dumps(flare.replay_xray(event_id), separators=(",", ":"))
+        data = flare.replay_xray(event_id)
+        body = json.dumps(data, separators=(",", ":"))
+        if not data["time"]:
+            # The window wasn't known (service busy or down) or nothing is
+            # stored there: not worth keeping, and not for 5 minutes.
+            return _json_response(body, flare.CACHE_SECONDS)
         cache.set(cache_key, body, REPLAY_CACHE_SECONDS)
     return _json_response(body, REPLAY_CACHE_SECONDS)
 

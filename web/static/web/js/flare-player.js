@@ -23,6 +23,7 @@
 
   var MAX_IN_FLIGHT = 4;
   var RETRY_MS = 800;
+  var RETRY_LIST_MS = 1500;
   var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   function fill(template, values) {
@@ -180,6 +181,22 @@
     if (this.progressText) this.progressText.textContent = fill(this.i18n.loading, { n: done, total: total });
   };
 
+  // The frame list. "unavailable" can also mean another request was reading
+  // the same thing from the service at that instant (the portal never makes
+  // a request wait for another, D-100): ask once more, 1.5 s later.
+  function fetchList(url, token, retried) {
+    var bust = retried ? (url.indexOf("?") < 0 ? "?" : "&") + "retry=1" : "";
+    return fetch(url + bust, { headers: { Accept: "application/json" } })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        if (data && data.unavailable && !retried && !token.cancelled) {
+          return new Promise(function (resolve) { setTimeout(resolve, RETRY_LIST_MS); })
+            .then(function () { return fetchList(url, token, true); });
+        }
+        return data;
+      });
+  }
+
   Player.prototype.load = function (url) {
     var self = this;
     if (!url) return Promise.resolve();
@@ -190,8 +207,7 @@
     if (this.progressEl) this.progressEl.hidden = false;
     this.progress(0, 0);
     this.root.setAttribute("aria-busy", "true");
-    return fetch(url, { headers: { Accept: "application/json" } })
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    return fetchList(url, token, false)
       .then(function (data) {
         if (token.cancelled) return null;
         self.data = data;

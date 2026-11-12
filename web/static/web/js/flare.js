@@ -138,6 +138,7 @@
     var chartRoot = section.querySelector("[data-mount-later]");
     var i18n = JSON.parse(document.getElementById("fp-i18n").textContent);
     var stack = null;
+    var pendingXray = null;
 
     page.querySelectorAll("[data-replay]").forEach(function (btn) {
       btn.hidden = false;
@@ -149,8 +150,13 @@
         note.hidden = true;
         note.textContent = "";
         p.onFrame = function (f) { if (window.swxCharts && stack) window.swxCharts.cursor(stack, f.t); };
+        // The X-ray chart is mounted once the replay's own data is in: both
+        // need the service's replay.json server-side, and a request that
+        // arrives while another fetches it gets nothing rather than a wait
+        // (D-100).
+        pendingXray = btn.dataset.replayXray;
+        stack = null;
         p.load(btn.dataset.replay);
-        if (window.swxCharts) stack = window.swxCharts.mount(chartRoot, btn.dataset.replayXray);
         section.focus({ preventScroll: true });
         section.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
       });
@@ -159,6 +165,11 @@
     section.addEventListener("swx:player-data", function (ev) {
       var d = ev.detail || {};
       if (d.unavailable) { note.textContent = i18n.unavailable; note.hidden = false; return; }
+      note.hidden = true;
+      if (pendingXray && window.swxCharts) {
+        stack = window.swxCharts.mount(chartRoot, pendingXray);
+        pendingXray = null;
+      }
       if (d.complete === false) {
         note.textContent = fill(i18n.incomplete, { n171: d.missing["171"], slots: d.n_slots != null ? d.n_slots : "—",
                                                    ncam: d.missing["gradcam-heat"] });

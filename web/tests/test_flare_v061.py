@@ -332,3 +332,16 @@ def test_times_are_time_elements_site_wide(client, service, public):
     # The status page used to print the server's own zone (America/Santiago) unlabelled.
     status = client.get("/estado/").content.decode()
     assert " UT</time>" in status
+
+
+@pytest.mark.django_db
+def test_replay_xray_empty_is_not_cached_long(client, service):
+    service.down = True
+    response = client.get(f"{MEDIA}/datos/rayosx-3.json")
+    assert response.json()["time"] == [] and response["Cache-Control"] == "public, max-age=30"
+    service.down = False
+    flare.cache.clear()
+    swxkit.publish_timeseries("noaa.goes.xray", [{"time_tag": service.end - dt.timedelta(hours=5), "energy": "0.1-0.8nm",
+                                                  "flux": 1e-6, "satellite": 18}])
+    response = client.get(f"{MEDIA}/datos/rayosx-3.json")
+    assert response.json()["time"] and response["Cache-Control"] == "public, max-age=300"
