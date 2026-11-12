@@ -230,12 +230,15 @@ a.natl:hover { background: var(--accent); color: var(--accent-ink); }
 .menu-toggle { display: none; }
 /* UT / hora local (D-105), shown by localtime.js. */
 .tz-switch { padding: 2px; flex-shrink: 0; }
-.tz-switch button { padding: 4px 9px; font-size: 12px; white-space: nowrap; }
-/* Two copies: in the header's tools on wide screens, in the menu on narrow
- * ones (the header bar has no room left there). */
+.tz-switch button { padding: 3px 9px; font-size: 11.5px; white-space: nowrap; }
+/* Two copies: at the status strip's right end on wide screens, in the menu
+ * on narrow ones. */
+.strip .tz-switch { margin-left: auto; border-color: rgba(255, 255, 255, .18); }
+.strip .tz-switch button { color: var(--space-soft); font-family: var(--font-ui); }
+.strip .tz-switch button.on { background: var(--space-ink); color: var(--space); }
 .nav .tz-switch { display: none !important; }
 @media (max-width: 900px) {
-  .tools .tz-switch { display: none !important; }
+  .strip .tz-switch { display: none !important; }
   .nav .tz-switch:not([hidden]) { display: inline-flex !important; align-self: flex-start; margin: .75rem 0 .25rem; }
 }
 

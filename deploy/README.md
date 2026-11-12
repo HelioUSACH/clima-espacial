@@ -192,7 +192,7 @@ unset, log in as staff (`/clima-espacial/gestion/`), then open both the flare
 page and the **home page**: the home page's "El Sol ahora" block is behind
 the same switch, so you review them together. The times on every page now
 show local time next to UT (anyone, switch or not); the "UT / hora local"
-switch in the header picks which comes first. When both look right, set
+switch (status strip, or the menu on a phone) picks which comes first. When both look right, set
 `SWX_FLARE_PAGE_PUBLIC=1` in `/etc/swx/swx.env` and
 `sudo systemctl restart swx-web`.
 
