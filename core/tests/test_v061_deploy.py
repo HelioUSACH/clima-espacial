@@ -12,7 +12,8 @@ from core.tests.test_v060_deploy import HTTP, SNIPPET, _code, _locations
 DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 ISO = r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)"
 RENDER = rf'~ "^/clima-espacial/productos/usach\.flare\.nrt/render/{ISO}/(171|171-diff|gradcam-heat)\.webp$"'
-REPLAY = rf'~ "^/clima-espacial/productos/usach\.flare\.nrt/replay/(\d{{1,9}})/{ISO}/(171|gradcam-heat)\.webp$"'
+# 131 Å joined the replay frames in v0.6.2 (flare-nrt 1.2.0, D-107).
+REPLAY = rf'~ "^/clima-espacial/productos/usach\.flare\.nrt/replay/(\d{{1,9}})/{ISO}/(131|171|gradcam-heat)\.webp$"'
 IMG = r"~ ^/clima-espacial/productos/usach\.flare\.nrt/img/(131|171|304|1600)\.png$"
 
 

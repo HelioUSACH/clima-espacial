@@ -18,7 +18,7 @@
   <div class="offer">
     <div class="eyebrow">{% trans "Lo que ofrece USACH" %}</div>
     {% for card in offer_cards %}
-    <article class="ocard">
+    <article class="ocard{% if card.url %} has-link{% endif %}">
       <h3>{% if card.url %}<a href="{{ card.url }}">{{ card.title }}</a>{% else %}{{ card.title }}{% endif %} <span class="pill{% if card.pill_class %} {{ card.pill_class }}{% endif %}">{{ card.pill }}</span></h3>
       <p>{{ card.text }}</p>
     </article>
@@ -29,27 +29,29 @@
 
 {% if sun_now %}
 {% comment %}
-"El Sol ahora" (D-104): the latest stored result's 171 Å image at 1024 px
-(the only image loaded with the page; thumbnails are lazy), from nginx's
-cache, behind the flare page's preview switch (D-099). flare.js hides the
-block if the image can't be had; the 6-h loop loads only when asked.
+"El Sol ahora" (D-104, D-106): the latest stored result's selected channel
+at 1024 px (171 Å; the only image loaded with the page) and four lazy
+thumbnails in a fixed order, the selected one highlighted; a click never
+reorders them. From nginx's cache, behind the flare page's preview switch
+(D-099). flare.js hides the block if the image can't be had; the 6-h loop
+loads only when asked.
 {% endcomment %}
 {{ player_i18n|json_script:"fp-i18n" }}
 <section class="sunband" aria-labelledby="sun-h" data-sun-now>
   <div class="wrap sun-now">
     <figure class="sun-fig">
       <div class="flare-frame sun-frame" id="sun-frame">
-        <img data-sun-main data-wave="{{ sun_now.main.wave }}" data-thumb="{{ sun_now.main.thumb }}" src="{{ sun_now.main.large }}" width="1024" height="1024" decoding="async" fetchpriority="high" alt="SDO/AIA {{ sun_now.main.wave }} Å">
+        <img data-sun-main data-wave="{{ sun_now.main.wave }}" src="{{ sun_now.main.large }}" width="1024" height="1024" decoding="async" fetchpriority="high" alt="SDO/AIA {{ sun_now.main.wave }} Å">
       </div>
     </figure>
     <div class="sun-side">
       <div class="eyebrow">{% trans "En vivo" %}</div>
       <h2 id="sun-h">{% trans "El Sol ahora" %}</h2>
       <p class="sun-when"><b data-sun-wave>{{ sun_now.main.wave }} Å</b> · {% blocktrans with when=sun_now.observed age=sun_now.age %}imagen de {{ when }} · {{ age }}{% endblocktrans %}</p>
-      <div class="sun-thumbs">
+      <div class="sun-thumbs" role="group" aria-label="{% trans 'Canal' %}">
         {% for t in sun_now.thumbs %}
-        <button type="button" class="sun-thumb" data-sun-thumb data-wave="{{ t.wave }}" data-large="{{ t.large }}" data-label="{% blocktrans with wave="%s" %}Ver {{ wave }} Å en grande{% endblocktrans %}" aria-label="{% blocktrans with wave=t.wave %}Ver {{ wave }} Å en grande{% endblocktrans %}">
-          <img src="{{ t.thumb }}" width="512" height="512" loading="lazy" decoding="async" alt="SDO/AIA {{ t.wave }} Å"><span>{{ t.wave }} Å</span>
+        <button type="button" class="sun-thumb{% if t.selected %} on{% endif %}" data-sun-thumb data-wave="{{ t.wave }}" data-large="{{ t.large }}" aria-pressed="{% if t.selected %}true{% else %}false{% endif %}" aria-label="{% blocktrans with wave=t.wave %}Ver {{ wave }} Å en grande{% endblocktrans %}">
+          <img src="{{ t.thumb }}" width="512" height="512" loading="lazy" decoding="async" alt=""><span>{{ t.wave }} Å</span>
         </button>
         {% endfor %}
       </div>

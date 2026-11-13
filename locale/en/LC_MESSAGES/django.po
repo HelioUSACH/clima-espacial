@@ -1185,3 +1185,64 @@ msgstr "Incomplete replay: %(n171)s of %(slots)s 171 Å images and %(ncam)s Grad
 
 msgid "La repetición no está disponible en este momento."
 msgstr "The replay is not available right now."
+
+# v0.6.2 (D-106..D-110)
+#, python-format
+msgid "Ver la diferencia de %(wave)s Å en grande"
+msgstr "View the %(wave)s Å difference full size"
+
+msgid "SDO/AIA (NASA), norte arriba. Arriba cada canal; abajo su «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo. Toque una imagen para verla en grande."
+msgstr "SDO/AIA (NASA), north up. Top row: each channel; bottom row: its “difference”, the current image minus the mean of those from 8 to 12 minutes earlier, which is what the model looks at. Tap an image to see it full size."
+
+msgid "Las últimas 6 h (171 Å)"
+msgstr "The last 6 h (171 Å)"
+
+msgid "Eventos"
+msgstr "Events"
+
+msgid "Evento"
+msgstr "Event"
+
+msgid "Alertas de los últimos 30 días. Un evento agrupa las alertas separadas por menos de 10 minutos. Clase GOES: el máximo del flujo 0,1–0,8 nm que guarda el portal entre el inicio y 10 minutos después del fin."
+msgstr "Alerts in the last 30 days. An event groups alerts less than 10 minutes apart. GOES class: the maximum 0.1–0.8 nm flux stored by the portal between the start and 10 minutes after the end."
+
+msgid "Elija una fila para ver el evento."
+msgstr "Choose a row to see the event."
+
+msgid "Alertas de los últimos 30 días; la fila elegida se muestra debajo de la tabla."
+msgstr "Alerts in the last 30 days; the chosen row is shown below the table."
+
+msgid "Probabilidad máxima"
+msgstr "Maximum probability"
+
+msgid "P máx."
+msgstr "P max."
+
+msgid "Imág."
+msgstr "Img."
+
+#, python-format
+msgid "Evento del %(when)s"
+msgstr "Event of %(when)s"
+
+msgid "Cerrar repetición"
+msgstr "Close replay"
+
+msgid "máx."
+msgstr "max."
+
+msgid "Sin mapa Grad-CAM para este evento."
+msgstr "No Grad-CAM map for this event."
+
+msgid "Probabilidad máx."
+msgstr "Max. probability"
+
+msgid "Grad-CAM marca las zonas de la imagen de 131 Å que más pesaron en la probabilidad de la red, en la imagen de mayor probabilidad del evento. Los colores son relativos al máximo del propio mapa, no una probabilidad. Es una grilla gruesa (16 px), por eso solo se muestra para una imagen en alerta."
+msgstr "Grad-CAM marks the parts of the 131 Å image that weighed most in the network's probability, in the event's highest-probability image. The colours are relative to the map's own maximum, not a probability. It is a coarse grid (16 px), which is why it is only shown for an image in alert."
+
+#, python-format
+msgid "cargando %(n)s/%(total)s"
+msgstr "loading %(n)s/%(total)s"
+
+msgid "cargando…"
+msgstr "loading…"

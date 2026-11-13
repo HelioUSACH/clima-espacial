@@ -118,6 +118,8 @@ def _latest_row(product_id, energy=None):
 # (so far only the flare detector, once its collector has run once);
 # everything else is the mockup's own static copy — dB/dt has no product
 # yet (it's a future model) and the data/API offer is never a product.
+# A card with a URL is clickable as a whole (D-109): the flare detector's
+# (its product page, once the product exists) and the data/API one.
 def _offer_cards(lang):
     flare = Product.objects.filter(id=FLARE_PRODUCT_ID).first()
     flare_pill = flare.get_maturity_display() if flare else gettext("beta")
@@ -126,6 +128,7 @@ def _offer_cards(lang):
             "pill": flare_pill, "pill_class": "beta",
             "title": gettext("Detección de fulguraciones (NRT)"),
             "text": gettext("Detección automática de fulguraciones solares en tiempo casi real a partir de imágenes del Sol de SDO/AIA."),
+            "url": reverse("web:product_detail", args=[FLARE_PRODUCT_ID]) if flare else None,
         },
         {
             "pill": gettext("en desarrollo"), "pill_class": "",
@@ -181,12 +184,13 @@ def _player_i18n():
     return {
         "play": gettext("Reproducir"),
         "pause": gettext("Pausa"),
-        "loading": gettext("Cargando %(n)s de %(total)s imágenes"),
+        "loading": gettext("cargando %(n)s/%(total)s"),
         "empty": gettext("No hay imágenes para este período."),
         "error": gettext("No se pudieron cargar las imágenes del detector."),
         "probability": gettext("prob."),
         "frame_of": gettext("imagen %(i)s de %(n)s"),
         "missing_frame": gettext("imagen no disponible"),
+        "pending_frame": gettext("cargando…"),
         "states": {key: (en if get_language() == "en" else es) for key, (es, en) in flare.STATE_LABELS.items()},
         "marks": {"start": gettext("inicio"), "peak": gettext("máximo"), "end": gettext("fin")},
         "replay_title": gettext("Repetición de la alerta del %(when)s"),
@@ -528,7 +532,7 @@ def _flare_page(request, product, context, lang):
     stack_id = _dom_id(product.id)
     endpoint = reverse("web:flare_datos_json", args=["probabilidad"])
     xray_endpoint = reverse("web:product_series_json", args=[flare.XRAY_PRODUCT_ID])
-    context.update(flare.page_context(lang))
+    context.update(flare.page_context(lang, flare.parse_event_param(request.GET.get("evento"))))
     context.update({
         "loop_url": reverse("web:flare_datos_json", args=["bucle"]),
         "player_i18n": _player_i18n(),
@@ -546,7 +550,7 @@ def _flare_page(request, product, context, lang):
         "default_range": flare.DEFAULT_RANGE,
         "description": product.description(lang),
         "facts": _facts_list(product, lang),
-        "model_card_url": "https://github.com/HelioUSACH/flare-nrt/blob/v1.1.0/docs/model-card.md",
+        "model_card_url": "https://github.com/HelioUSACH/flare-nrt/blob/v1.2.0/docs/model-card.md",
         "preview": not settings.SWX_FLARE_PAGE_PUBLIC,
     })
     response = render(request, "web/product_detail_flare.html", context)
@@ -639,7 +643,7 @@ _DEV_MEDIA = (
      ("style", "format")),
     (re.compile(r"render/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)/(171|171-diff|gradcam-heat)\.webp"),
      "/api/render/{0}/{1}.webp", ()),
-    (re.compile(r"replay/(\d{1,9})/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)/(171|gradcam-heat)\.webp"),
+    (re.compile(r"replay/(\d{1,9})/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)/(131|171|gradcam-heat)\.webp"),
      "/api/events/{0}/frames/{1}/{2}.webp", ()),
 )
 

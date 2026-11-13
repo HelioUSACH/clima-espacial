@@ -154,72 +154,17 @@ def _order(html, markers):
     return positions == sorted(positions)
 
 
-@pytest.mark.django_db
-def test_layout_order(client, service, public):
-    _publish_v2()
-    html = client.get(PAGE).content.decode()
-    assert _order(html, ['id="flare-img-h"', 'id="flare-cam-h"', 'class="card swx-stack', 'id="flare-hist-h"',
-                         "Qué muestra", "Ficha del producto"])
-    assert 'id="flare-main-frame"' in html and 'data-player data-target="flare-main-frame"' in html
-    assert 'class="card swx-stack readout-below"' in html
-    # The loop loads nothing by itself: its URL is only a data attribute.
-    assert "/render/" not in html
-
-
-@pytest.mark.django_db
-def test_gradcam_last_event(client, service, public):
-    _publish_v2()
-    html = client.get(PAGE).content.decode()
-    peak = service.end - dt.timedelta(hours=5) + dt.timedelta(minutes=4)
-    cam = html.split('id="flare-cam-h"')[1].split('id="flare-time-h"')[0]
-    assert f'Última alerta: <time datetime="{_iso(peak)}"' in cam
-    assert f"{MEDIA}/gradcam/{_iso(peak)}.png?style=heat&amp;format=webp" in cam
-    assert f"{MEDIA}/img/131.png?kind=img&amp;slot={_iso(peak)}&amp;format=webp" in cam
-    assert "0,91" in cam and "cam-bar" in cam and "no una probabilidad" in cam
-
-
-@pytest.mark.django_db
-def test_gradcam_open_event(client, service, public):
-    end = service.end
-    service.payloads["/api/events"]["events"].append(
-        {"event_id": 4, "t_start": _iso(end - dt.timedelta(minutes=6)), "t_pmax": _iso(end - dt.timedelta(minutes=2)),
-         "t_end": _iso(end), "p_max": 0.93, "closed": False, "gradcam": None, "replay": False})
-    _publish_v2(probability=0.93, alert=True, state="active", flare_detected=True)
-    cam = client.get(PAGE).content.decode().split('id="flare-cam-h"')[1].split('id="flare-time-h"')[0]
-    assert "Alerta en curso: imagen de mayor probabilidad" in cam
-    assert f"/gradcam/{_iso(end - dt.timedelta(minutes=2))}.png?style=heat" in cam
-
-
-@pytest.mark.django_db
-def test_gradcam_no_event_and_never_a_quiet_frame(client, service, public):
-    _publish_v2()
-    service.payloads["/api/events"] = {"events": []}
-    cam = client.get(PAGE).content.decode().split('id="flare-cam-h"')[1].split('id="flare-time-h"')[0]
-    assert "Sin alertas recientes: el mapa se muestra durante una alerta." in cam and "gradcam/" not in cam
-    # An "event" whose peak is below the threshold never gets a heat map.
-    quiet = {"events": [{"event_id": 5, "t_start": _iso(service.end), "t_pmax": _iso(service.end), "p_max": 0.4,
-                         "closed": True, "gradcam": f"/api/gradcam/{_iso(service.end)}.png"}]}
-    assert flare.gradcam_context(quiet, 0.8, "es")["mode"] == "none"
-    assert flare.gradcam_context(None, 0.8, "es")["mode"] == "unavailable"
-
-
-@pytest.mark.django_db
-def test_replay_button_only_with_replay(client, service, public):
-    _publish_v2()
-    html = client.get(PAGE).content.decode()
-    rows = html.split('<tbody>')[1].split('</tbody>')[0].split("<tr>")[1:]
-    assert len(rows) == 2
-    assert f'data-replay="{MEDIA}/datos/repeticion-3.json"' in rows[0]
-    assert f'data-replay-xray="{MEDIA}/datos/rayosx-3.json"' in rows[0]
-    assert "data-replay=" not in rows[1]  # replay: false
-    assert 'id="flare-replay"' in html
+# The page's layout, "Qué miró el modelo" and the replay buttons were
+# redesigned in v0.6.2 (D-106..D-108): web/tests/test_flare_v062.py tests
+# them. What stays from D-102 (an alert frame only, never a map below the
+# threshold, the open event's peak) is tested there too.
 
 
 @pytest.mark.django_db
 def test_page_en(client, service, public):
     _publish_v2()
     html = client.get("/en" + PAGE).content.decode()
-    for text in ("What the model looked at", "Last alert:", "map maximum", "watch replay",
+    for text in ("Events", "Event of ", "max.", "watch replay",
                  "Play the last 6 h (171 Å)", "Probability and X-rays", "image of "):
         assert text in html, text
 
@@ -264,8 +209,8 @@ def test_home_block_content(client, service, public):
     main = block.split("data-sun-main")[1].split(">")[0]
     assert f'src="{MEDIA}/img/171.png?kind=img&amp;slot={slot}&amp;format=webp&amp;size=1024"' in main
     assert 'width="1024" height="1024"' in main and "lazy" not in main
-    assert block.count('loading="lazy"') == 3
-    for wave in ("131", "304", "1600"):
+    assert block.count('loading="lazy"') == 4  # v0.6.2: all four thumbnails, 171 included (D-106)
+    for wave in ("131", "171", "304", "1600"):
         assert f"/img/{wave}.png?kind=img&amp;slot={slot}&amp;format=webp&amp;size=512" in block
     assert "SDO/AIA (NASA)" in block and f'href="{PAGE}"' in block and f'<time datetime="{slot}"' in block
     assert "data-fp-start" in block and "/render/" not in block

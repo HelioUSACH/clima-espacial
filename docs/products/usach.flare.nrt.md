@@ -83,9 +83,12 @@ optimistic.
 
 The portal polls the service's `/api/status` every minute (`modules/flare/`,
 D-096, D-098) and stores each result once, at its AIA slot. The product page
-shows the probability against the threshold, the GOES X-ray flux for
-comparison, the AIA images and the Grad-CAM, and the alert history with the
-GOES class the portal measured during each event (D-099 to D-101).
+shows the latest AIA images (four channels and their differences), the
+last 6 h as a loop, the probability against the threshold with the GOES
+X-ray flux for comparison, and the events of the last 30 days with the GOES
+class the portal measured during each; choosing one shows its Grad-CAM over
+131 Å at its peak and its replay, and gives it a link (`?evento=<id>`)
+(D-099 to D-110).
 
 ## Maintainers / links
 

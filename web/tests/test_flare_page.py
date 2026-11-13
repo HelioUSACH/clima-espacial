@@ -204,9 +204,12 @@ def test_history_class_window_reaches_10_min_after_end(service):
         {"time_tag": end + dt.timedelta(minutes=9), "energy": "0.1-0.8nm", "flux": 1.2e-6, "satellite": 18}])
     rows = flare.history_rows(flare.service_json("events", days=30), "es")
     assert [r["goes_class"] for r in rows] == ["C1.2", "—"]  # newest first
-    assert rows[0]["p_max"] == "0,91" and rows[0]["n_frames"] == 5 and rows[0]["location"] == "(−412″, 269″)"
-    assert rows[0]["gradcam"].startswith("/productos/usach.flare.nrt/gradcam/") and rows[0]["gradcam"].endswith("Z.png")
-    assert rows[1]["gradcam"] is None  # anything but the service's own /api/gradcam/<ISO>.png is dropped
+    # v0.6.2 (D-108): no parentheses in a table cell.
+    assert rows[0]["p_max"] == "0,91" and rows[0]["n_frames"] == 5 and rows[0]["location"] == "−412″, 269″"
+    assert rows[0]["heat"].startswith("/productos/usach.flare.nrt/gradcam/") and "Z.png?style=heat" in rows[0]["heat"]
+    # Anything but the service's own /api/gradcam/<ISO>.png is dropped (and
+    # this event has no t_pmax to fall back on).
+    assert rows[1]["heat"] is None and rows[1]["cam_mode"] == "none"
     assert rows[1]["peak"] == "—"
 
 
@@ -341,7 +344,7 @@ def test_page_en(client, service, public):
     assert "Decay" in html and "threshold" in html
     assert "image of " in html and " min ago" in html
     assert "Alerts in the last 30 days" in html and "Product fact sheet" in html
-    assert "What the model looked at" in html
+    assert "Events" in html and "Choose a row to see the event." in html
     assert "0.05" in html
     # "72 %" in a {% trans %} literal is looked up as "72 %%" (Django doubles it).
     assert "It is a beta product." in html and "98 %" in html and "Es un producto" not in html
@@ -390,8 +393,8 @@ def test_version_1_event_still_renders(client, service, public):
     assert "0,09" in html and "resultado de " in html
     assert "umbral" not in html.split('class="now"')[1].split("</div>")[1]  # no threshold in the headline
     assert "flare-state" not in html  # no state badge without a state
-    main = html.split("data-flare-main", 1)[1].split(">", 1)[0]
-    assert 'src="/productos/usach.flare.nrt/img/171.png?kind=img&amp;format=webp&amp;size=1024"' in main  # latest
+    tile = html.split('data-tile data-wave="171" data-kind="img"', 1)[1].split("</figure>", 1)[0]
+    assert 'src="/productos/usach.flare.nrt/img/171.png?kind=img&amp;format=webp"' in tile  # latest
 
 
 @pytest.mark.django_db

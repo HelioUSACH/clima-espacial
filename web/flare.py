@@ -197,15 +197,17 @@ def _arcsec(value, lang: str) -> str:
     return fmt_number(value, lang, decimals=0) + "″"
 
 
-def fmt_location(location, lang: str) -> str:
-    """'(−412″, 269″)', helioprojective x (west +) and y (north +)."""
+def fmt_location(location, lang: str, *, parens: bool = True) -> str:
+    """'(−412″, 269″)', helioprojective x (west +) and y (north +); without
+    the parentheses in a table cell (D-108)."""
     if not isinstance(location, dict):
         return ""
     centroid = location.get("centroid_arcsec")
     if not (isinstance(centroid, list) and len(centroid) == 2
             and all(isinstance(v, (int, float)) for v in centroid)):
         return ""
-    return f"({_arcsec(centroid[0], lang)}, {_arcsec(centroid[1], lang)})"
+    text = f"{_arcsec(centroid[0], lang)}, {_arcsec(centroid[1], lang)}"
+    return f"({text})" if parens else text
 
 
 # --- state ----------------------------------------------------------------------
@@ -348,7 +350,8 @@ def public_render(service_path, channel: str) -> str | None:
 
 def replay_frame_url(event_id: int, slot: str, name: str) -> str:
     """One replay frame's public path (the service's
-    /api/events/<id>/frames/<ISO>/<name>.webp, through nginx)."""
+    /api/events/<id>/frames/<ISO>/<name>.webp, through nginx; name 171,
+    gradcam-heat, or 131 since flare-nrt 1.2.0)."""
     return f"{media_base()}/replay/{int(event_id)}/{slot}/{name}.webp"
 
 
@@ -411,9 +414,10 @@ def header_context(event, lang: str, now: dt.datetime) -> dict:
 
 def images_context(event, lang: str) -> dict:
     """The four channels of the latest stored result (its slot; the
-    service's latest for a version-1 event), each as a large image (1024 px
-    WebP) and a difference (512 px: the service makes no 1024 px
-    difference), with its T_OBS. 171 Å is shown first."""
+    service's latest for a version-1 event), for the grid of eight tiles
+    (D-106): each channel's image and difference at 512 px WebP, with its
+    T_OBS; the lightbox opens the image at 1024 px (the service makes no
+    1024 px difference, so a difference opens at 512)."""
     slot = _event_slot(event)
     inputs = (event.provenance or {}).get("inputs") or {} if event is not None else {}
     channels = []
@@ -421,12 +425,12 @@ def images_context(event, lang: str) -> dict:
         t_obs = parse_time(inputs.get(wave))
         channels.append({
             "wave": wave,
-            "img": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
+            "img": image_url(wave, "img", slot, fmt="webp"),
+            "img_large": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
             "diff": image_url(wave, "diff", slot, fmt="webp"),
             "t_obs": time_html(t_obs, lang, date=False, seconds=True) if t_obs else None,
         })
-    by_wave = {c["wave"]: c for c in channels}
-    return {"slot": slot, "channels": channels, "default": by_wave[DEFAULT_WAVE]}
+    return {"slot": slot, "channels": channels}
 
 
 def _gradcam_slot(event: dict) -> str | None:
@@ -441,52 +445,86 @@ def _gradcam_slot(event: dict) -> str | None:
     return iso_z(peak) if peak is not None else None
 
 
-def gradcam_context(events_json, threshold: float, lang: str) -> dict:
-    """"Qué miró el modelo" (D-102). Grad-CAM is coarse (a 16-px grid,
-    upsampled) and normalised to its own maximum, so a quiet frame's map
-    looks as bright as a flare's and means nothing: only an alert frame is
-    shown. During an open event, its peak frame; otherwise the last event's
-    peak ("Última alerta: …"); with no event in 30 days, nothing.
+def _event_id(e: dict) -> int | None:
+    value = e.get("event_id")
+    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 999_999_999:
+        return value
+    return None
 
-    mode: "unavailable" (service down) | "none" | "pending" (open event, no
-    map yet) | "open" | "last"."""
-    if events_json is None:
-        return {"mode": "unavailable"}
-    events = []
-    for e in events_json.get("events", []):
-        if isinstance(e, dict) and parse_time(e.get("t_start")) is not None:
-            events.append(e)
-    open_events = [e for e in events if e.get("closed") is False]
-    if open_events:
-        chosen, mode = max(open_events, key=lambda e: parse_time(e["t_start"])), "open"
+
+# flare-nrt keeps the FITS (and so /api/image for a past slot) 4 days; an
+# event replay keeps its own 131 Å frames 365 days (1.2.0).
+LIVE_IMAGE_DAYS = dt.timedelta(days=4)
+
+
+def _cell_time(when: dt.datetime | None, lang: str, *, date: bool = True) -> str:
+    """A table cell's time: UT on one line, local time on a second (D-108)."""
+    return time_html(when, lang, date=date, stacked=True) if when is not None else "—"
+
+
+def _event_view(e: dict, start, peak, end, goes_class, threshold: float, lang: str, now: dt.datetime) -> dict:
+    """One event as the table row and the panel show it (D-107)."""
+    from django.urls import reverse
+
+    event_id = _event_id(e)
+    has_replay = e.get("replay") is True and event_id is not None
+    n_frames = e.get("n_alert_frames")
+    p_max = _number(e.get("p_max"))
+    is_open = e.get("closed") is False
+    slot = _gradcam_slot(e)
+    if slot is not None and not ISO_SLOT_RE.match(slot):
+        slot = None
+    # "Qué miró el modelo" (D-102): never a map for a frame below the
+    # threshold; an open event may not have one yet.
+    if slot is None:
+        cam_mode = "pending" if is_open else "none"
+    elif p_max is not None and p_max < threshold:
+        cam_mode = "none"
     else:
-        closed = [e for e in events if e.get("closed") is not False]
-        if not closed:
-            return {"mode": "none"}
-        chosen = max(closed, key=lambda e: parse_time(e.get("t_pmax")) or parse_time(e["t_start"]))
-        mode = "last"
-    slot = _gradcam_slot(chosen)
-    p_max = _number(chosen.get("p_max"))
-    if slot is None or not ISO_SLOT_RE.match(slot):
-        return {"mode": "pending" if mode == "open" else "none"}
-    if p_max is not None and p_max < threshold:
-        return {"mode": "none"}  # never a heat map for a frame below the threshold
+        cam_mode = "map"
+    bases = []
+    if cam_mode == "map":
+        # The 131 Å image under the map: the live one while flare-nrt still
+        # has that slot's FITS, then the replay's own copy (flare-nrt 1.2.0);
+        # with neither, the map alone (it carries the limb). flare.js walks
+        # the list on error.
+        live = image_url("131", "img", slot, fmt="webp")
+        stored = replay_frame_url(event_id, slot, "131") if has_replay else None
+        recent = now - parse_time(slot) < LIVE_IMAGE_DAYS
+        bases = [u for u in ((live, stored) if recent else (stored,)) if u]
+    same_day_peak = peak is not None and peak.date() == start.date()
+    same_day_end = end is not None and end.date() == start.date()
     return {
-        "mode": mode,
-        "slot": slot,
-        "heat": gradcam_url(slot, style="heat", fmt="webp"),
-        "base": image_url("131", "img", slot, fmt="webp"),
-        "when": time_html(parse_time(slot), lang),
-        "probability": fmt_prob(p_max, lang),
+        "event_id": event_id,
+        "open": is_open,
+        "start": _cell_time(start, lang),
+        "peak": _cell_time(peak, lang, date=not same_day_peak) if peak else "—",
+        "end": _cell_time(end, lang, date=not same_day_end) if end else "—",
+        "start_full": time_html(start, lang),
+        "peak_full": time_html(peak, lang) if peak else "—",
+        "end_full": time_html(end, lang) if end else "—",
+        "p_max": fmt_prob(p_max, lang),
+        "n_frames": n_frames if isinstance(n_frames, int) and not isinstance(n_frames, bool) else "—",
+        "location": fmt_location(e.get("location"), lang, parens=False) or "—",
+        "goes_class": goes_class or "—",
+        "cam_mode": cam_mode,
+        "cam_slot": slot if cam_mode == "map" else None,
+        "cam_when": time_html(parse_time(slot), lang) if cam_mode == "map" else None,
+        "heat": gradcam_url(slot, style="heat", fmt="webp") if cam_mode == "map" else None,
+        "base": bases[0] if bases else None,
+        "base_fallback": bases[1] if len(bases) > 1 else None,
+        "replay": reverse("web:flare_replay_json", args=[event_id]) if has_replay else None,
+        "replay_xray": reverse("web:flare_replay_xray_json", args=[event_id]) if has_replay else None,
     }
 
 
-def history_rows(events_json, lang: str) -> list[dict]:
-    """flare-nrt's `/api/events` -> table rows, newest first, with the GOES
-    class the portal measured between t_start and t_end + 10 min, and the
-    replay's data URL when the service has one (`replay: true`, 1.1.0)."""
-    from django.urls import reverse
-
+def history_rows(events_json, lang: str, threshold: float = DEFAULT_THRESHOLD,
+                 now: dt.datetime | None = None) -> list[dict]:
+    """flare-nrt's `/api/events` -> one view per event, newest first, with
+    the GOES class the portal measured between t_start and t_end + 10 min,
+    the panel's Grad-CAM and 131 Å URLs and the replay's data URLs when the
+    service has one (`replay: true`, 1.1.0)."""
+    now = now or timezone.now()
     raw = [e for e in (events_json or {}).get("events", []) if isinstance(e, dict)]
     parsed = []
     for e in raw:
@@ -497,27 +535,34 @@ def history_rows(events_json, lang: str) -> list[dict]:
     parsed.sort(key=lambda item: item[1], reverse=True)
     windows = [(start, (end or start) + CLASS_WINDOW_AFTER) for _e, start, _p, end in parsed]
     classes = goes_classes(windows)
-    rows = []
-    for (e, start, peak, end), goes_class in zip(parsed, classes, strict=True):
-        n_frames = e.get("n_alert_frames")
-        event_id = e.get("event_id")
-        has_replay = e.get("replay") is True and isinstance(event_id, int) and not isinstance(event_id, bool) \
-            and 1 <= event_id <= 999_999_999
-        rows.append({
-            "event_id": event_id if has_replay else None,
-            "start": time_html(start, lang),
-            "peak": time_html(peak, lang, date=peak.date() != start.date()) if peak else "—",
-            "end": time_html(end, lang, date=end.date() != start.date()) if end else "—",
-            "open": e.get("closed") is False,
-            "p_max": fmt_prob(e.get("p_max"), lang),
-            "n_frames": n_frames if isinstance(n_frames, int) else "—",
-            "location": fmt_location(e.get("location"), lang) or "—",
-            "goes_class": goes_class or "—",
-            "gradcam": public_gradcam(e.get("gradcam")),
-            "replay": reverse("web:flare_replay_json", args=[event_id]) if has_replay else None,
-            "replay_xray": reverse("web:flare_replay_xray_json", args=[event_id]) if has_replay else None,
-        })
-    return rows
+    return [_event_view(e, start, peak, end, goes_class, threshold, lang, now)
+            for (e, start, peak, end), goes_class in zip(parsed, classes, strict=True)]
+
+
+_EVENT_PARAM_RE = re.compile(r"[0-9]{1,9}")
+
+
+def parse_event_param(value) -> int | None:
+    """`?evento=<id>`: ASCII digits only, 1..999 999 999; anything else is
+    None (str.isdigit() would also take "４" or "²")."""
+    if not isinstance(value, str) or not _EVENT_PARAM_RE.fullmatch(value):
+        return None
+    number = int(value)
+    return number if number >= 1 else None
+
+
+def select_event(rows: list[dict], wanted: int | None) -> dict | None:
+    """The event the panel shows (D-107): the one asked for in the URL if it
+    is in the list; else the open event; else the most recent one."""
+    selectable = [r for r in rows if r["event_id"] is not None]
+    if wanted is not None:
+        for r in selectable:
+            if r["event_id"] == wanted:
+                return r
+    for r in selectable:
+        if r["open"]:
+            return r
+    return selectable[0] if selectable else None
 
 
 # --- the frame player's data (datos/bucle.json, datos/repeticion-<id>.json) -----------
@@ -626,15 +671,15 @@ def replay_xray(event_id: int) -> dict:
 # --- the home page's "El Sol ahora" (D-104) -------------------------------------------
 
 SUN_NOW_MAX_AGE = dt.timedelta(days=3)  # the service keeps 4 days of FITS
-SUN_NOW_THUMBS = ("131", "304", "1600")
+SUN_NOW_WAVES = WAVES  # fixed order, never reordered (D-106)
 
 
 def sun_now_context(lang: str, now: dt.datetime | None = None) -> dict | None:
     """The latest stored result's images for the home page, from the product
-    store only (the home page never waits on the service): the 171 Å image
-    at 1024 px and 512 px thumbnails of the other three, all for that
-    result's slot. None (the block is not rendered) without a version-2
-    result in the last 3 days."""
+    store only (the home page never waits on the service): four 512 px
+    thumbnails in a fixed order (131, 171, 304, 1600) and the selected one
+    at 1024 px, 171 Å by default, all for that result's slot. None (the
+    block is not rendered) without a version-2 result in the last 3 days."""
     now = now or timezone.now()
     event = _latest_event()
     slot = _event_slot(event)
@@ -643,11 +688,12 @@ def sun_now_context(lang: str, now: dt.datetime | None = None) -> dict | None:
 
     def channel(wave):
         return {"wave": wave, "large": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
-                "thumb": image_url(wave, "img", slot, fmt="webp", size=512)}
+                "thumb": image_url(wave, "img", slot, fmt="webp", size=512), "selected": wave == DEFAULT_WAVE}
 
+    thumbs = [channel(w) for w in SUN_NOW_WAVES]
     return {
-        "main": channel(DEFAULT_WAVE),
-        "thumbs": [channel(w) for w in SUN_NOW_THUMBS],
+        "main": next(t for t in thumbs if t["selected"]),
+        "thumbs": thumbs,
         "observed": time_html(event.valid_from, lang),
         "age": fmt_age(event.valid_from, now),
     }
@@ -775,17 +821,18 @@ def replay_xray_panels(lang: str) -> list[dict]:
     return [panel]
 
 
-def page_context(lang: str) -> dict:
+def page_context(lang: str, wanted_event: int | None = None) -> dict:
     now = timezone.now()
     event = _latest_event()
-    # One service call: the alert history, which also decides the Grad-CAM
-    # section. The header and the images come from the product store.
+    # One service call: the alert history, which is also the "Eventos"
+    # selector (D-107). The header and the images come from the product store.
     events_json = service_json("events", days=30)
+    rows = history_rows(events_json, lang, stored_threshold(event), now)
     return {
         "header": header_context(event, lang, now),
         "images": images_context(event, lang),
-        "gradcam": gradcam_context(events_json, stored_threshold(event), lang),
-        "history": history_rows(events_json, lang),
+        "history": rows,
+        "selected": select_event(rows, wanted_event),
         "history_available": events_json is not None,
         "service_available": events_json is not None,
         "loop_url": None,  # filled by the view (reverse)

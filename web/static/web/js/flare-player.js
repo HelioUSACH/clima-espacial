@@ -6,8 +6,11 @@
  * - Nothing is fetched until the start button is pressed (or, for a
  *   replay, until "ver repetición" is). Then the frame list comes from the
  *   page's own datos/*.json (public nginx paths, never the model's
- *   service), the images are preloaded with at most 4 requests in flight
- *   and a progress indicator, and playback starts once they are in.
+ *   service) and the images are preloaded in order, with at most 4
+ *   requests in flight. Playback starts as soon as the first ~20 % of the
+ *   frames are in (D-110) and the rest keep loading ahead of it: playback
+ *   waits on a frame that isn't in yet rather than skip it. "cargando N/M"
+ *   shows until every image is in.
  * - Controls: play/pause, step back/forward, a slider with each frame's
  *   T_OBS (UT and local time, localtime.js) and probability, speed
  *   5/10/20 fps, loop. Keyboard: every control is a native button, select,
@@ -22,6 +25,7 @@
   "use strict";
 
   var MAX_IN_FLIGHT = 4;
+  var START_FRACTION = 0.2;
   var RETRY_MS = 800;
   var RETRY_LIST_MS = 1500;
   var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -40,10 +44,11 @@
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  // Load urls (an array, null entries skipped) with at most MAX_IN_FLIGHT
-  // requests at once, retrying a failure once (a 429 from a shared
-  // address). onProgress(done, total); resolves to an array of booleans.
-  function preload(urls, onProgress, token) {
+  // Load urls (an array, null entries skipped), in order, with at most
+  // MAX_IN_FLIGHT requests at once, retrying a failure once (a 429 from a
+  // shared address). onProgress(done, total); onItem(index, ok) as each
+  // one settles; resolves to an array of booleans.
+  function preload(urls, onProgress, token, onItem) {
     return new Promise(function (resolve) {
       var ok = urls.map(function () { return false; });
       var queue = [], done = 0, inFlight = 0;
@@ -60,11 +65,18 @@
         inFlight++;
         var img = new Image();
         img.decoding = "async";
-        img.onload = function () { inFlight--; if (token.cancelled) return; ok[item[0]] = true; finish(); };
+        img.onload = function () {
+          inFlight--;
+          if (token.cancelled) return;
+          ok[item[0]] = true;
+          if (onItem) onItem(item[0], true);
+          finish();
+        };
         img.onerror = function () {
           inFlight--;
           if (token.cancelled) return;
           if (item[1] === 0) { setTimeout(function () { queue.push([item[0], 1]); pump(); }, RETRY_MS); return; }
+          if (onItem) onItem(item[0], false);
           finish();
         };
         img.src = urls[item[0]];
@@ -98,6 +110,8 @@
     this.frames = [];
     this.index = 0;
     this.playing = false;
+    this.loaded = false; // every image settled (read by screenshots.py)
+    this.timing = null;  // {first, all}: ms from start to playback / to the last image
     this.token = { cancelled: false };
     this.onFrame = null;
     this.data = null;
@@ -107,6 +121,10 @@
   }
 
   Player.prototype.layers = function () {
+    // The page may have replaced the target frame (the flare page's event
+    // panel is swapped per event): follow the id.
+    var frame = document.getElementById(this.root.dataset.target);
+    if (frame !== this.frameEl) { this.frameEl = frame; this.imgEl = null; this.heatEl = null; }
     if (!this.frameEl) return null;
     if (!this.imgEl) {
       this.imgEl = document.createElement("img");
@@ -167,6 +185,8 @@
     this.token = { cancelled: false };
     this.frames = [];
     this.data = null;
+    this.loaded = false;
+    this.timing = null;
     if (this.frameEl) this.frameEl.classList.remove("is-playing");
     if (this.imgEl) { this.imgEl.removeAttribute("src"); this.heatEl.removeAttribute("src"); this.heatEl.hidden = true; }
     if (this.controls) this.controls.hidden = true;
@@ -220,13 +240,45 @@
           self.message(data.unavailable ? (self.i18n.unavailable_short || self.i18n.error) : self.i18n.empty);
           return null;
         }
-        var urls = [];
-        frames.forEach(function (f) { urls.push(f.url); });
-        frames.forEach(function (f) { urls.push(f.heat || null); });
-        return preload(urls, function (d, t) { self.progress(d, t); }, token).then(function (ok) {
+        // In frame order, each frame's heat map right after its image, so
+        // the first frames are complete first.
+        var urls = [], owner = [], left = [];
+        frames.forEach(function (f, i) {
+          f.ok = false;
+          f.heatOk = false;
+          f.settled = false;
+          urls.push(f.url);
+          owner.push([i, "ok"]);
+          left.push(1);
+          if (f.heat) { urls.push(f.heat); owner.push([i, "heatOk"]); left[i]++; }
+        });
+        var startAt = Math.max(1, Math.ceil(frames.length * START_FRACTION));
+        var head = 0, started = false, t0 = performance.now();
+        function onItem(k, ok) {
+          var o = owner[k], f = frames[o[0]];
+          f[o[1]] = ok;
+          if (--left[o[0]] > 0) return;
+          f.settled = true;
+          while (head < frames.length && frames[head].settled) head++;
+          if (!started && head >= startAt) {
+            started = true;
+            self.timing = { first: Math.round(performance.now() - t0), all: null };
+            self.ready(frames);
+          } else if (started && o[0] === self.index) {
+            self.show(self.index);
+          }
+        }
+        return preload(urls, function (d, t) { self.progress(d, t); }, token, onItem).then(function () {
           if (token.cancelled) return;
-          frames.forEach(function (f, i) { f.ok = ok[i]; f.heatOk = !!f.heat && ok[frames.length + i]; });
-          self.ready(frames);
+          if (!started) {
+            self.timing = { first: Math.round(performance.now() - t0), all: null };
+            self.ready(frames);
+          }
+          self.timing.all = Math.round(performance.now() - t0);
+          self.loaded = true;
+          self.finishLoading();
+          if (self.progressEl) self.progressEl.hidden = true;
+          self.root.dispatchEvent(new CustomEvent("swx:player-loaded", { detail: self.timing, bubbles: true }));
         });
       })
       .catch(function () {
@@ -240,11 +292,11 @@
 
   Player.prototype.finishLoading = function () { this.root.removeAttribute("aria-busy"); };
 
+  // Enough frames are in to start (the rest keep loading; "cargando N/M"
+  // stays until they are).
   Player.prototype.ready = function (frames) {
-    this.finishLoading();
     this.frames = frames;
     this.layers();
-    if (this.progressEl) this.progressEl.hidden = true;
     if (this.controls) this.controls.hidden = false;
     this.slider.max = String(frames.length - 1);
     this.drawMarks();
@@ -297,14 +349,16 @@
     i = Math.max(0, Math.min(n - 1, i));
     this.index = i;
     var f = this.frames[i];
-    if (f.ok) this.imgEl.src = f.url;
-    if (f.heatOk) {
-      this.heatEl.src = f.heat;
-      this.heatEl.hidden = false;
-    } else {
-      this.heatEl.hidden = true;
+    if (f.settled) {
+      if (f.ok) this.imgEl.src = f.url;
+      if (f.heatOk) {
+        this.heatEl.src = f.heat;
+        this.heatEl.hidden = false;
+      } else {
+        this.heatEl.hidden = true;
+      }
     }
-    this.frameEl.classList.toggle("is-missing-frame", !f.ok);
+    this.frameEl.classList.toggle("is-missing-frame", f.settled && !f.ok);
     this.slider.value = String(i);
     var when = f.obs != null ? f.obs : f.t;
     var timeParts = window.swxTime ? window.swxTime.parts(when, { date: true, seconds: f.obs != null }) : null;
@@ -312,7 +366,8 @@
     var bits = [this.i18n.probability + " " + fmtProb(f.p, this.i18n.lang)];
     if (f.state && this.i18n.states[f.state]) bits.push(this.i18n.states[f.state]);
     this.markAt(i).forEach(function (m) { bits.push(m); });
-    if (!f.ok) bits.push(this.i18n.missing_frame);
+    if (!f.settled) bits.push(this.i18n.pending_frame);
+    else if (!f.ok) bits.push(this.i18n.missing_frame);
     var counter = fill(this.i18n.frame_of, { i: i + 1, n: n });
     this.labelEl.innerHTML = (timeParts && window.swxTime ? window.swxTime.html(when, { date: true, seconds: f.obs != null }) : escapeHtml(timeText)) +
       " · " + escapeHtml(bits.join(" · ")) + ' <span class="t-alt">· ' + escapeHtml(counter) + "</span>";
@@ -352,9 +407,9 @@
         if (self.index >= self.frames.length - 1) {
           if (self.loopEl && self.loopEl.checked) self.show(0);
           else { self.pause(); return; }
-        } else {
+        } else if (self.frames[self.index + 1].settled) {
           self.show(self.index + 1);
-        }
+        } // else: still loading; wait for it rather than skip it
       }
       self.raf = requestAnimationFrame(tick);
     }

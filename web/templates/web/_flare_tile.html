@@ -1,0 +1,17 @@
+{% load i18n %}
+{% comment %}
+One tile of the flare page's image grid (D-106): channel c (images_context)
+as kind "img" or "diff", 512 px WebP, with its channel, kind and T_OBS. A
+button: flare.js opens it in the lightbox (the image at 1024 px, a
+difference at 512). The detection box, when there is one, on every tile.
+{% endcomment %}
+<figure class="flare-tile">
+  <button type="button" class="flare-tile-btn" data-tile data-wave="{{ c.wave }}" data-kind="{{ kind }}" data-full="{% if kind == 'img' %}{{ c.img_large }}{% else %}{{ c.diff }}{% endif %}" aria-label="{% if kind == 'img' %}{% blocktrans with wave=c.wave %}Ver {{ wave }} Å en grande{% endblocktrans %}{% else %}{% blocktrans with wave=c.wave %}Ver la diferencia de {{ wave }} Å en grande{% endblocktrans %}{% endif %}" aria-haspopup="dialog" aria-controls="flare-lightbox">
+    <span class="flare-frame">
+      <img src="{% if kind == 'img' %}{{ c.img }}{% else %}{{ c.diff }}{% endif %}" width="512" height="512" decoding="async"{% if kind == 'diff' %} loading="lazy"{% endif %} alt="">
+      {% if header.bbox %}<span class="flare-box" style="left:{{ header.bbox.left }}%;top:{{ header.bbox.top }}%;width:{{ header.bbox.width }}%;height:{{ header.bbox.height }}%" title="{% trans 'Región detectada (experimental)' %}"></span>{% endif %}
+      <span class="flare-missing" hidden>{% trans "Imagen no disponible" %}</span>
+    </span>
+  </button>
+  <figcaption><b data-tile-title>{{ c.wave }} Å · {% if kind == 'img' %}{% trans "imagen" %}{% else %}{% trans "diferencia" %}{% endif %}</b>{% if c.t_obs %}<span data-tile-when>{{ c.t_obs }}</span>{% endif %}</figcaption>
+</figure>
