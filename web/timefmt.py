@@ -11,7 +11,8 @@ reads `datetime` and adds the visitor's own local time next to it, in the
 browser's time zone; nothing about the visitor is sent anywhere. `data-ut`
 says which parts the UT text has, so the local text can match it:
 `dt` date and time, `t` time only, `ts` time with seconds, `dts` date and
-time with seconds.
+time with seconds. `data-stack` (a table cell, D-108) puts the local
+time on a second line, small and muted, without the parentheses.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from __future__ import annotations
 import datetime as dt
 
 from django.utils.html import format_html
-from django.utils.safestring import SafeString
+from django.utils.safestring import SafeString, mark_safe
 from django.utils.translation import get_language
 
 MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -54,10 +55,12 @@ def ut_text(when: dt.datetime, lang: str, *, date: bool = True, seconds: bool = 
 
 
 def time_html(when: dt.datetime | None, lang: str | None = None, *, date: bool = True,
-              seconds: bool = False) -> SafeString | str:
-    """`<time datetime="…Z" data-ut="…">… UT</time>`, or "" for None."""
+              seconds: bool = False, stacked: bool = False) -> SafeString | str:
+    """`<time datetime="…Z" data-ut="…">… UT</time>`, or "" for None.
+    `stacked`: the local time goes on a second line (`data-stack`)."""
     if when is None:
         return ""
     lang = lang or current_lang()
-    return format_html('<time datetime="{}" data-ut="{}">{} UT</time>', iso_z(when),
-                       fmt_key(date=date, seconds=seconds), ut_text(when, lang, date=date, seconds=seconds))
+    return format_html('<time datetime="{}" data-ut="{}"{}>{} UT</time>', iso_z(when),
+                       fmt_key(date=date, seconds=seconds), mark_safe(" data-stack") if stacked else "",
+                       ut_text(when, lang, date=date, seconds=seconds))

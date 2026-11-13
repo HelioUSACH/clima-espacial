@@ -1,17 +1,28 @@
 """A stand-in for flare-nrt's HTTP service (dev, CI screenshots, load tests).
 
-    python .github/scripts/flare_nrt_stub.py [--port 5050] [--scenario active|quiet] [--delay 0]
+    python .github/scripts/flare_nrt_stub.py [--port 5050] [--scenario active|quiet] [--delay 0] [--pad-kb 0]
+                                             [--frame-px 192]
 
-Serves the endpoints the portal uses, in the shape of flare-nrt v1.1.0's
+Serves the endpoints the portal uses, in the shape of flare-nrt v1.2.0's
 INTEGRATION.md ("GET /api/status", "Display endpoints", "Display files"):
 /api/status, /api/series, /api/events, /api/frames,
 /api/image/{wave}.png (kind, slot, format, size), /api/gradcam/{latest|ISO}.png
 (style=overlay|heat), /api/loop, /api/render/{ISO}/{name}.webp,
-/api/events/{id}/replay and /api/events/{id}/frames/{ISO}/{name}.webp.
+/api/events/{id}/replay, /api/events/{id}/frames/{ISO}/{name}.webp and
+/api/events/{id}/peak/{name}.webp (the peak set, 1.2.0).
 Synthetic values, times relative to now. The standard library has no WebP
 encoder, so "webp" answers are PNG bytes sent as image/png (browsers decode
 an <img> by its content). `--delay` makes every answer wait that many
-seconds first (a slow or hung service). `GET /_stub/scenario?set=quiet`
+seconds first (a slow or hung service). `--pad-kb` pads every loop/replay
+frame to about that size (a real 171 Å WebP is ~56 kB), for load-time
+measurements. Like the service (which keeps 4 days of FITS), a past slot's
+/api/image is a 404 here after 3 days, so the flare page's fallback to a
+replay's own 131 Å frame (1.2.0) runs in CI. Event 1 is the real case of
+2026-11-11 (D-112): its Grad-CAM was made by 1.0.0, so
+/api/gradcam/<its peak>.png?style=heat is a 404 (the overlay is not), its
+replay has no heat frames, and only its peak set has the heat map.
+`--frame-px` sets the loop/replay frames' size (192 by default; 512 is a
+real frame's, for memory measurements). `GET /_stub/scenario?set=quiet`
 (or active) switches scenario while running, for CI. Standard library only;
 nothing in the portal imports it.
 """
@@ -29,7 +40,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 SLOT = dt.timedelta(minutes=2)
+PEAK_NAMES = ("131", "171", "304", "1600", "gradcam-heat", "gradcam-overlay")
 WAVES = ("131", "171", "304", "1600")
+FITS_KEPT = dt.timedelta(days=3)  # a past slot's /api/image: 404 after this (module docstring)
 TINTS = {"131": (0.25, 0.95, 0.85), "171": (1.0, 0.8, 0.25), "304": (1.0, 0.35, 0.15), "1600": (0.9, 0.85, 0.35)}
 
 
@@ -40,6 +53,17 @@ def iso(t):
 def now_slot():
     now = dt.datetime.now(dt.UTC).replace(second=0, microsecond=0)
     return now - dt.timedelta(minutes=now.minute % 2) - dt.timedelta(minutes=10)  # ~10 min latency
+
+
+def pad_png(body, size):
+    """`body` grown to about `size` bytes with a private ancillary chunk
+    ("swPd", ignored by decoders) before IEND."""
+    extra = size - len(body) - 12
+    if extra <= 0:
+        return body
+    data = bytes(random.Random(size).getrandbits(8) for _ in range(extra))
+    chunk = struct.pack(">I", len(data)) + b"swPd" + data + struct.pack(">I", zlib.crc32(b"swPd" + data) & 0xFFFFFFFF)
+    return body[:-12] + chunk + body[-12:]
 
 
 def png(width, height, pixel, alpha=False):
@@ -131,8 +155,10 @@ LOOP_VARIANTS = 12
 class World:
     """Everything the stub answers, built once per scenario."""
 
-    def __init__(self, scenario):
+    def __init__(self, scenario, pad_kb=0, frame_px=192):
         self.scenario = scenario
+        self.pad_kb = pad_kb
+        self.frame_px = frame_px
         self.active = scenario == "active"
         # Helioprojective centroid and box of the open event (arcsec), and
         # the same point on the 256 px stub image (north up, 9.6″/px here).
@@ -144,6 +170,11 @@ class World:
         self.gradcam = gradcam_png(1.0 if self.active else 0.08, flare_px)
         self.heat = heat_png(flare_px)
         self.frames_cache = {}
+        # Event 1's times are fixed when the stub starts (not relative to each
+        # request like the others): its "no heat style" 404 must name the same
+        # slot as the replay.json the portal cached a minute earlier.
+        start = now_slot() - dt.timedelta(days=1, hours=16)
+        self.event1 = (start, start + dt.timedelta(minutes=8), start + dt.timedelta(minutes=12))
 
     def image(self, wave, kind, size):
         key = (wave, kind, size)
@@ -158,8 +189,10 @@ class World:
         variant = int(slot.timestamp() // 120) % LOOP_VARIANTS
         key = (name, variant)
         if key not in self.frames_cache:
-            self.frames_cache[key] = sun_png("171", "diff" if name == "171-diff" else "img", None, size=192,
-                                             phase=variant / (LOOP_VARIANTS - 1))
+            wave = "131" if name == "131" else "171"
+            body = sun_png(wave, "diff" if name == "171-diff" else "img", None, size=self.frame_px,
+                           phase=variant / (LOOP_VARIANTS - 1))
+            self.frames_cache[key] = pad_png(body, self.pad_kb * 1024)
         return self.frames_cache[key]
 
     def status(self):
@@ -224,6 +257,10 @@ class World:
                         "location": {"centroid_arcsec": [310.0 - 600 * i, -122.5], "confidence": "experimental"},
                         "closed": True, "gradcam": f"/api/gradcam/{iso(peak)}.png",
                         "replay": i == 0 or self.active})
+        start, peak, end_ = self.event_times(1)
+        out.append({"event_id": 1, "t_start": iso(start), "t_pmax": iso(peak), "t_end": iso(end_), "p_max": 0.9,
+                    "n_alert_frames": 3, "location": {"centroid_arcsec": [-150.0, 330.0], "confidence": "experimental"},
+                    "closed": True, "gradcam": f"/api/gradcam/{iso(peak)}.png", "replay": True})
         if self.active:
             start = end - dt.timedelta(minutes=6)
             out.append({"event_id": 4, "t_start": iso(start), "t_pmax": iso(end), "t_end": iso(end), "p_max": 0.9312,
@@ -232,8 +269,11 @@ class World:
         return {"events": [e for e in out if (end - dt.datetime.fromisoformat(e["t_start"])).days < days]}
 
     def event_times(self, event_id):
+        if event_id == 1:
+            return self.event1
         end = now_slot()
-        back = {2: dt.timedelta(days=3, hours=4), 3: dt.timedelta(hours=20)}.get(event_id)
+        back = {2: dt.timedelta(days=3, hours=4),
+                3: dt.timedelta(hours=20)}.get(event_id)
         if back is None:
             return None
         start = end - back
@@ -266,9 +306,10 @@ class World:
             if event_id == 2 and t == peak + dt.timedelta(minutes=40):
                 missing.append(iso(t))  # incomplete: one slot lost
             else:
+                heat = p >= 0.8 and event_id != 1  # event 1: Grad-CAM by 1.0.0, no heat frames
                 frames.append({"slot": iso(t), "t_obs": iso(t + dt.timedelta(seconds=10)).replace("Z", ".348Z"),
                                "probability": p, "state": "active" if p >= 0.8 else "quiet", "status": "ok",
-                               "images": ["171", "gradcam-heat"] if p >= 0.8 else ["171"]})
+                               "images": ["171", "gradcam-heat", "131"] if heat else ["171", "131"]})
             t += SLOT
         return {
             "schema": "flare-nrt-replay/1",
@@ -276,10 +317,12 @@ class World:
                       "p_max": 0.95, "n_alert_frames": 7, "location": {"centroid_arcsec": [310.0, -122.5]}},
             "window": {"start": iso(w0), "end": iso(w1), "pre_min": 30, "post_min": 60},
             "n_slots": len(frames) + len(missing), "frames": frames,
-            "complete": not missing, "missing": {"171": missing, "gradcam-heat": []},
+            "peak": {"slot": iso(peak), "t_obs": {w: iso(peak + dt.timedelta(seconds=8)) for w in WAVES},
+                     "probability": 0.95, "gradcam_peak": 0.97, "images": list(PEAK_NAMES)},
+            "complete": not missing, "missing": {"171": missing, "gradcam-heat": [], "131": missing, "peak": []},
             "note": (f"{len(missing)} of {len(frames) + len(missing)} slots have no 171 Å image and 0 results "
                      "have no Grad-CAM: their files were gone or never made") if missing else None,
-            "built_at": iso(w1 + dt.timedelta(minutes=70)), "model_version": "1.1.0",
+            "built_at": iso(w1 + dt.timedelta(minutes=70)), "model_version": "1.2.0",
         }
 
     def frames(self, hours):
@@ -320,7 +363,7 @@ def make_handler(state, delay):
             iso_re = r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)"
             try:
                 if url.path == "/_stub/scenario" and q.get("set") in ("active", "quiet"):
-                    state["world"] = World(q["set"])
+                    state["world"] = World(q["set"], world.pad_kb, world.frame_px)
                     data = {"scenario": q["set"]}
                 elif url.path == "/api/status":
                     data = world.status()
@@ -342,10 +385,16 @@ def make_handler(state, delay):
                         if kind not in ("img", "diff") or size not in (512, 1024) or (size == 1024 and kind == "diff") \
                                 or q.get("format", "png") not in ("png", "webp"):
                             raise ValueError
+                        if "slot" in q:
+                            when = dt.datetime.fromisoformat(q["slot"].replace("Z", "+00:00"))
+                            if dt.datetime.now(dt.UTC) - when > FITS_KEPT:
+                                return self._send(404, b'{"detail":"no FITS for that slot"}', "application/json")
                         return self._image(world.image(m.group(1), kind, size), immutable="slot" in q)
                     if re.fullmatch(r"/api/gradcam/[^/]+\.png", url.path):
                         if q.get("style", "overlay") not in ("overlay", "heat"):
                             raise ValueError
+                        if q.get("style") == "heat" and url.path == f"/api/gradcam/{iso(world.event_times(1)[1])}.png":
+                            return self._send(404, b'{"detail":"no stored map for that slot"}', "application/json")
                         return self._image(world.heat if q.get("style") == "heat" else world.gradcam)
                     m = re.fullmatch(rf"/api/render/{iso_re}/(171|171-diff|gradcam-heat)\.webp", url.path)
                     if m:
@@ -357,10 +406,16 @@ def make_handler(state, delay):
                         if data is None:
                             return self._send(404, b'{"detail":"no replay"}', "application/json")
                         return self._send(200, json.dumps(data).encode(), "application/json", "max-age=3600")
-                    m = re.fullmatch(rf"/api/events/(\d+)/frames/{iso_re}/(171|gradcam-heat)\.webp", url.path)
+                    m = re.fullmatch(rf"/api/events/(\d+)/frames/{iso_re}/(131|171|gradcam-heat)\.webp", url.path)
                     if m and world.replay(int(m.group(1))) is not None:
                         slot = dt.datetime.fromisoformat(m.group(2).replace("Z", "+00:00"))
                         return self._image(world.render(slot, m.group(3)), immutable=True)
+                    m = re.fullmatch(r"/api/events/(\d+)/peak/(131|171|304|1600|gradcam-heat|gradcam-overlay)\.webp",
+                                     url.path)
+                    if m and world.replay(int(m.group(1))) is not None:
+                        name = m.group(2)
+                        body = {"gradcam-heat": world.heat, "gradcam-overlay": world.gradcam}.get(name)
+                        return self._image(body or world.image(name, "img", 512), immutable=True)
                     return self._send(404, b'{"detail":"Not Found"}', "application/json")
             except (ValueError, KeyError):
                 return self._send(422, b'{"detail":"bad parameter"}', "application/json")
@@ -375,8 +430,11 @@ def main():
     ap.add_argument("--port", type=int, default=5050)
     ap.add_argument("--scenario", choices=("active", "quiet"), default="active")
     ap.add_argument("--delay", type=float, default=0.0, help="seconds to wait before every answer")
+    ap.add_argument("--pad-kb", type=int, default=0, help="pad loop/replay frames to about this many kB")
+    ap.add_argument("--frame-px", type=int, default=192, help="loop/replay frame size (512 = a real frame's)")
     args = ap.parse_args()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler({"world": World(args.scenario)}, args.delay))
+    server = ThreadingHTTPServer((args.host, args.port),
+                                 make_handler({"world": World(args.scenario, args.pad_kb, args.frame_px)}, args.delay))
     server.daemon_threads = True
     print(f"flare-nrt stub on http://{args.host}:{args.port} ({args.scenario}, delay {args.delay} s)", flush=True)
     server.serve_forever()

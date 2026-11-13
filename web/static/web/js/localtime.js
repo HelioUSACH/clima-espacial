@@ -4,7 +4,9 @@
  * with its UT text (web/timefmt.py). This file adds the visitor's own local
  * time next to it, in the browser's time zone
  * (Intl.DateTimeFormat().resolvedOptions().timeZone): nothing is sent
- * anywhere. "21:34 UT (18:34 hora local)". The header's "UT / hora local"
+ * anywhere. "21:34 UT (18:34 hora local)"; a <time data-stack> (a table
+ * cell, D-108) puts the second one on its own line, without parentheses,
+ * small and muted. The header's "UT / hora local"
  * switch picks which one comes first; the choice is kept in localStorage
  * (every access in try/catch; default UT). With JavaScript off the page
  * shows UT, as it always did.
@@ -108,8 +110,13 @@
     // With UT first, keep the server's own UT text exactly.
     el.appendChild(document.createTextNode(pref === "ut" ? el.__swxUT : p.primary));
     var alt = document.createElement("span");
-    alt.className = "t-alt";
-    alt.textContent = " (" + p.secondary + ")";
+    if (el.hasAttribute("data-stack")) {
+      alt.className = "t-alt t-line";
+      alt.textContent = p.secondary;
+    } else {
+      alt.className = "t-alt";
+      alt.textContent = " (" + p.secondary + ")";
+    }
     el.appendChild(alt);
   }
 

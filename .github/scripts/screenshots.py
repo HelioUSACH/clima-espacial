@@ -144,10 +144,10 @@ def wait_images(page, selector, timeout=15000):
 
 
 def check_flare(page, failures, label, lang, interactive, quiet=False):
-    """D-101/D-102: the timeline (threshold line, alert spans, X-ray panel),
-    the large image, the Grad-CAM section (heat map over 131 Å for an alert
-    frame, or the "no recent alerts" text), the state badge and the box,
-    and (once) the channel and image/difference buttons."""
+    """D-101/D-102/D-106/D-107: the timeline (threshold line, alert spans,
+    X-ray panel), the eight image tiles, the selected event's panel (heat
+    map over 131 Å, or the map alone where neither 131 Å image exists), the
+    state badge and the box, and (once) the lightbox."""
     stack = "document.querySelector('.swx-stack').__swxStack"
     marks = page.evaluate(f"""(() => {{
         const s = {stack}.ec.getOption().series;
@@ -158,45 +158,181 @@ def check_flare(page, failures, label, lang, interactive, quiet=False):
     }})()""")
     if not marks["lines"] or not marks["spans"] or not marks["xray"]:
         failures.append(f"{label}: timeline incomplete {marks} (threshold line, alert spans, X-ray panel)")
-    loaded = wait_images(page, "[data-flare-main], .flare-cam-heat, .flare-cam-base")
+    tiles = page.evaluate("[...document.querySelectorAll('[data-tile]')].map(t => t.dataset.wave + ':' + t.dataset.kind)")
+    expected_tiles = [f"{w}:{k}" for k in ("img", "diff") for w in ("131", "171", "304", "1600")]
+    if tiles != expected_tiles:
+        failures.append(f"{label}: image tiles {tiles}, expected {expected_tiles}")
+    page.locator("[data-flare-grid] [data-wave='1600'][data-kind='diff']").scroll_into_view_if_needed()
+    loaded = wait_images(page, "[data-tile] img, #flare-ev .flare-cam-heat")
     if not loaded or not all(loaded):
-        failures.append(f"{label}: images loaded {loaded} (large image, Grad-CAM heat and its 131 Å)")
+        failures.append(f"{label}: images loaded {loaded} (8 tiles, the event's Grad-CAM)")
     badge = page.evaluate("(document.querySelector('.flare-state') || {}).textContent")
     expected = (QUIET_STATE if quiet else FLARE_STATE)[lang]
     if badge != expected:
         failures.append(f"{label}: state badge {badge!r}, expected {expected!r}")
     if page.evaluate("!!document.querySelector('.flare-box')") is quiet:
         failures.append(f"{label}: detection box {'shown' if quiet else 'missing'}")
-    cam = page.evaluate("document.querySelector('.flare-cam-when') && document.querySelector('.flare-cam-when').textContent")
-    if not cam:
-        failures.append(f"{label}: no Grad-CAM alert frame shown (the stub has alerts in the last 30 days)")
+    if not page.evaluate("!!document.querySelector('#flare-ev .cam-vbar')"):
+        failures.append(f"{label}: no event panel with its colour bar (the stub has alerts in the last 30 days)")
     if interactive:
-        page.click('[data-wave="304"]')
-        page.click('[data-kind="diff"]')
-        page.wait_for_function("(() => { const i = document.querySelector('[data-flare-main]');"
-                               " return i.src.includes('304.png?kind=diff') && i.complete; })()", timeout=15000)
-        if page.evaluate("document.querySelector('[data-flare-main]').naturalWidth") == 0:
-            failures.append(f"{label}: the 304 Å difference failed to load")
-        page.click('[data-kind="img"]')
-        page.click('[data-wave="171"]')
+        check_lightbox(page, failures, label)
+
+
+def check_lightbox(page, failures, label):
+    """D-106: a tile opens the dialog with its large image; Esc closes it and
+    focus returns to the tile; the close button closes it too."""
+    tile = "[data-tile][data-wave='304'][data-kind='diff']"
+    page.focus(tile)
+    page.keyboard.press("Enter")
+    page.wait_for_function("document.getElementById('flare-lightbox').open", timeout=5000)
+    page.wait_for_function("(() => { const i = document.querySelector('[data-lb-img]');"
+                           " return i.src.includes('304.png?kind=diff') && i.complete && i.naturalWidth > 0; })()",
+                           timeout=15000)
+    if not page.evaluate("document.activeElement.matches('[data-lb-close]')"):
+        failures.append(f"{label}: focus is not on the lightbox's close button")
+    page.keyboard.press("Escape")
+    page.wait_for_function("!document.getElementById('flare-lightbox').open", timeout=5000)
+    if not page.evaluate(f"document.activeElement.matches({tile!r})"):
+        failures.append(f"{label}: focus did not return to the tile after Esc")
+    page.click("[data-tile][data-wave='171'][data-kind='img']")
+    page.wait_for_function("document.getElementById('flare-lightbox').open", timeout=5000)
+    if "size=1024" not in page.evaluate("document.querySelector('[data-lb-img]').src"):
+        failures.append(f"{label}: the 171 Å image did not open at 1024 px")
+    page.click("[data-lb-close]")
+    if page.evaluate("document.getElementById('flare-lightbox').open"):
+        failures.append(f"{label}: the close button did not close the lightbox")
+
+
+def selected_event(page):
+    return page.evaluate("""({row: (document.querySelector('tr[data-ev][aria-current="true"]') || {dataset: {}}).dataset.ev,
+        panel: (document.querySelector('#flare-ev [data-ev-id]') || {dataset: {}}).dataset.evId,
+        url: new URL(location.href).searchParams.get('evento')})""")
+
+
+def check_events(page, failures, label, base_url, out, quiet):
+    """D-107: the table selects the event (click on a row, Enter on a focused
+    row), the selection is in the URL and a ?evento= link opens on it. The
+    stub's event 2 is 3 days old: its live 131 Å image is gone (the stub
+    keeps 3 days), so the panel falls back to the replay's own 131 Å frame
+    (active) or, with no replay (quiet), shows the map alone."""
+    ids = page.evaluate("[...document.querySelectorAll('tr[data-ev]')].map(r => r.dataset.ev)")
+    first = selected_event(page)
+    want = "3" if quiet else "4"  # the most recent; the open event while one is open
+    if not ids or first["row"] != want or first["panel"] != want:
+        failures.append(f"{label}: default selection {first}, rows {ids}, expected event {want}")
+    page.click('tr[data-ev="2"] td:nth-child(2)')
+    sel = selected_event(page)
+    if sel != {"row": "2", "panel": "2", "url": "2"}:
+        failures.append(f"{label}: a click on event 2's row gave {sel}")
+    page.wait_for_function("(() => { const b = document.querySelector('#flare-ev .flare-cam-base');"
+                           " const n = document.querySelector('#flare-ev [data-cam-nobase]');"
+                           " return (b && !b.hidden && b.complete && b.naturalWidth > 0) || (n && !n.hidden); })()",
+                           timeout=15000)
+    base = page.evaluate("(() => { const b = document.querySelector('#flare-ev .flare-cam-base');"
+                         " return b && !b.hidden ? b.src : null; })()")
+    if quiet and base is not None:
+        failures.append(f"{label}: event 2 (no replay) shows a 131 Å image {base!r}, expected the map alone")
+    if not quiet and (not base or not base.endswith("/replay/2/peak/131.webp")):
+        failures.append(f"{label}: event 2's 131 Å is {base!r}, expected its peak set's (D-112)")
+    page.focus('tr[data-ev="3"]')
+    page.keyboard.press("Enter")
+    if selected_event(page)["panel"] != "3":
+        failures.append(f"{label}: Enter on a focused row did not select it")
+    if page.evaluate("document.activeElement.dataset.ev") != "3":
+        failures.append(f"{label}: focus left the row after Enter")
+    page.keyboard.press("ArrowDown")
+    if page.evaluate("document.activeElement.dataset.ev") != "1":
+        failures.append(f"{label}: ArrowDown did not move to the next row")
+    # A link to an event.
+    page.goto(base_url + "?evento=2")
+    page.wait_for_load_state("networkidle")
+    sel = selected_event(page)
+    if sel["row"] != "2" or sel["panel"] != "2":
+        failures.append(f"{label}: ?evento=2 opened on {sel}")
+    page.wait_for_timeout(300)
+    page.locator("[data-flare-events]").screenshot(path=str(out / f"{label}-evento.png"))
+
+
+# D-111: sampled on every animation frame while the player runs: the
+# visible layer must hold a picture (a canvas with a size and an opaque
+# centre pixel; solar frames are opaque). Before the fix an <img> whose src
+# changed was blank until the new frame decoded.
+BLANK_SAMPLER = """(id) => {
+  const s = {samples: 0, blank: 0, imgs: 0, painted: new Set(), first: null, stop: false};
+  window.__swxBlank = s;
+  const tick = () => {
+    if (s.stop) return;
+    const fr = document.getElementById(id);
+    if (fr && fr.classList.contains('is-playing')) {
+      s.samples++;
+      const c = fr.querySelector('canvas.fp-img');
+      if (fr.querySelector('img.fp-img')) s.imgs++;
+      if (!c || !c.width || getComputedStyle(c).display === 'none') s.blank++;
+      else if (c.getContext('2d').getImageData(c.width >> 1, c.height >> 1, 1, 1).data[3] === 0) s.blank++;
+      for (const root of document.querySelectorAll('[data-player]')) {
+        const pl = root.__swxPlayer;
+        if (pl && pl.frameEl === fr && pl.painted >= 0) s.painted.add(pl.painted);
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}"""
+BLANK_RESULT = """(() => { const s = window.__swxBlank; s.stop = true;
+  return {samples: s.samples, blank: s.blank, imgs: s.imgs, painted: s.painted.size}; })()"""
+
+
+def check_no_blank(page, failures, label, what, min_painted):
+    r = page.evaluate(BLANK_RESULT)
+    if r["blank"] or r["imgs"] or r["samples"] < 30 or r["painted"] < min_painted:
+        failures.append(f"{label}: {what}: {r} (expected no blank sample, no <img> layer, >= 30 samples, "
+                        f">= {min_painted} frames painted)")
+    print(f"{label}: {what}: {r['samples']} samples, {r['blank']} blank, {r['painted']} frames painted")
 
 
 def check_loop(page, failures, label, out, keyboard):
-    """The 6-h loop: nothing loaded before play; then every frame preloaded
-    (4 at a time), playing; the screenshot is taken paused mid-loop."""
+    """The 6-h loop: nothing loaded before play; then the frames load in
+    order, 4 at a time, and playback starts once ~20 % are in, with
+    "cargando N/M" shown until all are (D-110). Frames are slowed down here
+    so that moment can be seen; the screenshot is taken paused mid-loop."""
+    import time
+
     before = page.evaluate("performance.getEntriesByType('resource').filter(e => e.name.includes('/render/')).length")
     if before:
         failures.append(f"{label}: {before} loop frame(s) fetched before play was pressed")
+    page.route("**/render/**", lambda route: (time.sleep(0.02), route.continue_()))
+    page.evaluate(BLANK_SAMPLER, "flare-loop-frame")
     page.click("#flare-loop [data-fp-start]")
     player = PLAYER.format(id="flare-loop")
-    page.wait_for_function(f"{player}.frames.length > 0", timeout=30000)
+    page.wait_for_function(f"{player}.playing", timeout=30000)
+    early = page.evaluate(f"""({{loaded: {player}.loaded, n: {player}.frames.length,
+        settled: {player}.frames.filter(f => f.settled).length,
+        text: document.querySelector('#flare-loop [data-fp-progress-text]').textContent,
+        shown: !document.querySelector('#flare-loop [data-fp-progress]').hidden,
+        frame: !document.getElementById('flare-loop-frame').hidden}})""")
+    if early["loaded"] or not early["shown"] or not re.fullmatch(r"cargando \d+/\d+", early["text"]) \
+            or not early["frame"]:
+        failures.append(f"{label}: at the start of playback {early} (expected still loading, 'cargando N/M')")
+    page.wait_for_function(f"{player}.loaded", timeout=60000)
+    page.unroute("**/render/**")
     n = page.evaluate(f"{player}.frames.length")
     ok = page.evaluate(f"{player}.frames.filter(f => f.ok).length")
     if n < 100 or ok != n:
         failures.append(f"{label}: loop {ok}/{n} frames loaded")
-    page.wait_for_timeout(400)
-    if not page.evaluate(f"{player}.playing"):
-        failures.append(f"{label}: the loop did not start playing once loaded")
+    if not page.evaluate("document.querySelector('#flare-loop [data-fp-progress]').hidden"):
+        failures.append(f"{label}: 'cargando' still shown once every frame is in")
+    print(f"{label}: loop {n} frames, playing after {page.evaluate(player + '.timing.first')} ms, "
+          f"all in after {page.evaluate(player + '.timing.all')} ms (stub, 20 ms per frame)")
+    # Two more passes at 20 fps, then: never a blank frame, from the press on.
+    page.select_option("#flare-loop [data-fp-speed]", "20")
+    page.evaluate(f"{player}.play()")
+    page.wait_for_timeout(int(2 * n / 20 * 1000) + 500)
+    check_no_blank(page, failures, label, "loop, loading then 2 passes", min_painted=n - 5)
+    stats = page.evaluate(f"{player}.stats")
+    print(f"{label}: decoded window {stats['window']}, peak {stats['peakFrames']} frames, "
+          f"{stats['peakBytes'] / 1e6:.1f} MB")
+    if stats["peakFrames"] > stats["window"]["ahead"] + stats["window"]["behind"] + 1:
+        failures.append(f"{label}: {stats['peakFrames']} frames decoded at once, over the window {stats['window']}")
     page.evaluate(f"{player}.pause(); {player}.show(Math.floor({player}.frames.length / 2))")
     if keyboard:
         page.focus("#flare-loop [data-fp-slider]")
@@ -217,41 +353,148 @@ def check_loop(page, failures, label, out, keyboard):
 
 
 def check_replay(page, failures, label, out):
-    """A replay: 171 Å frames with the heat map on alert frames, the event's
-    marks on the slider, the incomplete note, the X-ray chart with its cursor."""
-    page.click("[data-replay]")
+    """A replay, in the selected event's panel (D-107): 171 Å frames with the
+    heat map on alert frames, the event's marks on the slider, the X-ray
+    chart with its cursor; closing it brings back the Grad-CAM still."""
+    page.evaluate("document.querySelector('[data-flare-ev]').__swxSelect(3)")
+    page.evaluate(BLANK_SAMPLER, "flare-ev-frame")
+    page.click("#flare-ev [data-replay]")
     player = PLAYER.format(id="flare-replay-player")
-    page.wait_for_function(f"{player}.frames.length > 0", timeout=30000)
+    page.wait_for_function(f"{player}.frames.length > 0 && {player}.loaded", timeout=30000)
+    page.wait_for_timeout(1500)
+    check_no_blank(page, failures, label, "replay", min_painted=10)
     page.wait_for_function(COUNT_READY_STACKS + " >= 2", timeout=20000)
     page.wait_for_load_state("networkidle")
     peak = page.evaluate(f"{player}.nearest({player}.data.marks.peak)")
     page.evaluate(f"{player}.pause(); {player}.show({peak})")
-    state = page.evaluate("""({heat: !document.querySelector('#flare-replay-frame .fp-heat').hidden,
-        marks: document.querySelectorAll('#flare-replay .fp-mark').length,
+    state = page.evaluate("""({heat: !document.querySelector('#flare-ev-frame .fp-heat').hidden,
+        playing: document.getElementById('flare-ev-frame').classList.contains('is-playing'),
+        marks: document.querySelectorAll('#flare-ev .fp-mark').length,
         cursor: document.querySelector('.flare-replay-xray').__swxStack.ec.getOption().series
                   .some(s => s.id === 'swx-cursor')})""")
-    if not state["heat"] or state["marks"] != 3 or not state["cursor"]:
-        failures.append(f"{label}: replay at its peak {state} (heat map, 3 marks, X-ray cursor)")
+    if not state["heat"] or not state["playing"] or state["marks"] != 3 or not state["cursor"]:
+        failures.append(f"{label}: replay at its peak {state} (in the panel's frame, heat map, 3 marks, X-ray cursor)")
     page.wait_for_timeout(200)
-    page.locator("#flare-replay").screenshot(path=str(out / f"{label}-replay.png"))
+    page.locator("#flare-ev").screenshot(path=str(out / f"{label}-replay.png"))
+    page.click("#flare-ev [data-replay-close]")
+    if page.evaluate("document.getElementById('flare-ev-frame').classList.contains('is-playing')"):
+        failures.append(f"{label}: closing the replay left it playing in the panel")
+
+
+CAM_STATE = """(() => {
+  const q = s => document.querySelector('#flare-ev ' + s);
+  const heat = q('.flare-cam-heat'), base = q('.flare-cam-base');
+  const shown = i => !!i && !i.hidden && getComputedStyle(i).display !== 'none' && getComputedStyle(i).visibility !== 'hidden';
+  return {
+    heat: heat && shown(heat) ? heat.getAttribute('src') : null,
+    heatOk: !!heat && heat.complete && heat.naturalWidth > 0,
+    base: base && shown(base) ? base.getAttribute('src') : null,
+    baseOk: !!base && base.complete && base.naturalWidth > 0,
+    overlay: q('.flare-cam-frame').classList.contains('is-overlay'),
+    overlayLabel: !q('[data-cam-label-overlay]').hidden,
+    missing: !q('.flare-cam-frame .flare-missing').hidden,
+    broken: [...document.querySelectorAll('#flare-ev img')].filter(i => shown(i) && i.getAttribute('src')
+              && i.complete && i.naturalWidth === 0).map(i => i.getAttribute('src')),
+  };
+})()"""
+CAM_SETTLED = """(() => { const h = document.querySelector('#flare-ev .flare-cam-heat');
+  const b = document.querySelector('#flare-ev .flare-cam-base');
+  const done = i => !i || i.hidden || (i.getAttribute('src') && i.complete && i.naturalWidth > 0);
+  return !!h && !document.querySelector('#flare-ev [data-cam-src]') && done(h) && done(b); })()"""
+
+
+def shoot_panel(page, path):
+    """The event panel from a full-page capture, without the sticky header
+    (it would cover the panel's top)."""
+    box = page.evaluate("(() => { const r = document.getElementById('flare-ev').getBoundingClientRect();"
+                        " return {x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height}; })()")
+    page.screenshot(path=path, full_page=True, clip=box, style=".hdr { visibility: hidden !important; }")
+
+
+def check_event1(page, failures, label, base_url, out):
+    """D-112, the real case of 2026-11-11: event 1's Grad-CAM was made by
+    flare-nrt 1.0.0, so gradcam/<slot>?style=heat is a 404; its heat map
+    and 131 Å come from its peak set, selected from the table (flare.js
+    reads its replay data) and from ?evento=1 (the server does). Then the
+    fallbacks: without the peak set's heat map, the overlay, labelled; with
+    no map at all, a note. Never a broken image."""
+    page.goto(base_url)
+    page.wait_for_load_state("networkidle")
+    page.evaluate("document.querySelector('[data-flare-ev]').__swxSelect(1)")
+    page.wait_for_function(CAM_SETTLED, timeout=15000)
+    for how in ("selected", "?evento=1"):
+        if how != "selected":
+            page.goto(base_url + "?evento=1")
+            page.wait_for_load_state("networkidle")
+            page.wait_for_function(CAM_SETTLED, timeout=15000)
+        st = page.evaluate(CAM_STATE)
+        if not (st["heat"] or "").endswith("/replay/1/peak/gradcam-heat.webp") or not st["heatOk"] \
+                or not (st["base"] or "").endswith("/replay/1/peak/131.webp") or not st["baseOk"] \
+                or st["overlay"] or st["broken"]:
+            failures.append(f"{label}: event 1 ({how}): {st}, expected the peak set's heat map over its 131 Å")
+    page.wait_for_timeout(200)
+    shoot_panel(page, str(out / f"{label}-evento1.png"))
+    # The peak set's heat map gone too: the overlay, labelled as such.
+    page.route("**/peak/gradcam-heat.webp", lambda route: route.fulfill(status=404, body=""))
+    page.goto(base_url + "?evento=1")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_function(CAM_SETTLED, timeout=15000)
+    st = page.evaluate(CAM_STATE)
+    if not (st["heat"] or "").endswith("/replay/1/peak/gradcam-overlay.webp") or not st["overlay"] \
+            or not st["overlayLabel"] or st["base"] or st["broken"]:
+        failures.append(f"{label}: event 1 without its heat map: {st}, expected the overlay, labelled, no base")
+    shoot_panel(page, str(out / f"{label}-evento1-overlay.png"))
+    # No map at all: a note, the 131 Å alone, nothing broken.
+    for glob in ("**/gradcam/**", "**/peak/gradcam-overlay.webp"):
+        page.route(glob, lambda route: route.fulfill(status=404, body=""))
+    page.goto(base_url + "?evento=1")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_function(CAM_SETTLED, timeout=15000)
+    st = page.evaluate(CAM_STATE)
+    if st["heat"] or not st["missing"] or st["broken"] or not st["baseOk"]:
+        failures.append(f"{label}: event 1 with no map: {st}, expected the note over the 131 Å image")
+    for glob in ("**/gradcam/**", "**/peak/gradcam-overlay.webp", "**/peak/gradcam-heat.webp"):
+        page.unroute(glob)
+
+
+SUN_ORDER = ["131", "171", "304", "1600"]
 
 
 def check_sun_now(page, failures, label, interactive):
-    """D-104: the home page's "El Sol ahora": the large image loaded with the
-    page (with its size set), the thumbnails, and (once) a thumbnail swap."""
+    """D-104/D-106: the home page's "El Sol ahora": the large image loaded
+    with the page, four thumbnails in a fixed order with 171 Å selected, and
+    (once) a click that selects another without reordering them."""
     if not page.evaluate("!!document.querySelector('[data-sun-now]:not([hidden])')"):
         failures.append(f"{label}: no 'El Sol ahora' block")
         return
     page.locator("[data-sun-now]").scroll_into_view_if_needed()
     loaded = wait_images(page, "[data-sun-now] img")
-    if not all(loaded) or len(loaded) != 4:
+    if not all(loaded) or len(loaded) != 5:
         failures.append(f"{label}: Sun block images loaded {loaded}")
+    thumbs = "[...document.querySelectorAll('[data-sun-thumb]')].map(b => b.dataset.wave + (b.getAttribute('aria-pressed') === 'true' ? '*' : ''))"
+    if page.evaluate(thumbs) != ["131", "171*", "304", "1600"]:
+        failures.append(f"{label}: thumbnails {page.evaluate(thumbs)}, expected 131, 171 (selected), 304, 1600")
     if interactive:
         page.click('[data-sun-thumb][data-wave="304"]')
         main = page.evaluate("document.querySelector('[data-sun-main]').dataset.wave")
-        back = page.evaluate("!!document.querySelector('[data-sun-thumb][data-wave=\"171\"]')")
-        if main != "304" or not back:
-            failures.append(f"{label}: thumbnail swap left the large image at {main!r}")
+        after = page.evaluate(thumbs)
+        if main != "304" or after != ["131", "171", "304*", "1600"]:
+            failures.append(f"{label}: after a click on 304 the large image is {main!r}, thumbnails {after}")
+        page.click('[data-sun-thumb][data-wave="171"]')
+
+
+def check_offer_card(page, failures, label):
+    """D-109: the flare detector's card is clickable as a whole."""
+    page.locator(".ocard.has-link").first.scroll_into_view_if_needed()
+    target = page.evaluate("""(() => {
+        const card = [...document.querySelectorAll('.ocard')].find(c => c.textContent.includes('fulguraciones'));
+        if (!card) return null;
+        const r = card.querySelector('p').getBoundingClientRect();
+        const a = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return a && a.closest('a') ? a.closest('a').getAttribute('href') : null;
+    })()""")
+    if not target or not target.endswith("/productos/usach.flare.nrt/"):
+        failures.append(f"{label}: a click on the flare card's text reaches {target!r}, not the flare page")
 
 
 def check_code_blocks(page, failures, label):
@@ -372,8 +615,10 @@ def main(base_url, out_dir, mode=None):
                             except Exception as exc:  # noqa: BLE001
                                 failures.append(f"{label}: local time check failed ({exc})")
                         if page_name == "home":
-                            check_sun_now(page, failures, label,
-                                          interactive=(lang == "es" and theme == "day" and size == "desktop"))
+                            first = lang == "es" and theme == "day" and size == "desktop"
+                            check_sun_now(page, failures, label, interactive=first)
+                            if first:
+                                check_offer_card(page, failures, label)
                         page.screenshot(path=str(out / f"{label}.png"), full_page=True)
                         if lang == "es" and theme == "day" and size == "desktop":
                             if checks == "stack":
@@ -392,9 +637,16 @@ def main(base_url, out_dir, mode=None):
                             check_flare(page, failures, label, lang, interactive=first, quiet=checks == "flare-quiet")
                             if first:
                                 check_local_switch(page, failures, label)
+                            if lang == "es" and theme == "day":
+                                # v0.6.2: the table as the selector, ?evento=, an
+                                # event selected (desktop and phone).
+                                check_events(page, failures, label, base_url.rstrip("/") + prefix + path, out,
+                                             quiet=checks == "flare-quiet")
                             if checks == "flare" and lang == "es":
                                 check_loop(page, failures, label, out, keyboard=first)
                                 check_replay(page, failures, label, out)
+                                if theme == "day":
+                                    check_event1(page, failures, label, base_url.rstrip("/") + prefix + path, out)
                         context.close()
         browser.close()
     for f in failures:

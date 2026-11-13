@@ -197,15 +197,17 @@ def _arcsec(value, lang: str) -> str:
     return fmt_number(value, lang, decimals=0) + "″"
 
 
-def fmt_location(location, lang: str) -> str:
-    """'(−412″, 269″)', helioprojective x (west +) and y (north +)."""
+def fmt_location(location, lang: str, *, parens: bool = True) -> str:
+    """'(−412″, 269″)', helioprojective x (west +) and y (north +); without
+    the parentheses in a table cell (D-108)."""
     if not isinstance(location, dict):
         return ""
     centroid = location.get("centroid_arcsec")
     if not (isinstance(centroid, list) and len(centroid) == 2
             and all(isinstance(v, (int, float)) for v in centroid)):
         return ""
-    return f"({_arcsec(centroid[0], lang)}, {_arcsec(centroid[1], lang)})"
+    text = f"{_arcsec(centroid[0], lang)}, {_arcsec(centroid[1], lang)}"
+    return f"({text})" if parens else text
 
 
 # --- state ----------------------------------------------------------------------
@@ -348,8 +350,23 @@ def public_render(service_path, channel: str) -> str | None:
 
 def replay_frame_url(event_id: int, slot: str, name: str) -> str:
     """One replay frame's public path (the service's
-    /api/events/<id>/frames/<ISO>/<name>.webp, through nginx)."""
+    /api/events/<id>/frames/<ISO>/<name>.webp, through nginx; name 171,
+    gradcam-heat, or 131 since flare-nrt 1.2.0)."""
     return f"{media_base()}/replay/{int(event_id)}/{slot}/{name}.webp"
+
+
+# An event's peak set (flare-nrt 1.2.0): the peak slot's four channels and
+# its Grad-CAM, kept with the replay 365 days. Only these names are asked
+# for, and only those replay.json's `peak.images` lists (D-112).
+PEAK_NAMES = ("131", "171", "304", "1600", "gradcam-heat", "gradcam-overlay")
+
+
+def peak_url(event_id: int, name: str) -> str:
+    """One file of an event's peak set, public path (the service's
+    /api/events/<id>/peak/<name>.webp, through nginx)."""
+    if name not in PEAK_NAMES:
+        raise ValueError(f"not a peak file: {name!r}")
+    return f"{media_base()}/replay/{int(event_id)}/peak/{name}.webp"
 
 
 # --- the page ---------------------------------------------------------------------
@@ -411,9 +428,10 @@ def header_context(event, lang: str, now: dt.datetime) -> dict:
 
 def images_context(event, lang: str) -> dict:
     """The four channels of the latest stored result (its slot; the
-    service's latest for a version-1 event), each as a large image (1024 px
-    WebP) and a difference (512 px: the service makes no 1024 px
-    difference), with its T_OBS. 171 Å is shown first."""
+    service's latest for a version-1 event), for the grid of eight tiles
+    (D-106): each channel's image and difference at 512 px WebP, with its
+    T_OBS; the lightbox opens the image at 1024 px (the service makes no
+    1024 px difference, so a difference opens at 512)."""
     slot = _event_slot(event)
     inputs = (event.provenance or {}).get("inputs") or {} if event is not None else {}
     channels = []
@@ -421,12 +439,12 @@ def images_context(event, lang: str) -> dict:
         t_obs = parse_time(inputs.get(wave))
         channels.append({
             "wave": wave,
-            "img": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
+            "img": image_url(wave, "img", slot, fmt="webp"),
+            "img_large": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
             "diff": image_url(wave, "diff", slot, fmt="webp"),
             "t_obs": time_html(t_obs, lang, date=False, seconds=True) if t_obs else None,
         })
-    by_wave = {c["wave"]: c for c in channels}
-    return {"slot": slot, "channels": channels, "default": by_wave[DEFAULT_WAVE]}
+    return {"slot": slot, "channels": channels}
 
 
 def _gradcam_slot(event: dict) -> str | None:
@@ -441,52 +459,130 @@ def _gradcam_slot(event: dict) -> str | None:
     return iso_z(peak) if peak is not None else None
 
 
-def gradcam_context(events_json, threshold: float, lang: str) -> dict:
-    """"Qué miró el modelo" (D-102). Grad-CAM is coarse (a 16-px grid,
-    upsampled) and normalised to its own maximum, so a quiet frame's map
-    looks as bright as a flare's and means nothing: only an alert frame is
-    shown. During an open event, its peak frame; otherwise the last event's
-    peak ("Última alerta: …"); with no event in 30 days, nothing.
-
-    mode: "unavailable" (service down) | "none" | "pending" (open event, no
-    map yet) | "open" | "last"."""
-    if events_json is None:
-        return {"mode": "unavailable"}
-    events = []
-    for e in events_json.get("events", []):
-        if isinstance(e, dict) and parse_time(e.get("t_start")) is not None:
-            events.append(e)
-    open_events = [e for e in events if e.get("closed") is False]
-    if open_events:
-        chosen, mode = max(open_events, key=lambda e: parse_time(e["t_start"])), "open"
-    else:
-        closed = [e for e in events if e.get("closed") is not False]
-        if not closed:
-            return {"mode": "none"}
-        chosen = max(closed, key=lambda e: parse_time(e.get("t_pmax")) or parse_time(e["t_start"]))
-        mode = "last"
-    slot = _gradcam_slot(chosen)
-    p_max = _number(chosen.get("p_max"))
-    if slot is None or not ISO_SLOT_RE.match(slot):
-        return {"mode": "pending" if mode == "open" else "none"}
-    if p_max is not None and p_max < threshold:
-        return {"mode": "none"}  # never a heat map for a frame below the threshold
-    return {
-        "mode": mode,
-        "slot": slot,
-        "heat": gradcam_url(slot, style="heat", fmt="webp"),
-        "base": image_url("131", "img", slot, fmt="webp"),
-        "when": time_html(parse_time(slot), lang),
-        "probability": fmt_prob(p_max, lang),
-    }
+def _event_id(e: dict) -> int | None:
+    value = e.get("event_id")
+    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 999_999_999:
+        return value
+    return None
 
 
-def history_rows(events_json, lang: str) -> list[dict]:
-    """flare-nrt's `/api/events` -> table rows, newest first, with the GOES
-    class the portal measured between t_start and t_end + 10 min, and the
-    replay's data URL when the service has one (`replay: true`, 1.1.0)."""
+# flare-nrt keeps the FITS (and so /api/image for a past slot) 4 days; an
+# event replay keeps its own 131 Å frames 365 days (1.2.0).
+LIVE_IMAGE_DAYS = dt.timedelta(days=4)
+
+
+def cam_sources(event_id: int | None, slot: str, *, has_replay: bool, now: dt.datetime,
+                peak_images=None, frame_images=None) -> dict:
+    """Where the panel's Grad-CAM heat map and the 131 Å image under it
+    come from, in order (D-112); flare.js tries the next on an error, so
+    the page never shows a broken image.
+
+    heat: the peak set's gradcam-heat (1.2.0); the replay's heat frame at
+    that slot; the live gradcam/<slot>?style=heat; then the overlay (the
+    peak set's, then the live one), which already carries its 131 Å image
+    and is labelled as such. 131 Å: the peak set's 131; the live image
+    while flare-nrt has that slot's FITS (4 days); the replay's 131 Å
+    frame; then nothing (the map alone, it carries the limb).
+
+    `peak_images` and `frame_images` are replay.json's `peak.images` and
+    the `images` of its frame at `slot`; None when replay.json wasn't read
+    (then the peak set is not asked for, and the replay's 131 Å frame is,
+    as in v0.6.2's first draft)."""
+    peak = [n for n in PEAK_NAMES if n in (peak_images or ())] if has_replay else []
+    known = frame_images is not None
+    frame = frame_images or ()
+    heat = []
+    if "gradcam-heat" in peak:
+        heat.append({"src": peak_url(event_id, "gradcam-heat"), "overlay": False})
+    if has_replay and known and "gradcam-heat" in frame:
+        heat.append({"src": replay_frame_url(event_id, slot, "gradcam-heat"), "overlay": False})
+    heat.append({"src": gradcam_url(slot, style="heat", fmt="webp"), "overlay": False})
+    if "gradcam-overlay" in peak:
+        heat.append({"src": peak_url(event_id, "gradcam-overlay"), "overlay": True})
+    heat.append({"src": gradcam_url(slot, style="overlay", fmt="webp"), "overlay": True})
+    base = []
+    if "131" in peak:
+        base.append(peak_url(event_id, "131"))
+    if now - parse_time(slot) < LIVE_IMAGE_DAYS:
+        base.append(image_url("131", "img", slot, fmt="webp"))
+    if has_replay and (not known or "131" in frame):
+        base.append(replay_frame_url(event_id, slot, "131"))
+    return {"slot": slot, "heat": heat, "base": base}
+
+
+def apply_cam(view: dict, cam: dict, lang: str, *, ready: bool) -> None:
+    """Put cam_sources()'s lists into an event's view (the panel template
+    reads cam, cam_heat_json, cam_base_json, cam_when)."""
+    view["cam"] = cam
+    view["cam_slot"] = cam["slot"]
+    view["cam_when"] = time_html(parse_time(cam["slot"]), lang)
+    view["cam_heat_json"] = json.dumps(cam["heat"], separators=(",", ":"))
+    view["cam_base_json"] = json.dumps(cam["base"], separators=(",", ":"))
+    view["cam_ready"] = ready
+
+
+def _cell_time(when: dt.datetime | None, lang: str, *, date: bool = True) -> str:
+    """A table cell's time: UT on one line, local time on a second (D-108)."""
+    return time_html(when, lang, date=date, stacked=True) if when is not None else "—"
+
+
+def _event_view(e: dict, start, peak, end, goes_class, threshold: float, lang: str, now: dt.datetime) -> dict:
+    """One event as the table row and the panel show it (D-107)."""
     from django.urls import reverse
 
+    event_id = _event_id(e)
+    has_replay = e.get("replay") is True and event_id is not None
+    n_frames = e.get("n_alert_frames")
+    p_max = _number(e.get("p_max"))
+    is_open = e.get("closed") is False
+    slot = _gradcam_slot(e)
+    if slot is not None and not ISO_SLOT_RE.match(slot):
+        slot = None
+    # "Qué miró el modelo" (D-102): never a map for a frame below the
+    # threshold; an open event may not have one yet.
+    if slot is None:
+        cam_mode = "pending" if is_open else "none"
+    elif p_max is not None and p_max < threshold:
+        cam_mode = "none"
+    else:
+        cam_mode = "map"
+    same_day_peak = peak is not None and peak.date() == start.date()
+    same_day_end = end is not None and end.date() == start.date()
+    view = {
+        "event_id": event_id,
+        "open": is_open,
+        "start": _cell_time(start, lang),
+        "peak": _cell_time(peak, lang, date=not same_day_peak) if peak else "—",
+        "end": _cell_time(end, lang, date=not same_day_end) if end else "—",
+        "start_full": time_html(start, lang),
+        "peak_full": time_html(peak, lang) if peak else "—",
+        "end_full": time_html(end, lang) if end else "—",
+        "p_max": fmt_prob(p_max, lang),
+        "n_frames": n_frames if isinstance(n_frames, int) and not isinstance(n_frames, bool) else "—",
+        "location": fmt_location(e.get("location"), lang, parens=False) or "—",
+        "goes_class": goes_class or "—",
+        "cam_mode": cam_mode,
+        "cam": None,
+        "cam_slot": None,
+        "cam_when": None,
+        "cam_ready": False,
+        "replay": reverse("web:flare_replay_json", args=[event_id]) if has_replay else None,
+        "replay_xray": reverse("web:flare_replay_xray_json", args=[event_id]) if has_replay else None,
+    }
+    if cam_mode == "map":
+        # Without replay.json (read for the selected event only, page_context;
+        # flare.js reads it for the others before showing them).
+        apply_cam(view, cam_sources(event_id, slot, has_replay=has_replay, now=now), lang, ready=not has_replay)
+    return view
+
+
+def history_rows(events_json, lang: str, threshold: float = DEFAULT_THRESHOLD,
+                 now: dt.datetime | None = None) -> list[dict]:
+    """flare-nrt's `/api/events` -> one view per event, newest first, with
+    the GOES class the portal measured between t_start and t_end + 10 min,
+    the panel's Grad-CAM and 131 Å URLs and the replay's data URLs when the
+    service has one (`replay: true`, 1.1.0)."""
+    now = now or timezone.now()
     raw = [e for e in (events_json or {}).get("events", []) if isinstance(e, dict)]
     parsed = []
     for e in raw:
@@ -497,27 +593,34 @@ def history_rows(events_json, lang: str) -> list[dict]:
     parsed.sort(key=lambda item: item[1], reverse=True)
     windows = [(start, (end or start) + CLASS_WINDOW_AFTER) for _e, start, _p, end in parsed]
     classes = goes_classes(windows)
-    rows = []
-    for (e, start, peak, end), goes_class in zip(parsed, classes, strict=True):
-        n_frames = e.get("n_alert_frames")
-        event_id = e.get("event_id")
-        has_replay = e.get("replay") is True and isinstance(event_id, int) and not isinstance(event_id, bool) \
-            and 1 <= event_id <= 999_999_999
-        rows.append({
-            "event_id": event_id if has_replay else None,
-            "start": time_html(start, lang),
-            "peak": time_html(peak, lang, date=peak.date() != start.date()) if peak else "—",
-            "end": time_html(end, lang, date=end.date() != start.date()) if end else "—",
-            "open": e.get("closed") is False,
-            "p_max": fmt_prob(e.get("p_max"), lang),
-            "n_frames": n_frames if isinstance(n_frames, int) else "—",
-            "location": fmt_location(e.get("location"), lang) or "—",
-            "goes_class": goes_class or "—",
-            "gradcam": public_gradcam(e.get("gradcam")),
-            "replay": reverse("web:flare_replay_json", args=[event_id]) if has_replay else None,
-            "replay_xray": reverse("web:flare_replay_xray_json", args=[event_id]) if has_replay else None,
-        })
-    return rows
+    return [_event_view(e, start, peak, end, goes_class, threshold, lang, now)
+            for (e, start, peak, end), goes_class in zip(parsed, classes, strict=True)]
+
+
+_EVENT_PARAM_RE = re.compile(r"[0-9]{1,9}")
+
+
+def parse_event_param(value) -> int | None:
+    """`?evento=<id>`: ASCII digits only, 1..999 999 999; anything else is
+    None (str.isdigit() would also take "４" or "²")."""
+    if not isinstance(value, str) or not _EVENT_PARAM_RE.fullmatch(value):
+        return None
+    number = int(value)
+    return number if number >= 1 else None
+
+
+def select_event(rows: list[dict], wanted: int | None) -> dict | None:
+    """The event the panel shows (D-107): the one asked for in the URL if it
+    is in the list; else the open event; else the most recent one."""
+    selectable = [r for r in rows if r["event_id"] is not None]
+    if wanted is not None:
+        for r in selectable:
+            if r["event_id"] == wanted:
+                return r
+    for r in selectable:
+        if r["open"]:
+            return r
+    return selectable[0] if selectable else None
 
 
 # --- the frame player's data (datos/bucle.json, datos/repeticion-<id>.json) -----------
@@ -558,24 +661,29 @@ def loop_payload(channel: str, hours: int) -> dict:
     return out
 
 
-def replay_payload(event_id: int, threshold: float) -> dict:
+def replay_payload(event_id: int, threshold: float, now: dt.datetime | None = None) -> dict:
     """One event's replay (flare-nrt `replay.json`, schema flare-nrt-replay/1)
     for the player: every frame with its 171 Å image and, at or above the
     threshold, its Grad-CAM heat map (public nginx paths); the event's
     start, peak and end; whether it is complete, with the service's note
-    and missing counts when it isn't."""
+    and missing counts when it isn't; its peak set (1.2.0, `peak`: slot and
+    the public URL of each file replay.json lists) and the event panel's
+    image sources (`cam`, cam_sources())."""
     data = service_json("replay", event_id=event_id)
     out = {"event_id": event_id, "frames": [], "marks": {}, "threshold": threshold, "complete": True,
            "note": None, "missing": {"171": 0, "gradcam-heat": 0}, "n_slots": None, "window": None,
-           "unavailable": data is None}
+           "peak": None, "cam": None, "unavailable": data is None}
     if data is None:
         return out
+    images_at = {}
     for f in data.get("frames", []):
         if not isinstance(f, dict):
             continue
         slot = f.get("slot")
         images = f.get("images") if isinstance(f.get("images"), list) else []
         t = _unix(slot)
+        if t is not None and isinstance(slot, str) and ISO_SLOT_RE.match(slot):
+            images_at[t] = [n for n in images if isinstance(n, str)]
         if t is None or not isinstance(slot, str) or not ISO_SLOT_RE.match(slot) or "171" not in images:
             continue
         p = _number(f.get("probability"))
@@ -590,6 +698,21 @@ def replay_payload(event_id: int, threshold: float) -> dict:
     event = data.get("event") if isinstance(data.get("event"), dict) else {}
     out["marks"] = {k: _unix(event.get(src)) for k, src in (("start", "t_start"), ("peak", "t_peak"),
                                                            ("end", "t_end"))}
+    peak = data.get("peak") if isinstance(data.get("peak"), dict) else None
+    peak_slot = peak.get("slot") if peak else None
+    if isinstance(peak_slot, str) and ISO_SLOT_RE.match(peak_slot):
+        names = [n for n in PEAK_NAMES if n in (peak.get("images") if isinstance(peak.get("images"), list) else ())]
+        out["peak"] = {"slot": peak_slot, "t": _unix(peak_slot), "probability": _number(peak.get("probability")),
+                       "gradcam_peak": _number(peak.get("gradcam_peak")),
+                       "images": {n: peak_url(event_id, n) for n in names}}
+        cam_slot = peak_slot
+    else:  # a replay built by 1.1.0: no peak set
+        names = []
+        t_peak = parse_time(event.get("t_peak"))
+        cam_slot = iso_z(t_peak) if t_peak is not None else None
+    if cam_slot is not None:
+        out["cam"] = cam_sources(event_id, cam_slot, has_replay=True, now=now or timezone.now(),
+                                 peak_images=names, frame_images=images_at.get(_unix(cam_slot), []))
     window = data.get("window") if isinstance(data.get("window"), dict) else {}
     start, end = _unix(window.get("start")), _unix(window.get("end"))
     out["window"] = [start, end] if start is not None and end is not None and start < end else None
@@ -626,15 +749,15 @@ def replay_xray(event_id: int) -> dict:
 # --- the home page's "El Sol ahora" (D-104) -------------------------------------------
 
 SUN_NOW_MAX_AGE = dt.timedelta(days=3)  # the service keeps 4 days of FITS
-SUN_NOW_THUMBS = ("131", "304", "1600")
+SUN_NOW_WAVES = WAVES  # fixed order, never reordered (D-106)
 
 
 def sun_now_context(lang: str, now: dt.datetime | None = None) -> dict | None:
     """The latest stored result's images for the home page, from the product
-    store only (the home page never waits on the service): the 171 Å image
-    at 1024 px and 512 px thumbnails of the other three, all for that
-    result's slot. None (the block is not rendered) without a version-2
-    result in the last 3 days."""
+    store only (the home page never waits on the service): four 512 px
+    thumbnails in a fixed order (131, 171, 304, 1600) and the selected one
+    at 1024 px, 171 Å by default, all for that result's slot. None (the
+    block is not rendered) without a version-2 result in the last 3 days."""
     now = now or timezone.now()
     event = _latest_event()
     slot = _event_slot(event)
@@ -643,11 +766,12 @@ def sun_now_context(lang: str, now: dt.datetime | None = None) -> dict | None:
 
     def channel(wave):
         return {"wave": wave, "large": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
-                "thumb": image_url(wave, "img", slot, fmt="webp", size=512)}
+                "thumb": image_url(wave, "img", slot, fmt="webp", size=512), "selected": wave == DEFAULT_WAVE}
 
+    thumbs = [channel(w) for w in SUN_NOW_WAVES]
     return {
-        "main": channel(DEFAULT_WAVE),
-        "thumbs": [channel(w) for w in SUN_NOW_THUMBS],
+        "main": next(t for t in thumbs if t["selected"]),
+        "thumbs": thumbs,
         "observed": time_html(event.valid_from, lang),
         "age": fmt_age(event.valid_from, now),
     }
@@ -775,17 +899,26 @@ def replay_xray_panels(lang: str) -> list[dict]:
     return [panel]
 
 
-def page_context(lang: str) -> dict:
+def page_context(lang: str, wanted_event: int | None = None) -> dict:
     now = timezone.now()
     event = _latest_event()
-    # One service call: the alert history, which also decides the Grad-CAM
-    # section. The header and the images come from the product store.
+    # One service call: the alert history, which is also the "Eventos"
+    # selector (D-107). The header and the images come from the product store.
     events_json = service_json("events", days=30)
+    threshold = stored_threshold(event)
+    rows = history_rows(events_json, lang, threshold, now)
+    selected = select_event(rows, wanted_event)
+    if selected is not None and selected["cam_mode"] == "map" and selected["replay"]:
+        # The selected event's peak set (1.2.0) needs its replay.json: one
+        # more call, cached like the player's (the same key).
+        replay = replay_payload(selected["event_id"], threshold, now=now)
+        if replay["cam"] is not None:
+            apply_cam(selected, replay["cam"], lang, ready=True)
     return {
         "header": header_context(event, lang, now),
         "images": images_context(event, lang),
-        "gradcam": gradcam_context(events_json, stored_threshold(event), lang),
-        "history": history_rows(events_json, lang),
+        "history": rows,
+        "selected": selected,
         "history_available": events_json is not None,
         "service_available": events_json is not None,
         "loop_url": None,  # filled by the view (reverse)

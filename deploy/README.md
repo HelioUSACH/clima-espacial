@@ -196,6 +196,45 @@ switch (status strip, or the menu on a phone) picks which comes first. When both
 `SWX_FLARE_PAGE_PUBLIC=1` in `/etc/swx/swx.env` and
 `sudo systemctl restart swx-web`.
 
+### v0.6.2: the maintainer's review of the flare page (D-106..D-112)
+
+Layout, the events table as selector, the player starting early and never
+blanking a frame: all Django/static, so `deploy.sh` covers them. **nginx:
+two changes, both in the snippet** (the http file is unchanged): the
+replay-frame location also accepts `131`
+(`…/replay/<event id>/<ISO>/{131|171|gradcam-heat}.webp`), and a new
+location serves an event's peak set
+(`…/replay/<event id>/peak/{131|171|304|1600|gradcam-heat|gradcam-overlay}.webp`
+→ `/api/events/<id>/peak/…`, same zone, cache and immutable headers as the
+replay frames). Both are for **flare-nrt 1.2.0**. Without it (or for a
+replay built before it and not rebuilt) the page falls back to the live
+map, then the overlay, then a note; nothing breaks.
+
+```bash
+sudo bash /opt/swx/deploy/deploy.sh v0.6.2
+sudo install -m 644 /opt/swx/deploy/nginx-clima-espacial.conf /etc/nginx/snippets/clima-espacial.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Quick check (expect 200 `image/webp` for an event with a replay, once
+flare-nrt 1.2.0 has built or rebuilt it; 404 before that):
+
+```bash
+B=https://helio.fisica.usach.cl/clima-espacial/productos/usach.flare.nrt
+curl -s "$B/datos/repeticion-<id>.json" | python3 -c "import json,sys; print(json.load(sys.stdin)['frames'][0]['url'])"
+curl -sI "$B/replay/<id>/<ISO>/131.webp" | head -1
+# The peak set (D-112): 200 image/webp for each name replay.json lists, a
+# second request shows X-Cache-Status: HIT; any other name is a 404.
+curl -s "$B/datos/repeticion-1.json" | python3 -c "import json,sys; print(json.load(sys.stdin)['peak'])"
+curl -sI "$B/replay/1/peak/gradcam-heat.webp" | grep -iE '^HTTP|x-cache'
+```
+
+To time the 6-h loop on the live page (needs Playwright on the machine you
+run it from, not the server): `python .github/scripts/loop_timing.py
+"$B/" --runs 3` (add `--net 20,40` to emulate 20 Mbit/s and 40 ms; `--width
+390 --passes 3` also reports the player's decoded-frame memory at a
+phone's width).
+
 ## Caching and compression (D-055, D-057)
 
 - `/clima-espacial/static/`: hashed filenames from `collectstatic`

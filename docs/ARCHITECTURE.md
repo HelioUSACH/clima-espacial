@@ -300,9 +300,23 @@ units). Three paths, and no other:
 - **Two rate zones** (D-103): stills 30 r/s (burst 100) and frames 100 r/s
   (burst 400) per address, since a player loads ~130 frames in seconds and
   a campus shares one address. The cache holds up to 1 GB.
-- **The home page's "El Sol ahora"** (D-104) uses the same image paths for
-  the latest stored result and the same loop, and reads only the product
-  store, never the service.
+- **The home page's "El Sol ahora"** (D-104, D-106) uses the same image
+  paths for the latest stored result and the same loop, and reads only the
+  product store, never the service.
+- **An event is linkable** (D-107): `productos/usach.flare.nrt/?evento=<id>`
+  renders that event's panel server-side; the panel's 131 Å image comes
+  from the live image while flare-nrt keeps the slot's FITS (4 days), then
+  from the event replay's own copy (`replay/<id>/<ISO>/131.webp`).
+  Since flare-nrt 1.2.0 an event's **peak set** comes first, for the heat
+  map and the 131 Å image alike (`replay/<id>/peak/<name>.webp`, D-112):
+  each image lists its sources in order and `flare.js` moves to the next on
+  an error; the last resort for the map is the service's overlay, labelled
+  as such, and nothing at all shows a note, never a broken image.
+- **The frame player draws decoded frames only** (D-111): two `<canvas>`
+  layers, each frame decoded off-screen and drawn when ready, a sliding
+  window of decoded frames around the current one (phone 8 + 24, desktop
+  16 + 64, ~1 MB each at 512 px); the downloaded bytes stay in the HTTP
+  cache.
 
 Indicative RAM budget (15 GiB): PostgreSQL 2–3 GB · gunicorn 2 gthread workers × 4 threads (D-069)
 · flare loop (CPU) 2–3 GB · collectors <0.5 GB · OS/cache rest. Disk (96 GB

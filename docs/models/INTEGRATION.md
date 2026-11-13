@@ -54,9 +54,9 @@ product contract everything else in this repo already follows:
 ## Worked example: `modules/flare/` (flare-nrt 1.x)
 
 The producer is [`HelioUSACH/flare-nrt`](https://github.com/HelioUSACH/flare-nrt)
-(v1.1.0 at the time of writing). Its integration sheet (`INTEGRATION.md`
+(v1.2.0 at the time of writing). Its integration sheet (`INTEGRATION.md`
 there, sections "GET /api/status", "Display endpoints" and "Display files
-(1.1.0)") is the contract; this repo uses only the fields and endpoints it
+(1.1.0, 1.2.0)") is the contract; this repo uses only the fields and endpoints it
 lists.
 
 **The collector** polls the internal `/api/status` (never exposed by nginx,
@@ -85,7 +85,7 @@ missing value is `no_data`. A naive `timestamp` is read as UTC. If the
 service isn't reachable, the heartbeat is `error`, which the public sees as
 "en preparación" (D-036).
 
-**The product page** (D-099..D-104) also shows what only the service has:
+**The product page** (D-099..D-104, D-106..D-112) also shows what only the service has:
 the probability per slot, the alert history, the images, the last hours as
 a loop and each event's replay. Django reads `/api/series`, `/api/events`,
 `/api/loop` and `/api/events/{id}/replay` server-side (whitelisted, 2 s
@@ -94,15 +94,22 @@ timeout, 30 s cache, `web/flare.py`) and hands the browser its own
 images reach the browser through cached nginx locations, never through
 Django (docs/ARCHITECTURE.md §6.1):
 
-| public path (under `/clima-espacial/productos/usach.flare.nrt/`) | flare-nrt 1.1.0 |
+| public path (under `/clima-espacial/productos/usach.flare.nrt/`) | flare-nrt 1.1.0 / 1.2.0 |
 |---|---|
 | `img/{wave}.png?kind=img\|diff&slot=ISO&format=webp&size=1024` | `/api/image/{wave}.png` (1024 px with `kind=img` only) |
 | `gradcam/{latest\|ISO}.png?style=heat&format=webp` | `/api/gradcam/…` (the map alone, inferno, normalised to its own maximum) |
 | `render/{ISO}/{171\|171-diff\|gradcam-heat}.webp` | `/api/render/…`, the frames `/api/loop` lists |
-| `replay/{event_id}/{ISO}/{171\|gradcam-heat}.webp` | `/api/events/{id}/frames/…`, the frames of `replay.json` |
+| `replay/{event_id}/{ISO}/{131\|171\|gradcam-heat}.webp` | `/api/events/{id}/frames/…`, the frames of `replay.json` (`131` since 1.2.0: an old event's peak image once the FITS are gone, D-107) |
+| `replay/{event_id}/peak/{131\|171\|304\|1600\|gradcam-heat\|gradcam-overlay}.webp` | `/api/events/{id}/peak/…` (1.2.0), the event's peak set; the page asks only for the names `replay.json`'s `peak.images` lists (D-112) |
 
 The page uses the heat style only for an alert frame (D-102): normalised
-to its own maximum, a quiet frame's map looks as strong as a flare's. A
+to its own maximum, a quiet frame's map looks as strong as a flare's. An
+event's map is taken, in order, from its peak set's `gradcam-heat`, the
+replay's heat frame at the peak slot, the live `gradcam/<slot>?style=heat`,
+then the overlay (labelled as such); its 131 Å from the peak set's `131`,
+the live image, the replay's 131 Å frame, then none (D-112). A map made by
+flare-nrt 1.0.0 has no heat style, so for such an event only the peak set
+(1.2.0) has one. A
 model whose page needs images or other display data can follow the same
 split: the product store for what the portal publishes, server-side JSON
 for the rest, nginx for anything binary.
