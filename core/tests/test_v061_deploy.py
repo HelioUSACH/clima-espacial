@@ -14,6 +14,9 @@ ISO = r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)"
 RENDER = rf'~ "^/clima-espacial/productos/usach\.flare\.nrt/render/{ISO}/(171|171-diff|gradcam-heat)\.webp$"'
 # 131 Å joined the replay frames in v0.6.2 (flare-nrt 1.2.0, D-107).
 REPLAY = rf'~ "^/clima-espacial/productos/usach\.flare\.nrt/replay/(\d{{1,9}})/{ISO}/(131|171|gradcam-heat)\.webp$"'
+# An event's peak set (v0.6.2, flare-nrt 1.2.0, D-112).
+PEAK = (r'~ "^/clima-espacial/productos/usach\.flare\.nrt/replay/(\d{1,9})/peak/'
+        r'(131|171|304|1600|gradcam-heat|gradcam-overlay)\.webp$"')
 IMG = r"~ ^/clima-espacial/productos/usach\.flare\.nrt/img/(131|171|304|1600)\.png$"
 
 
@@ -46,7 +49,8 @@ def test_image_location_checks_and_forwards_only_whitelisted_arguments():
 def test_frame_locations_are_strict_cached_immutable_and_rate_limited():
     locs = _locations(SNIPPET)
     for key, upstream in ((RENDER, "/api/render/$swx_flare_rslot/$swx_flare_rname.webp"),
-                          (REPLAY, "/api/events/$swx_flare_event/frames/$swx_flare_eslot/$swx_flare_ename.webp")):
+                          (REPLAY, "/api/events/$swx_flare_event/frames/$swx_flare_eslot/$swx_flare_ename.webp"),
+                          (PEAK, "/api/events/$swx_flare_pevent/peak/$swx_flare_pname.webp")):
         body = locs[key]
         assert f"proxy_pass http://127.0.0.1:5050{upstream};" in body
         assert "proxy_cache swx_flare;" in body and "proxy_cache_use_stale error timeout updating" in body
@@ -54,7 +58,8 @@ def test_frame_locations_are_strict_cached_immutable_and_rate_limited():
         assert body.count('add_header Cache-Control "public, max-age=31536000, immutable";') == 1
         assert "proxy_hide_header Cache-Control;" in body
         assert "$args" not in body and "$is_args" not in body and "$request_uri" not in body
-    assert r"(\d{1,9})" in REPLAY  # event id: digits only
+    assert r"(\d{1,9})" in REPLAY and r"(\d{1,9})" in PEAK  # event id: digits only
+    assert 'proxy_cache_key "replay/$swx_flare_pevent/peak/$swx_flare_pname";' in locs[PEAK]
 
 
 def test_rate_zones_and_cache_size():

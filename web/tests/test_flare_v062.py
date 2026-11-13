@@ -50,6 +50,16 @@ def _panel(html):
     return _section(html, 'id="flare-ev"', "data-ev-replay")
 
 
+def _chain(html, cls):
+    """The data-chain of the panel's image of class `cls`: its sources, in order."""
+    import html as htmllib
+    import json
+
+    tag = re.search(rf'<img class="{cls}"[^>]*>', html).group(0)
+    chain = json.loads(htmllib.unescape(re.search(r'data-chain="([^"]*)"', tag).group(1)))
+    return [e if isinstance(e, str) else (e["src"], e["overlay"]) for e in chain]
+
+
 def _add_event(service, **fields):
     service.payloads["/api/events"]["events"].append(fields)
 
@@ -256,9 +266,11 @@ def test_panel_heat_over_131_with_vertical_bar_and_facts(client, service, public
     panel = _panel(_page(client))
     peak = service.end - dt.timedelta(hours=5) + dt.timedelta(minutes=4)
     assert f'class="flare-cam-heat" src="{MEDIA}/gradcam/{_iso(peak)}.png?style=heat&amp;format=webp"' in panel
-    # Recent: the live 131 Å image first, the replay's stored copy next.
-    assert f'class="flare-cam-base" src="{MEDIA}/img/131.png?kind=img&amp;slot={_iso(peak)}&amp;format=webp"' \
-           f' data-fallback="{MEDIA}/replay/3/{_iso(peak)}/131.webp"' in panel
+    # Recent: the live 131 Å image first, the replay's stored copy next
+    # (this service has no replay.json for it: no peak set, D-112).
+    assert f'class="flare-cam-base" src="{MEDIA}/img/131.png?kind=img&amp;slot={_iso(peak)}&amp;format=webp"' in panel
+    assert _chain(panel, "flare-cam-base") == [f"{MEDIA}/img/131.png?kind=img&slot={_iso(peak)}&format=webp",
+                                               f"{MEDIA}/replay/3/{_iso(peak)}/131.webp"]
     bar = _section(panel, 'class="cam-vbar"', "</div>")
     assert bar.index("máx.") < bar.index(">0<")  # "máx." at the top, 0 at the bottom
     assert "cam-bar\"" not in panel and "máximo del mapa" not in panel  # the wide horizontal bar is gone
@@ -286,7 +298,8 @@ def test_old_event_131_from_the_replay_else_the_map_alone(client, service, publi
     p7 = _iso(old - dt.timedelta(hours=7) + dt.timedelta(minutes=4))
     panel = _panel(_page(client, "?evento=7"))
     # Past flare-nrt's 4 days of FITS: straight to the replay's own 131 Å.
-    assert f'class="flare-cam-base" src="{MEDIA}/replay/7/{p7}/131.webp"' in panel and "data-fallback" not in panel
+    assert f'class="flare-cam-base" src="{MEDIA}/replay/7/{p7}/131.webp"' in panel
+    assert _chain(panel, "flare-cam-base") == [f"{MEDIA}/replay/7/{p7}/131.webp"]
     assert "data-cam-nobase hidden" in panel
     panel = _panel(_page(client, "?evento=8"))
     assert "flare-cam-base" not in panel and "flare-cam-heat" in panel

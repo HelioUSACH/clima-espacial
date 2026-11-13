@@ -4,25 +4,28 @@ The selected event's panel (D-107), for one row of flare.history_rows (ev):
 the Grad-CAM heat map of its peak frame over that frame's 131 Å image
 (opacity slider, vertical colour bar), its facts, and the button that plays
 its replay in the same frame. Rendered live for the selected event and as a
-<template> for each of the others; flare.js swaps them.
+<template> for each of the others; flare.js swaps them. The two images name
+their sources in order (data-chain, D-112) and flare.js moves to the next
+on an error. In a <template> copy (deferred) they have no src yet: flare.js
+first reads the event's replay data for its peak set (data-cam-src).
 {% endcomment %}
 <div class="flare-ev-head">
   <h3 id="flare-ev-title" class="flare-h3">{% blocktrans with when=ev.start_full %}Evento del {{ when }}{% endblocktrans %}{% if ev.open %} <span class="pill">{% trans "en curso" %}</span>{% endif %}</h3>
   {% if ev.replay %}<button type="button" class="sbtn" data-replay="{{ ev.replay }}" data-replay-xray="{{ ev.replay_xray }}" aria-controls="flare-replay-player">{% trans "ver repetición" %}</button>
   <button type="button" class="sbtn" data-replay-close hidden>{% trans "Cerrar repetición" %}</button>{% endif %}
 </div>
-<div class="flare-ev-grid" data-ev-id="{{ ev.event_id }}">
+<div class="flare-ev-grid" data-ev-id="{{ ev.event_id }}"{% if ev.cam and not ev.cam_ready %} data-cam-src="{{ ev.replay }}"{% endif %}>
   {% if ev.cam_mode == "map" %}
   <figure class="flare-fig">
     <div class="flare-cam-wrap">
       <div class="flare-frame flare-cam-frame" id="flare-ev-frame">
-        {% if ev.base %}<img class="flare-cam-base" src="{{ ev.base }}"{% if ev.base_fallback %} data-fallback="{{ ev.base_fallback }}"{% endif %} width="512" height="512" decoding="async" alt="{% trans 'SDO/AIA 131 Å en el mismo momento' %}">{% endif %}
-        <img class="flare-cam-heat" src="{{ ev.heat }}" width="512" height="512" decoding="async" style="opacity:.6" alt="{% trans 'Mapa Grad-CAM de la alerta' %}">
+        {% if ev.cam.base %}<img class="flare-cam-base"{% if not deferred %} src="{{ ev.cam.base.0 }}"{% endif %} data-chain="{{ ev.cam_base_json }}" width="512" height="512" decoding="async" alt="{% trans 'SDO/AIA 131 Å en el mismo momento' %}">{% endif %}
+        <img class="flare-cam-heat"{% if not deferred %} src="{{ ev.cam.heat.0.src }}"{% endif %} data-chain="{{ ev.cam_heat_json }}" width="512" height="512" decoding="async" style="opacity:.6" alt="{% trans 'Mapa Grad-CAM de la alerta' %}">
         <span class="flare-missing" hidden>{% trans "Mapa no disponible" %}</span>
       </div>
       <div class="cam-vbar" aria-hidden="true"><i></i><span class="cam-vbar-max">{% trans "máx." %}</span><span class="cam-vbar-min">0</span></div>
     </div>
-    <figcaption><b>131 Å + Grad-CAM</b>{{ ev.cam_when }}</figcaption>
+    <figcaption><b data-cam-label>131 Å + Grad-CAM</b><b data-cam-label-overlay hidden>{% trans "Grad-CAM superpuesto" %}</b>{{ ev.cam_when }}</figcaption>
   </figure>
   {% else %}
   <div class="flare-frame flare-cam-frame flare-cam-empty" id="flare-ev-frame"><span class="flare-missing">{% if ev.cam_mode == "pending" %}{% trans "El mapa de la alerta en curso todavía no está disponible." %}{% else %}{% trans "Sin mapa Grad-CAM para este evento." %}{% endif %}</span></div>
@@ -40,7 +43,8 @@ its replay in the same frame. Rendered live for the selected event and as a
     {% if ev.cam_mode == "map" %}
     <label class="fp-opt" data-cam-opacity-row>{% trans "Opacidad del mapa" %} <input type="range" min="0" max="100" step="5" value="60" data-cam-opacity></label>
     <p class="meta">{% trans "Grad-CAM marca las zonas de la imagen de 131 Å que más pesaron en la probabilidad de la red, en la imagen de mayor probabilidad del evento. Los colores son relativos al máximo del propio mapa, no una probabilidad. Es una grilla gruesa (16 px), por eso solo se muestra para una imagen en alerta." %}</p>
-    <p class="meta flare-cam-note" data-cam-nobase{% if ev.base %} hidden{% endif %}>{% trans "La imagen de 131 Å de ese momento ya no está disponible: se muestra solo el mapa." %}</p>
+    <p class="meta flare-cam-note" data-cam-overlay-note hidden>{% trans "Para este evento solo está el mapa ya superpuesto por el servicio a su imagen de 131 Å, así que la opacidad no se ajusta." %}</p>
+    <p class="meta flare-cam-note" data-cam-nobase{% if ev.cam.base %} hidden{% endif %}>{% trans "La imagen de 131 Å de ese momento ya no está disponible: se muestra solo el mapa." %}</p>
     {% endif %}
   </div>
 </div>

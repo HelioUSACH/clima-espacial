@@ -232,8 +232,8 @@ def check_events(page, failures, label, base_url, out, quiet):
                          " return b && !b.hidden ? b.src : null; })()")
     if quiet and base is not None:
         failures.append(f"{label}: event 2 (no replay) shows a 131 Å image {base!r}, expected the map alone")
-    if not quiet and (not base or "/replay/2/" not in base or not base.endswith("/131.webp")):
-        failures.append(f"{label}: event 2's 131 Å is {base!r}, expected the replay's stored frame")
+    if not quiet and (not base or not base.endswith("/replay/2/peak/131.webp")):
+        failures.append(f"{label}: event 2's 131 Å is {base!r}, expected its peak set's (D-112)")
     page.focus('tr[data-ev="3"]')
     page.keyboard.press("Enter")
     if selected_event(page)["panel"] != "3":
@@ -241,7 +241,7 @@ def check_events(page, failures, label, base_url, out, quiet):
     if page.evaluate("document.activeElement.dataset.ev") != "3":
         failures.append(f"{label}: focus left the row after Enter")
     page.keyboard.press("ArrowDown")
-    if page.evaluate("document.activeElement.dataset.ev") != "2":
+    if page.evaluate("document.activeElement.dataset.ev") != "1":
         failures.append(f"{label}: ArrowDown did not move to the next row")
     # A link to an event.
     page.goto(base_url + "?evento=2")
@@ -251,6 +251,43 @@ def check_events(page, failures, label, base_url, out, quiet):
         failures.append(f"{label}: ?evento=2 opened on {sel}")
     page.wait_for_timeout(300)
     page.locator("[data-flare-events]").screenshot(path=str(out / f"{label}-evento.png"))
+
+
+# D-111: sampled on every animation frame while the player runs: the
+# visible layer must hold a picture (a canvas with a size and an opaque
+# centre pixel; solar frames are opaque). Before the fix an <img> whose src
+# changed was blank until the new frame decoded.
+BLANK_SAMPLER = """(id) => {
+  const s = {samples: 0, blank: 0, imgs: 0, painted: new Set(), first: null, stop: false};
+  window.__swxBlank = s;
+  const tick = () => {
+    if (s.stop) return;
+    const fr = document.getElementById(id);
+    if (fr && fr.classList.contains('is-playing')) {
+      s.samples++;
+      const c = fr.querySelector('canvas.fp-img');
+      if (fr.querySelector('img.fp-img')) s.imgs++;
+      if (!c || !c.width || getComputedStyle(c).display === 'none') s.blank++;
+      else if (c.getContext('2d').getImageData(c.width >> 1, c.height >> 1, 1, 1).data[3] === 0) s.blank++;
+      for (const root of document.querySelectorAll('[data-player]')) {
+        const pl = root.__swxPlayer;
+        if (pl && pl.frameEl === fr && pl.painted >= 0) s.painted.add(pl.painted);
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}"""
+BLANK_RESULT = """(() => { const s = window.__swxBlank; s.stop = true;
+  return {samples: s.samples, blank: s.blank, imgs: s.imgs, painted: s.painted.size}; })()"""
+
+
+def check_no_blank(page, failures, label, what, min_painted):
+    r = page.evaluate(BLANK_RESULT)
+    if r["blank"] or r["imgs"] or r["samples"] < 30 or r["painted"] < min_painted:
+        failures.append(f"{label}: {what}: {r} (expected no blank sample, no <img> layer, >= 30 samples, "
+                        f">= {min_painted} frames painted)")
+    print(f"{label}: {what}: {r['samples']} samples, {r['blank']} blank, {r['painted']} frames painted")
 
 
 def check_loop(page, failures, label, out, keyboard):
@@ -264,6 +301,7 @@ def check_loop(page, failures, label, out, keyboard):
     if before:
         failures.append(f"{label}: {before} loop frame(s) fetched before play was pressed")
     page.route("**/render/**", lambda route: (time.sleep(0.02), route.continue_()))
+    page.evaluate(BLANK_SAMPLER, "flare-loop-frame")
     page.click("#flare-loop [data-fp-start]")
     player = PLAYER.format(id="flare-loop")
     page.wait_for_function(f"{player}.playing", timeout=30000)
@@ -285,6 +323,16 @@ def check_loop(page, failures, label, out, keyboard):
         failures.append(f"{label}: 'cargando' still shown once every frame is in")
     print(f"{label}: loop {n} frames, playing after {page.evaluate(player + '.timing.first')} ms, "
           f"all in after {page.evaluate(player + '.timing.all')} ms (stub, 20 ms per frame)")
+    # Two more passes at 20 fps, then: never a blank frame, from the press on.
+    page.select_option("#flare-loop [data-fp-speed]", "20")
+    page.evaluate(f"{player}.play()")
+    page.wait_for_timeout(int(2 * n / 20 * 1000) + 500)
+    check_no_blank(page, failures, label, "loop, loading then 2 passes", min_painted=n - 5)
+    stats = page.evaluate(f"{player}.stats")
+    print(f"{label}: decoded window {stats['window']}, peak {stats['peakFrames']} frames, "
+          f"{stats['peakBytes'] / 1e6:.1f} MB")
+    if stats["peakFrames"] > stats["window"]["ahead"] + stats["window"]["behind"] + 1:
+        failures.append(f"{label}: {stats['peakFrames']} frames decoded at once, over the window {stats['window']}")
     page.evaluate(f"{player}.pause(); {player}.show(Math.floor({player}.frames.length / 2))")
     if keyboard:
         page.focus("#flare-loop [data-fp-slider]")
@@ -309,9 +357,12 @@ def check_replay(page, failures, label, out):
     heat map on alert frames, the event's marks on the slider, the X-ray
     chart with its cursor; closing it brings back the Grad-CAM still."""
     page.evaluate("document.querySelector('[data-flare-ev]').__swxSelect(3)")
+    page.evaluate(BLANK_SAMPLER, "flare-ev-frame")
     page.click("#flare-ev [data-replay]")
     player = PLAYER.format(id="flare-replay-player")
     page.wait_for_function(f"{player}.frames.length > 0 && {player}.loaded", timeout=30000)
+    page.wait_for_timeout(1500)
+    check_no_blank(page, failures, label, "replay", min_painted=10)
     page.wait_for_function(COUNT_READY_STACKS + " >= 2", timeout=20000)
     page.wait_for_load_state("networkidle")
     peak = page.evaluate(f"{player}.nearest({player}.data.marks.peak)")
@@ -328,6 +379,82 @@ def check_replay(page, failures, label, out):
     page.click("#flare-ev [data-replay-close]")
     if page.evaluate("document.getElementById('flare-ev-frame').classList.contains('is-playing')"):
         failures.append(f"{label}: closing the replay left it playing in the panel")
+
+
+CAM_STATE = """(() => {
+  const q = s => document.querySelector('#flare-ev ' + s);
+  const heat = q('.flare-cam-heat'), base = q('.flare-cam-base');
+  const shown = i => !!i && !i.hidden && getComputedStyle(i).display !== 'none' && getComputedStyle(i).visibility !== 'hidden';
+  return {
+    heat: heat && shown(heat) ? heat.getAttribute('src') : null,
+    heatOk: !!heat && heat.complete && heat.naturalWidth > 0,
+    base: base && shown(base) ? base.getAttribute('src') : null,
+    baseOk: !!base && base.complete && base.naturalWidth > 0,
+    overlay: q('.flare-cam-frame').classList.contains('is-overlay'),
+    overlayLabel: !q('[data-cam-label-overlay]').hidden,
+    missing: !q('.flare-cam-frame .flare-missing').hidden,
+    broken: [...document.querySelectorAll('#flare-ev img')].filter(i => shown(i) && i.getAttribute('src')
+              && i.complete && i.naturalWidth === 0).map(i => i.getAttribute('src')),
+  };
+})()"""
+CAM_SETTLED = """(() => { const h = document.querySelector('#flare-ev .flare-cam-heat');
+  const b = document.querySelector('#flare-ev .flare-cam-base');
+  const done = i => !i || i.hidden || (i.getAttribute('src') && i.complete && i.naturalWidth > 0);
+  return !!h && !document.querySelector('#flare-ev [data-cam-src]') && done(h) && done(b); })()"""
+
+
+def shoot_panel(page, path):
+    """The event panel from a full-page capture, without the sticky header
+    (it would cover the panel's top)."""
+    box = page.evaluate("(() => { const r = document.getElementById('flare-ev').getBoundingClientRect();"
+                        " return {x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height}; })()")
+    page.screenshot(path=path, full_page=True, clip=box, style=".hdr { visibility: hidden !important; }")
+
+
+def check_event1(page, failures, label, base_url, out):
+    """D-112, the real case of 2026-11-11: event 1's Grad-CAM was made by
+    flare-nrt 1.0.0, so gradcam/<slot>?style=heat is a 404; its heat map
+    and 131 Å come from its peak set, selected from the table (flare.js
+    reads its replay data) and from ?evento=1 (the server does). Then the
+    fallbacks: without the peak set's heat map, the overlay, labelled; with
+    no map at all, a note. Never a broken image."""
+    page.goto(base_url)
+    page.wait_for_load_state("networkidle")
+    page.evaluate("document.querySelector('[data-flare-ev]').__swxSelect(1)")
+    page.wait_for_function(CAM_SETTLED, timeout=15000)
+    for how in ("selected", "?evento=1"):
+        if how != "selected":
+            page.goto(base_url + "?evento=1")
+            page.wait_for_load_state("networkidle")
+            page.wait_for_function(CAM_SETTLED, timeout=15000)
+        st = page.evaluate(CAM_STATE)
+        if not (st["heat"] or "").endswith("/replay/1/peak/gradcam-heat.webp") or not st["heatOk"] \
+                or not (st["base"] or "").endswith("/replay/1/peak/131.webp") or not st["baseOk"] \
+                or st["overlay"] or st["broken"]:
+            failures.append(f"{label}: event 1 ({how}): {st}, expected the peak set's heat map over its 131 Å")
+    page.wait_for_timeout(200)
+    shoot_panel(page, str(out / f"{label}-evento1.png"))
+    # The peak set's heat map gone too: the overlay, labelled as such.
+    page.route("**/peak/gradcam-heat.webp", lambda route: route.fulfill(status=404, body=""))
+    page.goto(base_url + "?evento=1")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_function(CAM_SETTLED, timeout=15000)
+    st = page.evaluate(CAM_STATE)
+    if not (st["heat"] or "").endswith("/replay/1/peak/gradcam-overlay.webp") or not st["overlay"] \
+            or not st["overlayLabel"] or st["base"] or st["broken"]:
+        failures.append(f"{label}: event 1 without its heat map: {st}, expected the overlay, labelled, no base")
+    shoot_panel(page, str(out / f"{label}-evento1-overlay.png"))
+    # No map at all: a note, the 131 Å alone, nothing broken.
+    for glob in ("**/gradcam/**", "**/peak/gradcam-overlay.webp"):
+        page.route(glob, lambda route: route.fulfill(status=404, body=""))
+    page.goto(base_url + "?evento=1")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_function(CAM_SETTLED, timeout=15000)
+    st = page.evaluate(CAM_STATE)
+    if st["heat"] or not st["missing"] or st["broken"] or not st["baseOk"]:
+        failures.append(f"{label}: event 1 with no map: {st}, expected the note over the 131 Å image")
+    for glob in ("**/gradcam/**", "**/peak/gradcam-overlay.webp", "**/peak/gradcam-heat.webp"):
+        page.unroute(glob)
 
 
 SUN_ORDER = ["131", "171", "304", "1600"]
@@ -518,6 +645,8 @@ def main(base_url, out_dir, mode=None):
                             if checks == "flare" and lang == "es":
                                 check_loop(page, failures, label, out, keyboard=first)
                                 check_replay(page, failures, label, out)
+                                if theme == "day":
+                                    check_event1(page, failures, label, base_url.rstrip("/") + prefix + path, out)
                         context.close()
         browser.close()
     for f in failures:

@@ -120,7 +120,7 @@ Events, Grad-CAM, loop and replays: flare-nrt's JSON read server-side
         </tbody>
       </table>
     </div>
-    {% for r in history %}{% if r.event_id %}<template id="flare-ev-tpl-{{ r.event_id }}">{% include "web/_flare_event.html" with ev=r %}</template>{% endif %}{% endfor %}
+    {% for r in history %}{% if r.event_id %}<template id="flare-ev-tpl-{{ r.event_id }}">{% include "web/_flare_event.html" with ev=r deferred=True %}</template>{% endif %}{% endfor %}
     {{ replay_panels|json_script:"flare-replay-xray-panels" }}
     {% if selected %}
     <section class="card flare-ev" id="flare-ev" aria-labelledby="flare-ev-title" tabindex="-1" data-flare-ev>

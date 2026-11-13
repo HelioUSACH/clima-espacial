@@ -206,10 +206,11 @@ def test_history_class_window_reaches_10_min_after_end(service):
     assert [r["goes_class"] for r in rows] == ["C1.2", "—"]  # newest first
     # v0.6.2 (D-108): no parentheses in a table cell.
     assert rows[0]["p_max"] == "0,91" and rows[0]["n_frames"] == 5 and rows[0]["location"] == "−412″, 269″"
-    assert rows[0]["heat"].startswith("/productos/usach.flare.nrt/gradcam/") and "Z.png?style=heat" in rows[0]["heat"]
+    heat = rows[0]["cam"]["heat"][0]["src"]
+    assert heat.startswith("/productos/usach.flare.nrt/gradcam/") and "Z.png?style=heat" in heat
     # Anything but the service's own /api/gradcam/<ISO>.png is dropped (and
     # this event has no t_pmax to fall back on).
-    assert rows[1]["heat"] is None and rows[1]["cam_mode"] == "none"
+    assert rows[1]["cam"] is None and rows[1]["cam_mode"] == "none"
     assert rows[1]["peak"] == "—"
 
 

@@ -12,9 +12,14 @@
  *   (or its "ver" link), or Enter/Space on a focused row, shows that
  *   event's panel (cloned from its server-rendered <template>) and puts
  *   ?evento=<id> in the URL; ↑/↓ move between rows. The panel: Grad-CAM
- *   over the peak's 131 Å image (the live image, then the replay's stored
- *   copy, then the map alone), its opacity slider, and the replay played
+ *   over the peak's 131 Å image, its opacity slider, and the replay played
  *   in the same frame, with its X-ray chart whose cursor follows the frame.
+ *   Each of the two images lists its sources in order (data-chain, D-112:
+ *   the event's peak set first, built by the server from replay.json) and
+ *   moves to the next on an error; the heat map's last resort is the
+ *   service's overlay, labelled as such; nothing left shows a note, never
+ *   a broken image. A panel the server built without replay.json
+ *   (data-cam-src) reads it first (datos/repeticion-<id>.json, `cam`).
  * - home: four thumbnails in a fixed order; the selected one is shown
  *   large and highlighted, a click never reorders them. The block hides
  *   itself when its image can't be had (service down and nothing cached).
@@ -158,30 +163,20 @@
       pendingXray = null;
       body.querySelectorAll("[data-replay]").forEach(function (b) { b.hidden = false; });
       body.querySelectorAll("[data-replay-close]").forEach(function (b) { b.hidden = true; });
-      body.querySelectorAll("[data-cam-opacity-row]").forEach(function (r) { r.hidden = false; });
+      // The opacity slider again, unless the map is the service's overlay
+      // or there is none.
+      var camFrame = body.querySelector(".flare-cam-frame");
+      var camHeat = body.querySelector(".flare-cam-heat");
+      var noSlider = !camFrame || camFrame.classList.contains("is-overlay") || !camHeat || camHeat.hidden;
+      body.querySelectorAll("[data-cam-opacity-row]").forEach(function (r) { r.hidden = noSlider; });
     }
 
     function wirePanel() {
       var heat = body.querySelector(".flare-cam-heat");
       var base = body.querySelector(".flare-cam-base");
       var slider = body.querySelector("[data-cam-opacity]");
-      var noBase = body.querySelector("[data-cam-nobase]");
-      if (heat) watch(heat);
       if (heat && slider) slider.addEventListener("input", function () { heat.style.opacity = String(+slider.value / 100); });
-      if (base) {
-        // The live 131 Å image (flare-nrt keeps 4 days), then the replay's
-        // own copy (1.2.0), then the map alone: it carries the solar limb.
-        watch(base, function () {
-          var next = base.dataset.fallback;
-          if (next) {
-            base.removeAttribute("data-fallback");
-            base.setAttribute("src", next);
-            return;
-          }
-          base.hidden = true;
-          if (noBase) noBase.hidden = false;
-        });
-      }
+      if (heat) startCam(body);
       var start = body.querySelector("[data-replay]");
       var stop = body.querySelector("[data-replay-close]");
       if (start) {
@@ -205,6 +200,99 @@
         });
       }
       if (stop) stop.addEventListener("click", function () { closeReplay(); if (start) start.focus(); });
+    }
+
+    // ---- the panel's two images: try each source in order (D-112) ----
+
+    function parseChain(img) {
+      try {
+        return JSON.parse(img.getAttribute("data-chain") || "[]").map(function (e) {
+          return typeof e === "string" ? { src: e, overlay: false } : e;
+        });
+      } catch (e) { return []; }
+    }
+
+    // Show chain[k], moving on at each error; onPick(entry) for the one
+    // being tried, onNone() when nothing is left. A newer run on the same
+    // image cancels an older one.
+    function runChain(img, chain, onPick, onNone) {
+      var gen = (img.__camGen || 0) + 1, k = 0;
+      img.__camGen = gen;
+      function next() {
+        if (img.__camGen !== gen) return;
+        var e = chain[k++];
+        if (!e) { img.removeAttribute("src"); img.hidden = true; onNone(); return; }
+        img.hidden = false;
+        onPick(e);
+        if (img.getAttribute("src") === e.src && img.complete) {
+          if (img.naturalWidth === 0) next(); // this one already failed
+          return;
+        }
+        img.setAttribute("src", e.src);
+      }
+      img.onerror = function () { if (img.__camGen === gen) next(); };
+      next();
+    }
+
+    function startCam(root, cam) {
+      var frame = root.querySelector(".flare-cam-frame");
+      var heat = root.querySelector(".flare-cam-heat");
+      var base = root.querySelector(".flare-cam-base");
+      if (!frame || !heat) return;
+      var noBase = root.querySelector("[data-cam-nobase]");
+      var overlayNote = root.querySelector("[data-cam-overlay-note]");
+      var label = root.querySelector("[data-cam-label]");
+      var labelOverlay = root.querySelector("[data-cam-label-overlay]");
+      var opacityRow = root.querySelector("[data-cam-opacity-row]");
+      var missing = frame.querySelector(".flare-missing");
+      var grid = root.querySelector("[data-cam-src]");
+      if (cam) {
+        heat.setAttribute("data-chain", JSON.stringify(cam.heat || []));
+        if (base) base.setAttribute("data-chain", JSON.stringify(cam.base || []));
+      } else if (grid) {
+        // Built without the event's replay.json: read it first (its peak set
+        // goes first), then start; on any failure, start with what we have.
+        var url = grid.getAttribute("data-cam-src");
+        grid.removeAttribute("data-cam-src");
+        // Meanwhile a failed image (the server's first guess) is not drawn.
+        [heat, base].forEach(function (i) {
+          if (!i) return;
+          i.onerror = function () { i.removeAttribute("src"); };
+          if (i.complete && i.getAttribute("src") && i.naturalWidth === 0) i.removeAttribute("src");
+        });
+        var done = false;
+        var go = function (c) { if (!done) { done = true; startCam(root, c && c.cam ? c.cam : null); } };
+        setTimeout(function () { go(null); }, 4000);
+        fetch(url, { headers: { Accept: "application/json" } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(go, function () { go(null); });
+        return;
+      }
+      var overlay = false;
+      function setOverlay(on) {
+        overlay = on;
+        frame.classList.toggle("is-overlay", on);
+        if (label) label.hidden = on;
+        if (labelOverlay) labelOverlay.hidden = !on;
+        if (overlayNote) overlayNote.hidden = !on;
+        if (opacityRow && !(replayBox && !replayBox.hidden)) opacityRow.hidden = on;
+        if (noBase) noBase.hidden = on || !base || !base.hidden;
+      }
+      runChain(heat, parseChain(heat), function (e) {
+        setOverlay(!!e.overlay);
+        frame.classList.remove("is-missing");
+        if (missing) missing.hidden = true;
+      }, function () {
+        // No map at all: say so (the 131 Å image, if any, stays).
+        setOverlay(false);
+        if (missing) missing.hidden = false;
+        if (opacityRow) opacityRow.hidden = true;
+      });
+      if (base) {
+        // Then the map alone: it carries the solar limb.
+        runChain(base, parseChain(base), function () { if (noBase) noBase.hidden = true; },
+          function () { if (noBase) noBase.hidden = overlay; });
+      }
     }
 
     function select(id, opts) {

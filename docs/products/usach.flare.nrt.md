@@ -87,8 +87,9 @@ shows the latest AIA images (four channels and their differences), the
 last 6 h as a loop, the probability against the threshold with the GOES
 X-ray flux for comparison, and the events of the last 30 days with the GOES
 class the portal measured during each; choosing one shows its Grad-CAM over
-131 Å at its peak and its replay, and gives it a link (`?evento=<id>`)
-(D-099 to D-110).
+131 Å at its peak (from the event's peak set kept by flare-nrt 1.2.0, so
+an old event keeps its map) and its replay, and gives it a link
+(`?evento=<id>`) (D-099 to D-112).
 
 ## Maintainers / links
 

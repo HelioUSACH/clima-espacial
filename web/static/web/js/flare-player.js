@@ -11,6 +11,15 @@
  *   frames are in (D-110) and the rest keep loading ahead of it: playback
  *   waits on a frame that isn't in yet rather than skip it. "cargando N/M"
  *   shows until every image is in.
+ * - Never a blank frame (D-111): a frame is drawn only once it is decoded.
+ *   The images and heat maps are two <canvas> layers; each frame is
+ *   decoded off-screen (createImageBitmap, else img.decode()) and drawn
+ *   only when ready, so a swap is one drawImage and the previous frame
+ *   stays up until the next one is. Decoded frames are kept in a sliding
+ *   window around the current one (phone: 8 behind, 24 ahead; desktop:
+ *   16 behind, 64 ahead; ~1 MB each at 512 px) and decoded ahead while
+ *   playing; the rest stay as the downloaded bytes. Playback waits for
+ *   the next frame to be decoded rather than skip or blank it.
  * - Controls: play/pause, step back/forward, a slider with each frame's
  *   T_OBS (UT and local time, localtime.js) and probability, speed
  *   5/10/20 fps, loop. Keyboard: every control is a native button, select,
@@ -28,6 +37,12 @@
   var START_FRACTION = 0.2;
   var RETRY_MS = 800;
   var RETRY_LIST_MS = 1500;
+  var MAX_DECODING = 3;
+  // The decoded window (frames). A phone (narrow screen or <= 4 GB) keeps
+  // ~33 MB of 512 px frames; a desktop ~81 MB.
+  var small = Math.min(window.innerWidth || 9999, (window.screen && window.screen.width) || 9999) < 700 ||
+    (navigator.deviceMemory != null && navigator.deviceMemory <= 4);
+  var WINDOW = small ? { behind: 8, ahead: 24 } : { behind: 16, ahead: 64 };
   var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   function fill(template, values) {
@@ -46,8 +61,9 @@
 
   // Load urls (an array, null entries skipped), in order, with at most
   // MAX_IN_FLIGHT requests at once, retrying a failure once (a 429 from a
-  // shared address). onProgress(done, total); onItem(index, ok) as each
-  // one settles; resolves to an array of booleans.
+  // shared address). onProgress(done, total); onItem(index, ok, img) as
+  // each one settles (img: the loaded, not yet decoded, Image); resolves
+  // to an array of booleans.
   function preload(urls, onProgress, token, onItem) {
     return new Promise(function (resolve) {
       var ok = urls.map(function () { return false; });
@@ -69,14 +85,14 @@
           inFlight--;
           if (token.cancelled) return;
           ok[item[0]] = true;
-          if (onItem) onItem(item[0], true);
+          if (onItem) onItem(item[0], true, img);
           finish();
         };
         img.onerror = function () {
           inFlight--;
           if (token.cancelled) return;
           if (item[1] === 0) { setTimeout(function () { queue.push([item[0], 1]); pump(); }, RETRY_MS); return; }
-          if (onItem) onItem(item[0], false);
+          if (onItem) onItem(item[0], false, null);
           finish();
         };
         img.src = urls[item[0]];
@@ -87,6 +103,25 @@
       pump();
     });
   }
+
+  // A loaded Image -> a decoded picture that draws without decoding again:
+  // an ImageBitmap where the browser has one, else the Image itself once
+  // its decode() has resolved. Resolves to {pic, bytes}.
+  function decodeImage(img) {
+    var bytes = (img.naturalWidth || 512) * (img.naturalHeight || 512) * 4;
+    if (window.createImageBitmap) {
+      return createImageBitmap(img).then(function (bm) { return { pic: bm, bytes: bytes }; },
+        function () { return decodeElement(img, bytes); });
+    }
+    return decodeElement(img, bytes);
+  }
+
+  function decodeElement(img, bytes) {
+    var p = img.decode ? img.decode() : Promise.resolve();
+    return p.then(function () { return { pic: img, bytes: bytes }; });
+  }
+
+  function release(pic) { if (pic && pic.close) pic.close(); }
 
   function Player(root) {
     this.root = root;
@@ -115,6 +150,12 @@
     this.token = { cancelled: false };
     this.onFrame = null;
     this.data = null;
+    this.decoded = {};   // frame index -> {base, heat, bytes}
+    this.decoding = {};  // frame index -> true while it decodes
+    this.nDecoding = 0;
+    this.painted = -1;   // the frame on the canvas, -1 for none
+    // Read by .github/scripts/screenshots.py and loop_timing.py.
+    this.stats = { bytes: 0, peakBytes: 0, frames: 0, peakFrames: 0, window: WINDOW };
     if (reduced && this.speedEl) this.speedEl.value = this.speedEl.options[0].value;
     root.__swxPlayer = this; // read by .github/scripts/screenshots.py and flare.js
     this.wire();
@@ -124,17 +165,19 @@
     // The page may have replaced the target frame (the flare page's event
     // panel is swapped per event): follow the id.
     var frame = document.getElementById(this.root.dataset.target);
-    if (frame !== this.frameEl) { this.frameEl = frame; this.imgEl = null; this.heatEl = null; }
+    if (frame !== this.frameEl) { this.frameEl = frame; this.imgEl = null; this.heatEl = null; this.painted = -1; }
     if (!this.frameEl) return null;
-    if (!this.imgEl) {
-      this.imgEl = document.createElement("img");
+    if (!this.imgEl || !this.frameEl.contains(this.imgEl)) {
+      // Two canvases, drawn only with decoded frames (never an <img> whose
+      // src changes: that blanks it while the new one decodes).
+      this.imgEl = document.createElement("canvas");
       this.imgEl.className = "fp-img";
-      this.imgEl.alt = "";
-      this.imgEl.decoding = "async";
-      this.heatEl = document.createElement("img");
+      this.imgEl.setAttribute("aria-hidden", "true");
+      this.heatEl = document.createElement("canvas");
       this.heatEl.className = "fp-heat";
-      this.heatEl.alt = "";
+      this.heatEl.setAttribute("aria-hidden", "true");
       this.heatEl.hidden = true;
+      this.painted = -1;
       this.frameEl.appendChild(this.imgEl);
       this.frameEl.appendChild(this.heatEl);
     }
@@ -187,8 +230,12 @@
     this.data = null;
     this.loaded = false;
     this.timing = null;
-    if (this.frameEl) this.frameEl.classList.remove("is-playing");
-    if (this.imgEl) { this.imgEl.removeAttribute("src"); this.heatEl.removeAttribute("src"); this.heatEl.hidden = true; }
+    this.evict(function () { return false; });
+    this.decoding = {};
+    this.nDecoding = 0;
+    this.painted = -1;
+    if (this.frameEl) this.frameEl.classList.remove("is-playing", "is-missing-frame");
+    if (this.imgEl) { clearCanvas(this.imgEl); clearCanvas(this.heatEl); this.heatEl.hidden = true; }
     if (this.controls) this.controls.hidden = true;
     if (this.progressEl) this.progressEl.hidden = true;
     if (this.startBtn) this.startBtn.hidden = false;
@@ -254,26 +301,26 @@
         });
         var startAt = Math.max(1, Math.ceil(frames.length * START_FRACTION));
         var head = 0, started = false, t0 = performance.now();
-        function onItem(k, ok) {
+        self.t0 = t0;
+        function onItem(k, ok, img) {
           var o = owner[k], f = frames[o[0]];
           f[o[1]] = ok;
+          if (ok) f[o[1] === "ok" ? "img" : "heatImg"] = img;
           if (--left[o[0]] > 0) return;
           f.settled = true;
           while (head < frames.length && frames[head].settled) head++;
           if (!started && head >= startAt) {
             started = true;
-            self.timing = { first: Math.round(performance.now() - t0), all: null };
             self.ready(frames);
-          } else if (started && o[0] === self.index) {
-            self.show(self.index);
+          } else if (started) {
+            self.fillWindow();
+            if (o[0] === self.index) self.show(self.index);
           }
         }
         return preload(urls, function (d, t) { self.progress(d, t); }, token, onItem).then(function () {
           if (token.cancelled) return;
-          if (!started) {
-            self.timing = { first: Math.round(performance.now() - t0), all: null };
-            self.ready(frames);
-          }
+          if (!started) self.ready(frames);
+          self.timing = self.timing || { first: null, all: null };
           self.timing.all = Math.round(performance.now() - t0);
           self.loaded = true;
           self.finishLoading();
@@ -301,13 +348,12 @@
     this.slider.max = String(frames.length - 1);
     this.drawMarks();
     this.applyOpacity();
-    this.frameEl.classList.add("is-playing");
     var marks = (this.data && this.data.marks) || {};
     // A replay opens on its peak; a loop on its newest frame.
     var first = marks.peak != null ? this.nearest(marks.peak) : frames.length - 1;
     if (!reduced) first = 0;
+    this.autoplay = !reduced;
     this.show(first);
-    if (!reduced) this.play();
   };
 
   Player.prototype.nearest = function (ts) {
@@ -349,15 +395,10 @@
     i = Math.max(0, Math.min(n - 1, i));
     this.index = i;
     var f = this.frames[i];
-    if (f.settled) {
-      if (f.ok) this.imgEl.src = f.url;
-      if (f.heatOk) {
-        this.heatEl.src = f.heat;
-        this.heatEl.hidden = false;
-      } else {
-        this.heatEl.hidden = true;
-      }
-    }
+    // Drawn now if decoded; otherwise the current picture stays until it
+    // is (fillWindow decodes this one first and paints it when ready).
+    if (this.isReady(i)) this.paint(i);
+    this.fillWindow();
     this.frameEl.classList.toggle("is-missing-frame", f.settled && !f.ok);
     this.slider.value = String(i);
     var when = f.obs != null ? f.obs : f.t;
@@ -366,13 +407,125 @@
     var bits = [this.i18n.probability + " " + fmtProb(f.p, this.i18n.lang)];
     if (f.state && this.i18n.states[f.state]) bits.push(this.i18n.states[f.state]);
     this.markAt(i).forEach(function (m) { bits.push(m); });
-    if (!f.settled) bits.push(this.i18n.pending_frame);
+    if (!f.settled || (f.ok && !this.isReady(i))) bits.push(this.i18n.pending_frame);
     else if (!f.ok) bits.push(this.i18n.missing_frame);
     var counter = fill(this.i18n.frame_of, { i: i + 1, n: n });
     this.labelEl.innerHTML = (timeParts && window.swxTime ? window.swxTime.html(when, { date: true, seconds: f.obs != null }) : escapeHtml(timeText)) +
       " · " + escapeHtml(bits.join(" · ")) + ' <span class="t-alt">· ' + escapeHtml(counter) + "</span>";
     this.slider.setAttribute("aria-valuetext", timeText + " · " + bits.join(" · "));
     if (this.onFrame) this.onFrame(f, i);
+  };
+
+  function clearCanvas(c) {
+    var ctx = c && c.getContext("2d");
+    if (ctx) ctx.clearRect(0, 0, c.width, c.height);
+  }
+
+  function draw(canvas, pic) {
+    var w = pic.width || pic.naturalWidth, h = pic.height || pic.naturalHeight;
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(pic, 0, 0, w, h);
+  }
+
+  // A frame can be shown: settled, and (when it has them) its image and
+  // heat map decoded. A frame whose image failed counts as ready: showing
+  // it keeps the previous picture with the "imagen no disponible" note.
+  Player.prototype.isReady = function (i) {
+    var f = this.frames[i];
+    if (!f || !f.settled) return false;
+    if (!f.ok) return true;
+    var d = this.decoded[i];
+    return !!d && !!d.base && (!f.heatOk || !!d.heat);
+  };
+
+  Player.prototype.paint = function (i) {
+    var f = this.frames[i], d = this.decoded[i];
+    if (!this.layers()) return;
+    if (f.ok && d) {
+      // Both layers in the same task: the browser never shows one without
+      // the other, and never an empty canvas.
+      draw(this.imgEl, d.base);
+      if (d.heat) { draw(this.heatEl, d.heat); this.heatEl.hidden = false; }
+      else this.heatEl.hidden = true;
+      this.painted = i;
+    }
+    if (!this.frameEl.classList.contains("is-playing") && this.painted >= 0) {
+      this.frameEl.classList.add("is-playing");
+      this.timing = this.timing || { first: Math.round(performance.now() - this.t0), all: null };
+      if (!reduced && this.autoplay) { this.autoplay = false; this.play(); }
+    }
+  };
+
+  // The indexes to keep decoded around the current frame, nearest first
+  // (the current one, then ahead, then behind); wraps when looping.
+  Player.prototype.windowIndexes = function () {
+    var n = this.frames.length, out = [this.index], wrap = !this.loopEl || this.loopEl.checked, k, j;
+    for (k = 1; k <= WINDOW.ahead && k < n; k++) {
+      j = this.index + k;
+      if (j >= n) { if (!wrap) break; j -= n; }
+      out.push(j);
+    }
+    for (k = 1; k <= WINDOW.behind && k < n; k++) {
+      j = this.index - k;
+      if (j < 0) { if (!wrap) break; j += n; }
+      out.push(j);
+    }
+    return out;
+  };
+
+  Player.prototype.evict = function (keep) {
+    var self = this;
+    Object.keys(this.decoded).forEach(function (k) {
+      var i = +k;
+      if (keep(i)) return;
+      var d = self.decoded[k];
+      release(d.base);
+      release(d.heat);
+      self.stats.bytes -= d.bytes;
+      self.stats.frames--;
+      delete self.decoded[k];
+    });
+  };
+
+  // Keep the window decoded: drop what left it, decode what entered it,
+  // MAX_DECODING at a time, nearest first.
+  Player.prototype.fillWindow = function () {
+    if (!this.frames.length) return;
+    var want = this.windowIndexes(), inWin = {};
+    want.forEach(function (i) { inWin[i] = true; });
+    this.evict(function (i) { return inWin[i]; });
+    for (var w = 0; w < want.length && this.nDecoding < MAX_DECODING; w++) {
+      var i = want[w], f = this.frames[i];
+      if (!f.settled || !f.ok || this.decoded[i] || this.decoding[i]) continue;
+      this.decodeFrame(i);
+    }
+  };
+
+  Player.prototype.decodeFrame = function (i) {
+    var self = this, f = this.frames[i], token = this.token;
+    this.decoding[i] = true;
+    this.nDecoding++;
+    var jobs = [decodeImage(f.img), f.heatOk && f.heatImg ? decodeImage(f.heatImg) : Promise.resolve(null)];
+    Promise.all(jobs).then(function (r) {
+      if (token.cancelled || self.frames[i] !== f) { release(r[0] && r[0].pic); release(r[1] && r[1].pic); return; }
+      var d = { base: r[0].pic, heat: r[1] ? r[1].pic : null, bytes: r[0].bytes + (r[1] ? r[1].bytes : 0) };
+      self.decoded[i] = d;
+      self.stats.bytes += d.bytes;
+      self.stats.frames++;
+      if (self.stats.bytes > self.stats.peakBytes) self.stats.peakBytes = self.stats.bytes;
+      if (self.stats.frames > self.stats.peakFrames) self.stats.peakFrames = self.stats.frames;
+      if (i === self.index) self.show(i);
+    }, function () {
+      // Undecodable bytes: treat as a missing frame, never a blank one.
+      if (!token.cancelled && self.frames[i] === f) { f.ok = false; if (i === self.index) self.show(i); }
+    }).then(function () {
+      if (token.cancelled) return;
+      delete self.decoding[i];
+      self.nDecoding--;
+      self.fillWindow();
+    });
   };
 
   Player.prototype.step = function (delta) {
@@ -404,12 +557,11 @@
       if (!last) last = ts;
       if (ts - last >= interval) {
         last = ts;
-        if (self.index >= self.frames.length - 1) {
-          if (self.loopEl && self.loopEl.checked) self.show(0);
-          else { self.pause(); return; }
-        } else if (self.frames[self.index + 1].settled) {
-          self.show(self.index + 1);
-        } // else: still loading; wait for it rather than skip it
+        var atEnd = self.index >= self.frames.length - 1;
+        if (atEnd && !(self.loopEl && self.loopEl.checked)) { self.pause(); return; }
+        var next = atEnd ? 0 : self.index + 1;
+        // Not in or not decoded yet: wait for it rather than skip or blank it.
+        if (self.isReady(self.index) && self.isReady(next)) self.show(next);
       }
       self.raf = requestAnimationFrame(tick);
     }

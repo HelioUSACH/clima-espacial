@@ -704,7 +704,13 @@ input[type='range']:focus-visible, .fp-opt select:focus-visible { outline: 2px s
     #f9cb35 87.5%, #f2ea69 93.75%, #fcffa4 100%); }
 .cam-vbar-max { grid-column: 2; grid-row: 1; }
 .cam-vbar-min { grid-column: 2; grid-row: 3; }
-.flare-cam-base[hidden] { display: none; }
+.flare-cam-base[hidden], .flare-cam-heat[hidden] { display: none; }
+/* D-112: an image with no src yet (a source being picked) is not drawn, so
+ * the frame stays black rather than show a broken-image icon; the service's
+ * overlay already holds its 131 Å image: no base under it, full opacity. */
+.flare-cam-frame img:not([src]) { visibility: hidden; }
+.flare-cam-frame.is-overlay .flare-cam-base { display: none; }
+.flare-cam-frame.is-overlay .flare-cam-heat { opacity: 1 !important; }
 
 /* The replay's X-ray chart. */
 .flare-replay-xray { margin-top: 2px; }

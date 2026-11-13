@@ -1246,3 +1246,9 @@ msgstr "loading %(n)s/%(total)s"
 
 msgid "cargando…"
 msgstr "loading…"
+
+msgid "Grad-CAM superpuesto"
+msgstr "Grad-CAM overlay"
+
+msgid "Para este evento solo está el mapa ya superpuesto por el servicio a su imagen de 131 Å, así que la opacidad no se ajusta."
+msgstr "For this event there is only the map the service already laid over its 131 Å image, so its opacity can't be adjusted."

@@ -645,6 +645,8 @@ _DEV_MEDIA = (
      "/api/render/{0}/{1}.webp", ()),
     (re.compile(r"replay/(\d{1,9})/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)/(131|171|gradcam-heat)\.webp"),
      "/api/events/{0}/frames/{1}/{2}.webp", ()),
+    (re.compile(r"replay/(\d{1,9})/peak/(131|171|304|1600|gradcam-heat|gradcam-overlay)\.webp"),
+     "/api/events/{0}/peak/{1}.webp", ()),
 )
 
 
