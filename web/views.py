@@ -193,6 +193,11 @@ def _player_i18n():
         "pending_frame": gettext("cargando…"),
         "states": {key: (en if get_language() == "en" else es) for key, (es, en) in flare.STATE_LABELS.items()},
         "marks": {"start": gettext("inicio"), "peak": gettext("máximo"), "end": gettext("fin")},
+        "alert": gettext("alerta"),
+        "loc_estimated": gettext("ubicación estimada (experimental)"),
+        "loc_approx": gettext("ubicación aproximada (experimental)"),
+        "loc_approx_short": gettext("aproximada, experimental"),
+        "experimental": gettext("experimental"),
         "replay_title": gettext("Repetición de la alerta del %(when)s"),
         "incomplete": gettext("Repetición incompleta: faltan %(n171)s de %(slots)s imágenes de 171 Å y %(ncam)s mapas Grad-CAM."),
         "unavailable": gettext("La repetición no está disponible en este momento."),
@@ -537,6 +542,7 @@ def _flare_page(request, product, context, lang):
         "loop_url": reverse("web:flare_datos_json", args=["bucle"]),
         "player_i18n": _player_i18n(),
         "replay_panels": flare.replay_xray_panels(lang),
+        "cam_fade_floor": flare.fmt_prob(flare.CAM_FADE_FLOOR, lang),
         "readout_below": True,
         "panels": flare.timeline_panels(lang, endpoint, xray_endpoint),
         "chart_i18n": _chart_i18n(),
@@ -550,7 +556,7 @@ def _flare_page(request, product, context, lang):
         "default_range": flare.DEFAULT_RANGE,
         "description": product.description(lang),
         "facts": _facts_list(product, lang),
-        "model_card_url": "https://github.com/HelioUSACH/flare-nrt/blob/v1.2.0/docs/model-card.md",
+        "model_card_url": "https://github.com/HelioUSACH/flare-nrt/blob/v1.3.0/docs/model-card.md",
         "preview": not settings.SWX_FLARE_PAGE_PUBLIC,
     })
     response = render(request, "web/product_detail_flare.html", context)

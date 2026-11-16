@@ -89,7 +89,13 @@ X-ray flux for comparison, and the events of the last 30 days with the GOES
 class the portal measured during each; choosing one shows its Grad-CAM over
 131 Å at its peak (from the event's peak set kept by flare-nrt 1.2.0, so
 an old event keeps its map) and its replay, and gives it a link
-(`?evento=<id>`) (D-099 to D-112).
+(`?evento=<id>`) (D-099 to D-112). Since flare-nrt 1.3.0 the replay shows
+the Grad-CAM map on every frame, fading in as the probability rises from
+0.30 to the threshold, and the event's experimental location is drawn on
+the replay, the event's image and, while an event is open, the live
+131/171 Å images and the loop; it is also given in words ("S12 W68"), and
+marked "aproximada" (dashed) when flare-nrt found it after the 131 Å
+maximum, where it is not validated (D-113 to D-118).
 
 ## Maintainers / links
 

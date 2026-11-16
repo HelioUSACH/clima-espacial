@@ -1,0 +1,2 @@
+{% load i18n %}{# The experimental location over a 512-px image (flare.loc_shape, D-117); flare-player.js turns a box under 10 px into a circle at the centroid. #}
+<span class="flare-loc{% if shape.approx %} is-approx{% endif %}" style="left:{{ shape.left }}%;top:{{ shape.top }}%;width:{{ shape.width }}%;height:{{ shape.height }}%;--cx:{{ shape.cx }}%;--cy:{{ shape.cy }}%" title="{% if shape.approx %}{% trans 'ubicación aproximada (experimental)' %}{% else %}{% trans 'ubicación estimada (experimental)' %}{% endif %}" data-loc></span>

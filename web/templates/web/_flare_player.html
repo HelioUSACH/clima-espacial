@@ -36,6 +36,7 @@ slider for the Grad-CAM heat map). The page includes the strings once:
         </select>
       </label>
       <label class="fp-opt"><input type="checkbox" data-fp-loop checked> {% trans "Repetir" %}</label>
+      <label class="fp-opt" data-fp-loc-row hidden><input type="checkbox" checked data-loc-toggle> {% trans "Mostrar ubicación" %}</label>
       {% if heat %}<label class="fp-opt fp-opacity">{% trans "Opacidad del mapa" %}
         <input type="range" min="0" max="100" step="5" value="60" data-fp-opacity>
       </label>{% endif %}
@@ -45,6 +46,7 @@ slider for the Grad-CAM heat map). The page includes the strings once:
       <div class="fp-marks" data-fp-marks aria-hidden="true"></div>
     </div>
     <p class="fp-label" data-fp-label></p>
+    <p class="meta flare-loc-key" data-fp-loc-key hidden><i aria-hidden="true"></i><span data-loc-key-text></span></p>
   </div>
   <p class="meta fp-msg" data-fp-msg role="status" hidden></p>
 </div>

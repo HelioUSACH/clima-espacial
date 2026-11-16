@@ -941,9 +941,6 @@ msgstr "difference"
 msgid "SDO/AIA %(wave)s Å"
 msgstr "SDO/AIA %(wave)s Å"
 
-msgid "Región detectada (experimental)"
-msgstr "Detected region (experimental)"
-
 msgid "Imagen no disponible"
 msgstr "Image not available"
 
@@ -1078,9 +1075,6 @@ msgstr "Channel"
 msgid "SDO/AIA (NASA), norte arriba. «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo."
 msgstr "SDO/AIA (NASA), north up. “difference”: the current image minus the mean of those 8 to 12 minutes earlier, which is what the model looks at."
 
-msgid "El recuadro es la región detectada (experimental)."
-msgstr "The box is the detected region (experimental)."
-
 msgid "Qué miró el modelo"
 msgstr "What the model looked at"
 
@@ -1136,9 +1130,6 @@ msgstr "watch replay"
 
 msgid "Cerrar"
 msgstr "Close"
-
-msgid "171 Å; en las imágenes en alerta, el mapa Grad-CAM encima (colores relativos al máximo de cada mapa). Las marcas son el inicio, el máximo y el fin de la alerta."
-msgstr "171 Å; on the images in alert, the Grad-CAM map over it (colours relative to each map's maximum). The marks are the alert's start, peak and end."
 
 msgid "Rayos X de GOES durante la repetición"
 msgstr "GOES X-rays during the replay"
@@ -1252,3 +1243,29 @@ msgstr "Grad-CAM overlay"
 
 msgid "Para este evento solo está el mapa ya superpuesto por el servicio a su imagen de 131 Å, así que la opacidad no se ajusta."
 msgstr "For this event there is only the map the service already laid over its 131 Å image, so its opacity can't be adjusted."
+
+# v0.6.3 (D-113..D-118)
+msgid "alerta"
+msgstr "alert"
+
+msgid "Mostrar ubicación"
+msgstr "Show location"
+
+msgid "ubicación estimada (experimental)"
+msgstr "estimated location (experimental)"
+
+msgid "ubicación aproximada (experimental)"
+msgstr "approximate location (experimental)"
+
+msgid "ubicación aproximada"
+msgstr "approximate location"
+
+msgid "aproximada, experimental"
+msgstr "approximate, experimental"
+
+msgid "171 Å con el mapa Grad-CAM encima (colores relativos al máximo de cada mapa). Las marcas son el inicio, el máximo y el fin de la alerta."
+msgstr "171 Å with the Grad-CAM map over it (colours relative to each map's maximum). The marks are the alert's start, peak and end."
+
+#, python-format
+msgid "El mapa aparece a medida que sube la probabilidad: transparente bajo %(floor)s, completo en el umbral."
+msgstr "The map appears as the probability rises: transparent below %(floor)s, full at the threshold."

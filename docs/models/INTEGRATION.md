@@ -54,9 +54,9 @@ product contract everything else in this repo already follows:
 ## Worked example: `modules/flare/` (flare-nrt 1.x)
 
 The producer is [`HelioUSACH/flare-nrt`](https://github.com/HelioUSACH/flare-nrt)
-(v1.2.0 at the time of writing). Its integration sheet (`INTEGRATION.md`
-there, sections "GET /api/status", "Display endpoints" and "Display files
-(1.1.0, 1.2.0)") is the contract; this repo uses only the fields and endpoints it
+(v1.3.0 at the time of writing). Its integration sheet (`INTEGRATION.md`
+there, sections "GET /api/status", "Display endpoints", "Location" and
+"Display files (1.1.0; replays extended in 1.2.0 and 1.3.0)") is the contract; this repo uses only the fields and endpoints it
 lists.
 
 **The collector** polls the internal `/api/status` (never exposed by nginx,
@@ -85,7 +85,7 @@ missing value is `no_data`. A naive `timestamp` is read as UTC. If the
 service isn't reachable, the heartbeat is `error`, which the public sees as
 "en preparación" (D-036).
 
-**The product page** (D-099..D-104, D-106..D-112) also shows what only the service has:
+**The product page** (D-099..D-104, D-106..D-118) also shows what only the service has:
 the probability per slot, the alert history, the images, the last hours as
 a loop and each event's replay. Django reads `/api/series`, `/api/events`,
 `/api/loop` and `/api/events/{id}/replay` server-side (whitelisted, 2 s
@@ -109,7 +109,21 @@ replay's heat frame at the peak slot, the live `gradcam/<slot>?style=heat`,
 then the overlay (labelled as such); its 131 Å from the peak set's `131`,
 the live image, the replay's 131 Å frame, then none (D-112). A map made by
 flare-nrt 1.0.0 has no heat style, so for such an event only the peak set
-(1.2.0) has one. A
+(1.2.0) has one.
+
+From 1.3.0 every replay frame with a result has a heat map; the player
+draws each at the opacity slider × w(p), w = clamp((p − 0.30) /
+(threshold − 0.30), 0, 1) (`CAM_FADE_FLOOR`, D-115), so a quiet frame's
+map, normalised to its own maximum like every map, stays transparent. A
+replay built before 1.3.0 keeps the old rule (maps at or above the
+threshold only). The page also reads, from `replay.json`: `threshold`,
+the frames' `alert`, `location` and `geometry`, `peak.location`,
+`peak.geometry`, `geometry`; from `/api/status` while an event is open,
+`location` and `event_t_start`. A location is drawn only with flare-nrt's
+`geometry` (a live one with the newest replay's and its own scale,
+D-117), dashed and called "aproximada" when its `method` ends in
+`_robust` (D-118), and given in words as Stonyhurst latitude and longitude
+(D-116). A
 model whose page needs images or other display data can follow the same
 split: the product store for what the portal publishes, server-side JSON
 for the rest, nginx for anything binary.

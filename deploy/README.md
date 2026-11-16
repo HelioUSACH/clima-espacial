@@ -229,6 +229,34 @@ curl -s "$B/datos/repeticion-1.json" | python3 -c "import json,sys; print(json.l
 curl -sI "$B/replay/1/peak/gradcam-heat.webp" | grep -iE '^HTTP|x-cache'
 ```
 
+### v0.6.3: attention on every replay frame, the flare's location (D-113..D-118)
+
+All Django/static: `deploy.sh` covers it. **nginx: unchanged** (no new
+path; the heat frames of non-alert slots use the replay-frame location
+v0.6.2 already has). Needs **flare-nrt 1.3.0** with its one-off replay
+rebuild (flare-nrt's deploy/README.md, "Upgrade from 1.2.0 to 1.3.0",
+`--fits-root /srv/flare-nrt/keep` for event 1). Before that rebuild a
+replay behaves as in v0.6.2 (maps on alert frames only, no box; the
+location still reads in words when /api/events has one).
+
+```bash
+sudo bash /opt/swx/deploy/deploy.sh v0.6.3
+```
+
+Quick check, after flare-nrt's one-off (event 1: expect `True`, a
+`…_robust` method, a box in % and a frame count with a map well above 1):
+
+```bash
+B=https://helio.fisica.usach.cl/clima-espacial/productos/usach.flare.nrt
+curl -s "$B/datos/repeticion-1.json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['cam_floor'], d['geometry'] is not None, d['location'], sum(1 for f in d['frames'] if f['heat']), 'maps')"
+```
+
+On the page: "ver repetición" on event 1 starts at its first frame and
+plays (also with Windows' "Animation effects" off), one mark "inicio ·
+máximo · fin", the map fading in as the probability rises, the dashed
+"ubicación aproximada (experimental)" at the alert frame, and the
+"Ubicación" cell in words.
+
 To time the 6-h loop on the live page (needs Playwright on the machine you
 run it from, not the server): `python .github/scripts/loop_timing.py
 "$B/" --runs 3` (add `--net 20,40` to emulate 20 Mbit/s and 40 ms; `--width

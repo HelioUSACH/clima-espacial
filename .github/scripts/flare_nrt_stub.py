@@ -3,7 +3,7 @@
     python .github/scripts/flare_nrt_stub.py [--port 5050] [--scenario active|quiet] [--delay 0] [--pad-kb 0]
                                              [--frame-px 192]
 
-Serves the endpoints the portal uses, in the shape of flare-nrt v1.2.0's
+Serves the endpoints the portal uses, in the shape of flare-nrt v1.3.0's
 INTEGRATION.md ("GET /api/status", "Display endpoints", "Display files"):
 /api/status, /api/series, /api/events, /api/frames,
 /api/image/{wave}.png (kind, slot, format, size), /api/gradcam/{latest|ISO}.png
@@ -19,8 +19,16 @@ measurements. Like the service (which keeps 4 days of FITS), a past slot's
 /api/image is a 404 here after 3 days, so the flare page's fallback to a
 replay's own 131 Å frame (1.2.0) runs in CI. Event 1 is the real case of
 2026-11-11 (D-112): its Grad-CAM was made by 1.0.0, so
-/api/gradcam/<its peak>.png?style=heat is a 404 (the overlay is not), its
-replay has no heat frames, and only its peak set has the heat map.
+/api/gradcam/<its peak>.png?style=heat is a 404 (the overlay is not); its
+peak set has the heat map.
+v1.3.0 (D-113..D-118): event 1 is now as the one-off rebuilt it: one
+alert frame (start = peak = end) after p rose for 20 min, a heat frame on
+every frame with a result, and a robust ("…_robust", approximate) location;
+event 3's replay is 1.3.0 too, with a first-rule location; event 2's is
+left as 1.2.0 built it (maps on alert frames only, no geometry), the "old
+replay" case. Replays carry `threshold`, `geometry`, and per frame `alert`,
+`cam_peak`, `location`, `geometry`; replay frames show a bright spot at the
+event's location.
 `--frame-px` sets the loop/replay frames' size (192 by default; 512 is a
 real frame's, for memory measurements). `GET /_stub/scenario?set=quiet`
 (or active) switches scenario while running, for CI. Standard library only;
@@ -43,6 +51,21 @@ SLOT = dt.timedelta(minutes=2)
 PEAK_NAMES = ("131", "171", "304", "1600", "gradcam-heat", "gradcam-overlay")
 WAVES = ("131", "171", "304", "1600")
 FITS_KEPT = dt.timedelta(days=3)  # a past slot's /api/image: 404 after this (module docstring)
+# The stub's images: the disk is 0.40 of the image's width around its
+# centre, so on the 512 px grid of flare-nrt's geometry: radius 204.8 px at
+# 4.8″/px (R☉ 983″).
+GEOMETRY = {"size_px": 512, "disk_center_px": [256.0, 256.0], "disk_radius_px": 204.8,
+            "arcsec_per_px": [4.8, 4.8], "rsun_arcsec": 983.04}
+# Event locations (helioprojective arcsec): event 3's by the first rule;
+# event 1's by 1.3.0's robust fallback, as the one-off would give it.
+EVENT_LOC = {
+    3: {"centroid_arcsec": [310.0, -122.5], "bbox_arcsec": [262.0, -170.5, 358.0, -74.5], "area_px": 120,
+        "area_arcsec2": 2764.8, "on_limb": False, "method": "diff131_rate_brightest_region",
+        "confidence": "experimental"},
+    1: {"centroid_arcsec": [-150.0, 330.0], "bbox_arcsec": [-180.0, 305.0, -120.0, 355.0], "area_px": 70,
+        "area_arcsec2": 1612.8, "on_limb": False, "method": "diff131_rate_brightest_region_robust",
+        "confidence": "experimental"},
+}
 TINTS = {"131": (0.25, 0.95, 0.85), "171": (1.0, 0.8, 0.25), "304": (1.0, 0.35, 0.15), "1600": (0.9, 0.85, 0.35)}
 
 
@@ -173,8 +196,9 @@ class World:
         # Event 1's times are fixed when the stub starts (not relative to each
         # request like the others): its "no heat style" 404 must name the same
         # slot as the replay.json the portal cached a minute earlier.
+        # One alert frame (start = peak = end), as on 2026-11-11.
         start = now_slot() - dt.timedelta(days=1, hours=16)
-        self.event1 = (start, start + dt.timedelta(minutes=8), start + dt.timedelta(minutes=12))
+        self.event1 = (start, start, start)
 
     def image(self, wave, kind, size):
         key = (wave, kind, size)
@@ -182,15 +206,18 @@ class World:
             self.images[key] = sun_png(wave, kind, self.flare_px, size=384)
         return self.images[key]
 
-    def render(self, slot, name):
-        """A loop/replay frame: one of LOOP_VARIANTS images per channel."""
+    def render(self, slot, name, event_id=None):
+        """A loop/replay frame: one of LOOP_VARIANTS images per channel; a
+        replay frame has a bright spot at its event's location."""
         if name == "gradcam-heat":
             return self.heat
         variant = int(slot.timestamp() // 120) % LOOP_VARIANTS
-        key = (name, variant)
+        loc = EVENT_LOC.get(event_id)
+        spot = (loc["centroid_arcsec"][0] / 9.6, -loc["centroid_arcsec"][1] / 9.6) if loc else None
+        key = (name, variant, spot)
         if key not in self.frames_cache:
             wave = "131" if name == "131" else "171"
-            body = sun_png(wave, "diff" if name == "171-diff" else "img", None, size=self.frame_px,
+            body = sun_png(wave, "diff" if name == "171-diff" else "img", spot, size=self.frame_px,
                            phase=variant / (LOOP_VARIANTS - 1))
             self.frames_cache[key] = pad_png(body, self.pad_kb * 1024)
         return self.frames_cache[key]
@@ -203,7 +230,7 @@ class World:
         inputs = {w: iso(slot - dt.timedelta(seconds=4 + i)).replace("Z", ".070Z") for i, w in enumerate(WAVES)}
         p = 0.9312 if self.active else 0.0612
         return {
-            "status": "running", "model": "flare-nrt", "model_version": "1.1.0", "weights_sha256": "stub",
+            "status": "running", "model": "flare-nrt", "model_version": "1.3.0", "weights_sha256": "stub",
             "timestamp": iso(made), "last_update": iso(made), "observation_time": iso(slot),
             "state": "active" if self.active else "quiet", "probability": p, "raw_score": p,
             "alert": self.active, "flare_detected": self.active, "event_id": 4 if self.active else None,
@@ -254,12 +281,13 @@ class World:
             peak = start + dt.timedelta(minutes=8)
             out.append({"event_id": i + 2, "t_start": iso(start), "t_pmax": iso(peak),
                         "t_end": iso(start + dt.timedelta(minutes=12)), "p_max": 0.94, "n_alert_frames": 7,
-                        "location": {"centroid_arcsec": [310.0 - 600 * i, -122.5], "confidence": "experimental"},
+                        "location": EVENT_LOC[3] if i == 1 else {"centroid_arcsec": [-290.0, -122.5],
+                                                                 "confidence": "experimental"},
                         "closed": True, "gradcam": f"/api/gradcam/{iso(peak)}.png",
                         "replay": i == 0 or self.active})
         start, peak, end_ = self.event_times(1)
-        out.append({"event_id": 1, "t_start": iso(start), "t_pmax": iso(peak), "t_end": iso(end_), "p_max": 0.9,
-                    "n_alert_frames": 3, "location": {"centroid_arcsec": [-150.0, 330.0], "confidence": "experimental"},
+        out.append({"event_id": 1, "t_start": iso(start), "t_pmax": iso(peak), "t_end": iso(end_), "p_max": 0.82,
+                    "n_alert_frames": 1, "location": EVENT_LOC[1],
                     "closed": True, "gradcam": f"/api/gradcam/{iso(peak)}.png", "replay": True})
         if self.active:
             start = end - dt.timedelta(minutes=6)
@@ -298,23 +326,34 @@ class World:
         if times is None or (event_id == 2 and not self.active):
             return None
         start, peak, end_ = times
+        new = event_id != 2  # event 2: built by 1.2.0 (no per-frame maps, no geometry)
         w0, w1 = start - dt.timedelta(minutes=30), end_ + dt.timedelta(minutes=60)
+        loc = EVENT_LOC.get(event_id)
         frames, missing = [], []
         t = w0
         while t <= w1:
-            p = round(0.07 + 0.88 * math.exp(-((t - peak).total_seconds() / 300) ** 2), 4)
+            if event_id == 1:  # rises for 20 min to a single alert frame
+                p = round(0.07 + 0.75 * math.exp(-((t - peak).total_seconds() / 600) ** 2), 4)
+            else:
+                p = round(0.07 + 0.88 * math.exp(-((t - peak).total_seconds() / 300) ** 2), 4)
             if event_id == 2 and t == peak + dt.timedelta(minutes=40):
                 missing.append(iso(t))  # incomplete: one slot lost
             else:
-                heat = p >= 0.8 and event_id != 1  # event 1: Grad-CAM by 1.0.0, no heat frames
-                frames.append({"slot": iso(t), "t_obs": iso(t + dt.timedelta(seconds=10)).replace("Z", ".348Z"),
-                               "probability": p, "state": "active" if p >= 0.8 else "quiet", "status": "ok",
-                               "images": ["171", "gradcam-heat", "131"] if heat else ["171", "131"]})
+                alert = p >= 0.8
+                heat = new or alert
+                frame = {"slot": iso(t), "t_obs": iso(t + dt.timedelta(seconds=10)).replace("Z", ".348Z"),
+                         "probability": p, "state": "active" if alert else "quiet", "status": "ok",
+                         "images": ["171", "gradcam-heat", "131"] if heat else ["171", "131"]}
+                if new:
+                    frame.update(alert=alert, cam_peak=round(0.55 + 0.4 * p, 4),
+                                 location=loc if alert else None, geometry=GEOMETRY)
+                frames.append(frame)
             t += SLOT
-        return {
+        out = {
             "schema": "flare-nrt-replay/1",
             "event": {"event_id": event_id, "t_start": iso(start), "t_peak": iso(peak), "t_end": iso(end_),
-                      "p_max": 0.95, "n_alert_frames": 7, "location": {"centroid_arcsec": [310.0, -122.5]}},
+                      "p_max": 0.82 if event_id == 1 else 0.95, "n_alert_frames": 1 if event_id == 1 else 7,
+                      "location": loc or {"centroid_arcsec": [310.0, -122.5]}},
             "window": {"start": iso(w0), "end": iso(w1), "pre_min": 30, "post_min": 60},
             "n_slots": len(frames) + len(missing), "frames": frames,
             "peak": {"slot": iso(peak), "t_obs": {w: iso(peak + dt.timedelta(seconds=8)) for w in WAVES},
@@ -322,8 +361,14 @@ class World:
             "complete": not missing, "missing": {"171": missing, "gradcam-heat": [], "131": missing, "peak": []},
             "note": (f"{len(missing)} of {len(frames) + len(missing)} slots have no 171 Å image and 0 results "
                      "have no Grad-CAM: their files were gone or never made") if missing else None,
-            "built_at": iso(w1 + dt.timedelta(minutes=70)), "model_version": "1.2.0",
+            "built_at": iso(w1 + dt.timedelta(minutes=70)), "model_version": "1.3.0" if new else "1.2.0",
         }
+        if new:
+            out["threshold"] = 0.8
+            out["geometry"] = GEOMETRY
+            out["peak"].update(location=loc, geometry=GEOMETRY)
+            out["missing"]["location"] = []
+        return out
 
     def frames(self, hours):
         end = now_slot()
@@ -409,7 +454,7 @@ def make_handler(state, delay):
                     m = re.fullmatch(rf"/api/events/(\d+)/frames/{iso_re}/(131|171|gradcam-heat)\.webp", url.path)
                     if m and world.replay(int(m.group(1))) is not None:
                         slot = dt.datetime.fromisoformat(m.group(2).replace("Z", "+00:00"))
-                        return self._image(world.render(slot, m.group(3)), immutable=True)
+                        return self._image(world.render(slot, m.group(3), int(m.group(1))), immutable=True)
                     m = re.fullmatch(r"/api/events/(\d+)/peak/(131|171|304|1600|gradcam-heat|gradcam-overlay)\.webp",
                                      url.path)
                     if m and world.replay(int(m.group(1))) is not None:

@@ -7,7 +7,9 @@ its replay in the same frame. Rendered live for the selected event and as a
 <template> for each of the others; flare.js swaps them. The two images name
 their sources in order (data-chain, D-112) and flare.js moves to the next
 on an error. In a <template> copy (deferred) they have no src yet: flare.js
-first reads the event's replay data for its peak set (data-cam-src).
+first reads the event's replay data for its peak set (data-cam-src), which
+also has its location's box (D-117) and, for an event /api/events gave
+none, the location itself.
 {% endcomment %}
 <div class="flare-ev-head">
   <h3 id="flare-ev-title" class="flare-h3">{% blocktrans with when=ev.start_full %}Evento del {{ when }}{% endblocktrans %}{% if ev.open %} <span class="pill">{% trans "en curso" %}</span>{% endif %}</h3>
@@ -21,6 +23,7 @@ first reads the event's replay data for its peak set (data-cam-src).
       <div class="flare-frame flare-cam-frame" id="flare-ev-frame">
         {% if ev.cam.base %}<img class="flare-cam-base"{% if not deferred %} src="{{ ev.cam.base.0 }}"{% endif %} data-chain="{{ ev.cam_base_json }}" width="512" height="512" decoding="async" alt="{% trans 'SDO/AIA 131 Å en el mismo momento' %}">{% endif %}
         <img class="flare-cam-heat"{% if not deferred %} src="{{ ev.cam.heat.0.src }}"{% endif %} data-chain="{{ ev.cam_heat_json }}" width="512" height="512" decoding="async" style="opacity:.6" alt="{% trans 'Mapa Grad-CAM de la alerta' %}">
+        {% if ev.loc_shape %}{% include "web/_flare_loc.html" with shape=ev.loc_shape %}{% endif %}
         <span class="flare-missing" hidden>{% trans "Mapa no disponible" %}</span>
       </div>
       <div class="cam-vbar" aria-hidden="true"><i></i><span class="cam-vbar-max">{% trans "máx." %}</span><span class="cam-vbar-min">0</span></div>
@@ -36,11 +39,12 @@ first reads the event's replay data for its peak set (data-cam-src).
       <dt>{% trans "Inicio" %}</dt><dd>{{ ev.start_full }}</dd>
       <dt>{% trans "Máximo" %}</dt><dd>{{ ev.peak_full }}</dd>
       <dt>{% trans "Fin" %}</dt><dd>{% if ev.open %}{% trans "en curso" %}{% else %}{{ ev.end_full }}{% endif %}</dd>
-      <dt>{% trans "Ubicación" %}</dt><dd>{{ ev.location }}{% if ev.location != "—" %} <span class="flare-exp">{% trans "experimental" %}</span>{% endif %}</dd>
+      <dt>{% trans "Ubicación" %}</dt><dd data-ev-loc>{% if ev.loc %}{{ ev.loc.text }} <span class="flare-exp">{% if ev.loc.approx %}{% trans "aproximada, experimental" %}{% else %}{% trans "experimental" %}{% endif %}</span>{% else %}—{% endif %}</dd>
       <dt>{% trans "Clase GOES" %}</dt><dd>{{ ev.goes_class }}</dd>
       <dt>{% trans "Imágenes en alerta" %}</dt><dd>{{ ev.n_frames }}</dd>
     </dl>
     {% if ev.cam_mode == "map" %}
+    {% include "web/_flare_loc_toggle.html" with approx=ev.loc.approx hidden=ev.loc_shape|yesno:",1" %}
     <label class="fp-opt" data-cam-opacity-row>{% trans "Opacidad del mapa" %} <input type="range" min="0" max="100" step="5" value="60" data-cam-opacity></label>
     <p class="meta">{% trans "Grad-CAM marca las zonas de la imagen de 131 Å que más pesaron en la probabilidad de la red, en la imagen de mayor probabilidad del evento. Los colores son relativos al máximo del propio mapa, no una probabilidad. Es una grilla gruesa (16 px), por eso solo se muestra para una imagen en alerta." %}</p>
     <p class="meta flare-cam-note" data-cam-overlay-note hidden>{% trans "Para este evento solo está el mapa ya superpuesto por el servicio a su imagen de 131 Å, así que la opacidad no se ajusta." %}</p>
