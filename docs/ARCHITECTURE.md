@@ -316,7 +316,18 @@ units). Three paths, and no other:
   layers, each frame decoded off-screen and drawn when ready, a sliding
   window of decoded frames around the current one (phone 8 + 24, desktop
   16 + 64, ~1 MB each at 512 px); the downloaded bytes stay in the HTTP
-  cache.
+  cache. A press on its start button always plays from the first frame,
+  reduced motion included (D-113); the slider's marks never overlap
+  (D-114).
+- **Attention and location (flare-nrt 1.3.0, D-115..D-118).** A replay
+  shows every frame's Grad-CAM map at an opacity weighted by its
+  probability (`CAM_FADE_FLOOR` = 0.30 in `web/flare.py`, full at the
+  threshold). The experimental location is drawn from flare-nrt's own
+  `geometry` (no disk size is written in the portal): on the replay from
+  t_start to t_end, the event panel, the live 131/171 Å tiles and the
+  loop while an event is open; dashed when found by flare-nrt's robust
+  fallback ("aproximada"); and given in words as Stonyhurst latitude and
+  longitude ("S12 W68").
 
 Indicative RAM budget (15 GiB): PostgreSQL 2–3 GB · gunicorn 2 gthread workers × 4 threads (D-069)
 · flare loop (CPU) 2–3 GB · collectors <0.5 GB · OS/cache rest. Disk (96 GB

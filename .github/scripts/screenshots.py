@@ -170,8 +170,11 @@ def check_flare(page, failures, label, lang, interactive, quiet=False):
     expected = (QUIET_STATE if quiet else FLARE_STATE)[lang]
     if badge != expected:
         failures.append(f"{label}: state badge {badge!r}, expected {expected!r}")
-    if page.evaluate("!!document.querySelector('.flare-box')") is quiet:
-        failures.append(f"{label}: detection box {'shown' if quiet else 'missing'}")
+    # D-117: the open event's location on the 131 and 171 Å tiles only.
+    boxed = page.evaluate("[...document.querySelectorAll('[data-flare-grid] .flare-loc')]"
+                          ".map(b => b.closest('[data-tile]').dataset.wave).sort().join(',')")
+    if boxed != ("" if quiet else "131,131,171,171"):
+        failures.append(f"{label}: location drawn on tiles {boxed!r}, expected {'none' if quiet else '131 and 171'}")
     if not page.evaluate("!!document.querySelector('#flare-ev .cam-vbar')"):
         failures.append(f"{label}: no event panel with its colour bar (the stub has alerts in the last 30 days)")
     if interactive:
@@ -333,6 +336,12 @@ def check_loop(page, failures, label, out, keyboard):
           f"{stats['peakBytes'] / 1e6:.1f} MB")
     if stats["peakFrames"] > stats["window"]["ahead"] + stats["window"]["behind"] + 1:
         failures.append(f"{label}: {stats['peakFrames']} frames decoded at once, over the window {stats['window']}")
+    # D-117: while the event is open, its location on the loop's newest frames.
+    page.evaluate(f"{player}.pause(); {player}.show({player}.frames.length - 1)")
+    page.wait_for_function(f"{player}.painted === {player}.frames.length - 1", timeout=10000)
+    loc = page.evaluate(LOC_STATE.format(frame="flare-loop-frame"))
+    if not loc["shown"]:
+        failures.append(f"{label}: the loop's newest frame has no location {loc}")
     page.evaluate(f"{player}.pause(); {player}.show(Math.floor({player}.frames.length / 2))")
     if keyboard:
         page.focus("#flare-loop [data-fp-slider]")
@@ -369,13 +378,16 @@ def check_replay(page, failures, label, out):
     page.evaluate(f"{player}.pause(); {player}.show({peak})")
     state = page.evaluate("""({heat: !document.querySelector('#flare-ev-frame .fp-heat').hidden,
         playing: document.getElementById('flare-ev-frame').classList.contains('is-playing'),
-        marks: document.querySelectorAll('#flare-ev .fp-mark').length,
+        marks: document.querySelectorAll('#flare-ev .fp-tick').length,
         cursor: document.querySelector('.flare-replay-xray').__swxStack.ec.getOption().series
                   .some(s => s.id === 'swx-cursor')})""")
     if not state["heat"] or not state["playing"] or state["marks"] != 3 or not state["cursor"]:
         failures.append(f"{label}: replay at its peak {state} (in the panel's frame, heat map, 3 marks, X-ray cursor)")
+    # D-114: event 3's peak and end are 2 frames apart: one mark there.
+    check_marks(page, failures, label, "event 3")
     page.wait_for_timeout(200)
     page.locator("#flare-ev").screenshot(path=str(out / f"{label}-replay.png"))
+    page.locator("#flare-replay-player .fp-track").screenshot(path=str(out / f"{label}-marcas-evento3.png"))
     page.click("#flare-ev [data-replay-close]")
     if page.evaluate("document.getElementById('flare-ev-frame').classList.contains('is-playing')"):
         failures.append(f"{label}: closing the replay left it playing in the panel")
@@ -434,8 +446,11 @@ def check_event1(page, failures, label, base_url, out):
             failures.append(f"{label}: event 1 ({how}): {st}, expected the peak set's heat map over its 131 Å")
     page.wait_for_timeout(200)
     shoot_panel(page, str(out / f"{label}-evento1.png"))
-    # The peak set's heat map gone too: the overlay, labelled as such.
-    page.route("**/peak/gradcam-heat.webp", lambda route: route.fulfill(status=404, body=""))
+    # The peak set's heat map gone too (and, since flare-nrt 1.3.0 rebuilt
+    # event 1's replay, its heat frame at the peak slot): the overlay,
+    # labelled as such.
+    for glob in ("**/peak/gradcam-heat.webp", "**/replay/1/20*/gradcam-heat.webp"):
+        page.route(glob, lambda route: route.fulfill(status=404, body=""))
     page.goto(base_url + "?evento=1")
     page.wait_for_load_state("networkidle")
     page.wait_for_function(CAM_SETTLED, timeout=15000)
@@ -453,8 +468,138 @@ def check_event1(page, failures, label, base_url, out):
     st = page.evaluate(CAM_STATE)
     if st["heat"] or not st["missing"] or st["broken"] or not st["baseOk"]:
         failures.append(f"{label}: event 1 with no map: {st}, expected the note over the 131 Å image")
-    for glob in ("**/gradcam/**", "**/peak/gradcam-overlay.webp", "**/peak/gradcam-heat.webp"):
+    for glob in ("**/gradcam/**", "**/peak/gradcam-overlay.webp", "**/peak/gradcam-heat.webp",
+                 "**/replay/1/20*/gradcam-heat.webp"):
         page.unroute(glob)
+
+
+# D-117: the location over a frame: shown (not hidden, "Mostrar ubicación"
+# on), dashed (robust) and drawn as a box or a circle.
+LOC_STATE = """(() => {{
+  const el = document.querySelector('#{frame} .fp-loc');
+  const shown = !!el && !el.hidden && getComputedStyle(el).display !== 'none';
+  return {{shown, approx: !!el && el.classList.contains('is-approx'), dot: !!el && el.classList.contains('is-dot'),
+          dashed: !!el && getComputedStyle(el).borderTopStyle === 'dashed'}};
+}})()"""
+MARKS_STATE = """(() => {
+  const track = document.querySelector('#flare-replay-player .fp-marks').getBoundingClientRect();
+  const labels = [...document.querySelectorAll('#flare-replay-player .fp-mark')].map(b => {
+    const r = b.getBoundingClientRect(); return {text: b.textContent, left: r.left, right: r.right}; });
+  const overlap = labels.some((a, i) => labels.slice(i + 1).some(b => a.left < b.right && b.left < a.right));
+  const outside = labels.some(l => l.left < track.left - 9 || l.right > track.right + 9);
+  return {labels: labels.map(l => l.text), ticks: document.querySelectorAll('#flare-replay-player .fp-tick').length,
+          overlap, outside};
+})()"""
+
+
+def check_marks(page, failures, label, what, expected=None):
+    """D-114: the slider's marks: labels never overlap or leave the track;
+    `expected`, the labels' texts when known."""
+    m = page.evaluate(MARKS_STATE)
+    if m["overlap"] or m["outside"] or (expected is not None and m["labels"] != expected):
+        failures.append(f"{label}: {what}'s marks {m}" + (f", expected labels {expected}" if expected else ""))
+    print(f"{label}: {what}'s marks {m['labels']} ({m['ticks']} ticks)")
+
+
+REPLAY_FRAME = """(() => {{ const p = {player}, f = p.frames[p.painted] || {{}};
+  return {{index: p.index, painted: p.painted, p: f.p, alert: !!f.alert, playing: p.playing,
+          first: p.stats.firstPainted, opacity: +getComputedStyle(document.querySelector('#flare-ev-frame .fp-heat')).opacity,
+          heat: !document.querySelector('#flare-ev-frame .fp-heat').hidden,
+          tag: !!document.querySelector('#flare-replay-player .fp-alert')}}; }})()"""
+
+
+def check_event1_replay(page, failures, label, base_url, out, shots=True):
+    """D-113..D-118 on event 1, the real case: one alert frame (start = peak
+    = end) after p rose for 20 min. Pressing "ver repetición" shows the
+    first frame and plays; one mark "inicio · máximo · fin"; each frame's
+    map at slider × w(p) (transparent at the start, partial mid-rise, full
+    at the alert, with its "alerta" tag); the event's location, dashed
+    (robust), from t_start to t_end only."""
+    player = PLAYER.format(id="flare-replay-player")
+    page.goto(base_url + "?evento=1")
+    page.wait_for_load_state("networkidle")
+    page.click("#flare-ev [data-replay]")
+    page.wait_for_function(f"{player}.frames.length > 0 && {player}.painted >= 0", timeout=30000)
+    st = page.evaluate(REPLAY_FRAME.format(player=player))
+    if st["first"] != 0 or not (st["playing"] or st["index"] > 0):
+        failures.append(f"{label}: event 1's replay after the press {st}, expected the first frame, playing")
+    page.wait_for_function(f"{player}.loaded", timeout=30000)
+    page.wait_for_timeout(300)
+    check_marks(page, failures, label, "event 1", expected=["inicio · máximo · fin"])
+    frames = page.evaluate(f"{player}.frames.map(f => ({{p: f.p, alert: !!f.alert, loc: !!f.loc}}))")
+    alert = next((i for i, f in enumerate(frames) if f["alert"]), None)
+    rise = max((i for i, f in enumerate(frames[:alert or 0]) if f["p"] is not None and 0.45 <= f["p"] < 0.7),
+               default=None)
+    if alert is None or rise is None or [i for i, f in enumerate(frames) if f["loc"]] != [alert]:
+        failures.append(f"{label}: event 1's frames {frames}, expected a rise, one alert frame with the location")
+        return
+    floor, thr = page.evaluate(f"[{player}.data.cam_floor, {player}.data.threshold]")
+    for name, i in (("inicio", 0), ("subida", rise), ("alerta", alert)):
+        page.evaluate(f"{player}.pause(); {player}.show({i})")
+        page.wait_for_function(f"{player}.painted === {i}", timeout=10000)
+        st = page.evaluate(REPLAY_FRAME.format(player=player))
+        w = max(0.0, min(1.0, (st["p"] - floor) / (thr - floor)))
+        loc = page.evaluate(LOC_STATE.format(frame="flare-ev-frame"))
+        if abs(st["opacity"] - 0.6 * w) > 0.02 or not st["heat"] or st["tag"] != (name == "alerta") \
+                or loc["shown"] != (name == "alerta") or (name == "alerta" and not (loc["approx"] and loc["dashed"])):
+            failures.append(f"{label}: event 1's replay at {name}: {st}, location {loc} "
+                            f"(expected map opacity {0.6 * w:.2f}, the tag and the dashed location at the alert only)")
+        if shots:
+            page.wait_for_timeout(150)
+            shoot_panel(page, str(out / f"{label}-evento1-repeticion-{name}.png"))
+    if shots:
+        page.locator("#flare-replay-player .fp-track").screenshot(path=str(out / f"{label}-marcas-evento1.png"))
+
+
+def check_loc_toggle(page, failures, label, base_url):
+    """D-117: "Mostrar ubicación" hides every location on the page and is
+    remembered (localStorage) across a reload; on by default."""
+    page.goto(base_url)
+    page.wait_for_load_state("networkidle")
+    visible = "[...document.querySelectorAll('[data-flare-grid] .flare-loc')].filter(b => b.offsetParent).length"
+    if not page.evaluate(visible):
+        failures.append(f"{label}: no location shown by default")
+    page.uncheck(".flare-images [data-loc-toggle]")
+    if page.evaluate(visible):
+        failures.append(f"{label}: 'Mostrar ubicación' off left the location shown")
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    if page.evaluate(visible) or page.is_checked(".flare-images [data-loc-toggle]"):
+        failures.append(f"{label}: 'Mostrar ubicación' off was not remembered")
+    page.check(".flare-images [data-loc-toggle]")
+    if not page.evaluate(visible):
+        failures.append(f"{label}: 'Mostrar ubicación' on did not bring the location back")
+
+
+def check_reduced_motion(browser, failures, base_url):
+    """D-113 with prefers-reduced-motion: reduce (Windows' "Animation
+    effects" off): nothing plays on its own; a press on the loop's start
+    button or "ver repetición" shows the first frame and plays it, at the
+    slowest speed by default."""
+    label = "usach.flare.nrt-es-day-desktop-reduced"
+    context = browser.new_context(viewport={"width": 1440, "height": 900}, locale="es-CL",
+                                  timezone_id="America/Santiago", reduced_motion="reduce")
+    page = context.new_page()
+    errors = []
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    url = base_url.rstrip("/") + "/productos/usach.flare.nrt/"
+    page.goto(url)
+    page.wait_for_load_state("networkidle")
+    loop = PLAYER.format(id="flare-loop")
+    if page.evaluate(f"{loop}.playing || {loop}.frames.length > 0"):
+        failures.append(f"{label}: the loop started without a press")
+    page.click("#flare-loop [data-fp-start]")
+    page.wait_for_function(f"{loop}.painted >= 0", timeout=30000)
+    st = page.evaluate(f"({{first: {loop}.stats.firstPainted, playing: {loop}.playing, index: {loop}.index,"
+                       f" speed: document.querySelector('#flare-loop [data-fp-speed]').value}})")
+    if st["first"] != 0 or not (st["playing"] or st["index"] > 0) or st["speed"] != "5":
+        failures.append(f"{label}: the loop after the press {st}, expected the first frame, playing, at 5 img/s")
+    page.evaluate(f"{loop}.reset()")
+    check_event1_replay(page, failures, label, url, None, shots=False)
+    if errors:
+        failures.append(f"{label}: JS errors: {errors}")
+    print(f"{label}: loop {st}")
+    context.close()
 
 
 SUN_ORDER = ["131", "171", "304", "1600"]
@@ -645,9 +790,16 @@ def main(base_url, out_dir, mode=None):
                             if checks == "flare" and lang == "es":
                                 check_loop(page, failures, label, out, keyboard=first)
                                 check_replay(page, failures, label, out)
+                                # v0.6.3: event 1's replay (first frame, mid-rise,
+                                # alert), its marks, both themes and widths.
+                                check_event1_replay(page, failures, label, base_url.rstrip("/") + prefix + path, out)
                                 if theme == "day":
                                     check_event1(page, failures, label, base_url.rstrip("/") + prefix + path, out)
+                                if first:
+                                    check_loc_toggle(page, failures, label, base_url.rstrip("/") + prefix + path)
                         context.close()
+        if mode != "--quiet-flare" and "usach.flare.nrt" in PAGES:
+            check_reduced_motion(browser, failures, base_url)
         browser.close()
     for f in failures:
         print("FAIL", f)

@@ -35,7 +35,7 @@ Events, Grad-CAM, loop and replays: flare-nrt's JSON read server-side
       </div>
       {% if header.observed %}<p class="now-asof">{% blocktrans with when=header.observed age=header.age %}imagen de {{ when }} · {{ age }}{% endblocktrans %}</p>
       {% elif header.result_time %}<p class="now-asof">{% blocktrans with when=header.result_time age=header.age %}resultado de {{ when }} · {{ age }}{% endblocktrans %}</p>{% endif %}
-      {% if header.flare_detected %}<p class="now-asof flare-open">{% if header.open_since %}{% blocktrans with when=header.open_since %}Alerta desde {{ when }}{% endblocktrans %}{% else %}{% trans "Alerta en curso" %}{% endif %}{% if header.location %} · {% trans "ubicación" %} {{ header.location }} <span class="flare-exp">{% trans "experimental" %}</span>{% endif %}</p>{% endif %}
+      {% if header.flare_detected %}<p class="now-asof flare-open">{% if header.open_since %}{% blocktrans with when=header.open_since %}Alerta desde {{ when }}{% endblocktrans %}{% else %}{% trans "Alerta en curso" %}{% endif %}{% if header.loc %} · {% if header.loc.approx %}{% trans "ubicación aproximada" %}{% else %}{% trans "ubicación" %}{% endif %} {{ header.loc.text }} <span class="flare-exp">{% trans "experimental" %}</span>{% endif %}</p>{% endif %}
     </div>
   </div>
 
@@ -50,7 +50,8 @@ Events, Grad-CAM, loop and replays: flare-nrt's JSON read server-side
       {% for c in images.channels %}{% include "web/_flare_tile.html" with c=c kind="img" %}{% endfor %}
       {% for c in images.channels %}{% include "web/_flare_tile.html" with c=c kind="diff" %}{% endfor %}
     </div>
-    <p class="meta">{% trans "SDO/AIA (NASA), norte arriba. Arriba cada canal; abajo su «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo. Toque una imagen para verla en grande." %}{% if header.bbox %} {% trans "El recuadro es la región detectada (experimental)." %}{% endif %}</p>
+    <p class="meta">{% trans "SDO/AIA (NASA), norte arriba. Arriba cada canal; abajo su «diferencia»: la imagen actual menos el promedio de las de 8 a 12 minutos antes, lo que mira el modelo. Toque una imagen para verla en grande." %}</p>
+    {% if header.loc.shape %}{% include "web/_flare_loc_toggle.html" with approx=header.loc.approx hidden=False %}{% endif %}
     <dialog class="flare-lightbox" id="flare-lightbox" aria-labelledby="flare-lb-title" data-flare-lightbox>
       <div class="flare-lb-head">
         <b id="flare-lb-title" data-lb-title></b>
@@ -58,7 +59,7 @@ Events, Grad-CAM, loop and replays: flare-nrt's JSON read server-side
       </div>
       <div class="flare-frame flare-lb-frame">
         <img data-lb-img alt="" decoding="async">
-        {% if header.bbox %}<span class="flare-box" style="left:{{ header.bbox.left }}%;top:{{ header.bbox.top }}%;width:{{ header.bbox.width }}%;height:{{ header.bbox.height }}%"></span>{% endif %}
+        {% if header.loc.shape %}<span data-lb-loc hidden>{% include "web/_flare_loc.html" with shape=header.loc.shape %}</span>{% endif %}
         <span class="flare-missing" hidden>{% trans "Imagen no disponible" %}</span>
       </div>
       <p class="meta" data-lb-when></p>
@@ -113,7 +114,7 @@ Events, Grad-CAM, loop and replays: flare-nrt's JSON read server-side
             <td>{{ r.start }}{% if r.open %} <span class="pill">{% trans "en curso" %}</span>{% endif %}</td>
             <td>{{ r.peak }}</td><td>{{ r.end }}</td>
             <td class="num">{{ r.p_max }}</td><td class="num">{{ r.n_frames }}</td>
-            <td>{{ r.location }}</td><td>{{ r.goes_class }}</td>
+            <td data-ev-loc-cell>{% if r.loc.approx %}<span class="flare-approx" title="{% trans 'ubicación aproximada (experimental)' %}">≈ </span>{% endif %}{{ r.location }}</td><td>{{ r.goes_class }}</td>
             <td>{% if r.event_id %}<a class="sbtn" href="?evento={{ r.event_id }}#flare-ev" tabindex="-1" data-ev-link>{% trans "ver" %}</a>{% endif %}</td>
           </tr>
           {% endfor %}
@@ -128,7 +129,8 @@ Events, Grad-CAM, loop and replays: flare-nrt's JSON read server-side
       <div class="flare-ev-replay" data-ev-replay hidden>
         <p class="meta" data-replay-note hidden></p>
         {% include "web/_flare_player.html" with player_id="flare-replay-player" target="flare-ev-frame" src="" start_label="" heat=True %}
-        <p class="meta">{% trans "171 Å; en las imágenes en alerta, el mapa Grad-CAM encima (colores relativos al máximo de cada mapa). Las marcas son el inicio, el máximo y el fin de la alerta." %}</p>
+        <p class="meta">{% trans "171 Å con el mapa Grad-CAM encima (colores relativos al máximo de cada mapa). Las marcas son el inicio, el máximo y el fin de la alerta." %}</p>
+        <p class="meta" data-cam-fade-note>{% blocktrans with floor=cam_fade_floor %}El mapa aparece a medida que sube la probabilidad: transparente bajo {{ floor }}, completo en el umbral.{% endblocktrans %}</p>
         <div class="swx-stack readout-below flare-replay-xray" data-mount-later data-sync-key="flare-replay-xray" data-range="window"
              data-panels-id="flare-replay-xray-panels" data-i18n-id="{{ i18n_id }}" data-tall="0" data-aria-label="{% trans 'Rayos X de GOES durante la repetición' %}">
           <div class="figwrap">

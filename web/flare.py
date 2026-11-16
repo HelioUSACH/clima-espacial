@@ -16,12 +16,14 @@ Two sources, kept apart on purpose:
   PNGs reach them through nginx's cached image locations
   (`deploy/nginx-clima-espacial.conf`, D-100), never through Django.
 
-Image geometry (bbox overlay): flare-nrt's PNGs are 512 px, north up, made
-from the 1024² synoptic images by 2x2 binning. flare-nrt converts pixels to
-helioprojective arcsec with the FITS header (`flare_nrt/localize.py`) and
-falls back to 2.4″/px at 1024² centred on the image; the synoptic headers
-carry essentially that (AIA's 0.6″ × 4). So on the 512 px image: 4.8″/px,
-disk centre at the image centre, x (solar west) to the right, y (north) up.
+Image geometry (location overlay, v0.6.3, D-117): flare-nrt's display
+images are 512 px, north up. Where helioprojective arcsec fall on them is
+flare-nrt 1.3.0's `geometry` (replay.json: per frame, the peak's, the
+replay's), from each frame's 131 Å header; it is never assumed here. A live
+location (/api/status has no geometry) is drawn with the newest replay's
+geometry and the location's own scale (location_geometry()). A location
+is also given in words, Stonyhurst latitude and longitude ("S12 W68",
+heliographic(), D-116).
 """
 
 from __future__ import annotations
@@ -229,44 +231,189 @@ def state_badge(state: str | None, lang: str) -> dict | None:
     return {"key": state, "label": en if lang == "en" else es, "severity": STATE_SEVERITY[state]}
 
 
-# --- geometry ---------------------------------------------------------------------
+# --- geometry and location (v0.6.3, D-116..D-118) -----------------------------------
 
-IMAGE_PX = 512
-ARCSEC_PER_PX = 4.8  # 2.4″/px at 1024², binned 2x2 (module docstring)
+IMAGE_PX = 512  # flare-nrt's display images (512 px, north up); not a disk size
+# The location's two methods (flare-nrt 1.3.0 INTEGRATION.md "Location"): the
+# first rule's, and the robust fallback found after the 131 Å maximum (not
+# validated; often post-flare loops next to the kernel). D-118.
+ROBUST_SUFFIX = "_robust"
 
 
-def bbox_percent(location) -> dict | None:
-    """`bbox_arcsec` [x0, y0, x1, y1] -> the box on the 512 px north-up
-    image, as CSS percentages {left, top, width, height} (strings with a
-    decimal point), clipped to the image. None without a usable box."""
-    if not isinstance(location, dict):
+def _pair(value) -> tuple[float, float] | None:
+    if not (isinstance(value, (list, tuple)) and len(value) == 2):
         return None
-    box = location.get("bbox_arcsec")
-    if not (isinstance(box, list) and len(box) == 4 and all(isinstance(v, (int, float)) for v in box)):
+    a, b = (_number(v) for v in value)
+    return (a, b) if a is not None and b is not None else None
+
+
+def parse_geometry(geometry) -> dict | None:
+    """flare-nrt 1.3.0's `geometry` (replay.json: per frame, the peak's, the
+    replay's): where helioprojective arcsec fall on the 512-px north-up
+    images. {size, cx, cy, ax, ay, r} or None when anything is missing or
+    nonsensical. Pixel coordinates from the top-left corner, x right
+    (west), y down; a point (x″, y″) is at col = cx + x/ax, row = cy − y/ay."""
+    if not isinstance(geometry, dict):
         return None
-    x0, y0, x1, y1 = (float(v) for v in box)
-    if not all(math.isfinite(v) for v in (x0, y0, x1, y1)):
+    size = _number(geometry.get("size_px"))
+    centre, scale = _pair(geometry.get("disk_center_px")), _pair(geometry.get("arcsec_per_px"))
+    radius = _number(geometry.get("disk_radius_px"))
+    if not size or size <= 0 or centre is None or scale is None or scale[0] <= 0 or scale[1] <= 0:
         return None
-    half = IMAGE_PX / 2
+    return {"size": size, "cx": centre[0], "cy": centre[1], "ax": scale[0], "ay": scale[1],
+            "r": radius if radius and radius > 0 else None}
+
+
+def location_geometry(location, reference=None) -> dict | None:
+    """The geometry to draw a *live* location with (/api/status has none,
+    D-117): the newest replay's (`reference`, parse_geometry; the synoptic
+    disk centre is fixed and the radius changes by < 0.1 % over days), its
+    scale replaced by the location's own when it carries one
+    (area_arcsec2 / area_px is that frame's arcsec² per pixel on the 512
+    grid). Without a reference, the location's own scale about the image
+    centre. None when neither gives a scale: nothing is drawn rather than
+    guess one."""
+    own = None
+    if isinstance(location, dict):
+        area_px, area_as = _number(location.get("area_px")), _number(location.get("area_arcsec2"))
+        if area_px and area_as and area_px > 0 and area_as > 0:
+            own = math.sqrt(area_as / area_px)
+    if reference is not None:
+        return dict(reference, ax=own, ay=own) if own else dict(reference)
+    if own:
+        half = IMAGE_PX / 2
+        return {"size": float(IMAGE_PX), "cx": half, "cy": half, "ax": own, "ay": own, "r": None}
+    return None
+
+
+def is_approx(location) -> bool:
+    """A location from flare-nrt 1.3.0's robust fallback (D-118)."""
+    method = location.get("method") if isinstance(location, dict) else None
+    return isinstance(method, str) and method.endswith(ROBUST_SUFFIX)
+
+
+def loc_shape(location, geometry) -> dict | None:
+    """An experimental location -> what the page draws over a 512-px image:
+    {left, top, width, height} the bbox and {cx, cy} the centroid, as CSS
+    percentages of the image (strings with a decimal point: a template must
+    not localise them), clipped to the image; `approx` for a robust
+    location (dashed). `geometry` is parse_geometry()'s, never assumed.
+    None without a usable box or centroid, or off the image."""
+    if not isinstance(location, dict) or geometry is None:
+        return None
+    size, cx, cy, ax, ay = (geometry[k] for k in ("size", "cx", "cy", "ax", "ay"))
 
     def col(x):
-        return half + x / ARCSEC_PER_PX
+        return cx + x / ax
 
     def row(y):
-        return half - y / ARCSEC_PER_PX  # north up: +y is towards the top
-
-    left, right = sorted((col(x0), col(x1)))
-    top, bottom = sorted((row(y1), row(y0)))
-    left, top = max(left, 0.0), max(top, 0.0)
-    right, bottom = min(right, IMAGE_PX), min(bottom, IMAGE_PX)
-    if right <= left or bottom <= top:
-        return None
+        return cy - y / ay  # north up: +y is towards the top
 
     def pct(v):
-        # A string: the template must not localise it ("31,25%" is not CSS).
-        return f"{100 * v / IMAGE_PX:.2f}"
+        return f"{100 * v / size:.2f}"
 
-    return {"left": pct(left), "top": pct(top), "width": pct(right - left), "height": pct(bottom - top)}
+    box = location.get("bbox_arcsec")
+    nums = [_number(v) for v in box] if isinstance(box, list) and len(box) == 4 else None
+    centroid = _pair(location.get("centroid_arcsec"))
+    out = {"approx": is_approx(location)}
+    if nums and all(v is not None for v in nums):
+        x0, y0, x1, y1 = nums
+        left, right = sorted((col(x0), col(x1)))
+        top, bottom = sorted((row(y1), row(y0)))
+        left, top = max(left, 0.0), max(top, 0.0)
+        right, bottom = min(right, size), min(bottom, size)
+        if right > left and bottom > top:
+            out.update(left=pct(left), top=pct(top), width=pct(right - left), height=pct(bottom - top))
+            if centroid is None:
+                out.update(cx=pct((left + right) / 2), cy=pct((top + bottom) / 2))
+    if centroid is not None:
+        px, py = col(centroid[0]), row(centroid[1])
+        if 0 <= px <= size and 0 <= py <= size:
+            out.update(cx=pct(px), cy=pct(py))
+            if "left" not in out:  # a centroid alone: a zero box, drawn as the circle
+                out.update(left=out["cx"], top=out["cy"], width="0.00", height="0.00")
+    return out if "cx" in out else None
+
+
+# --- heliographic coordinates of a location ("S12 W68", D-116) -------------------------
+
+def _sun_b0_and_radius(when: dt.datetime) -> tuple[float, float]:
+    """(B0 in degrees, the Sun's apparent radius in arcsec) seen from Earth
+    at `when`: low-precision solar coordinates (Meeus, Astronomical
+    Algorithms ch. 25 and 29), good to ~0.01° in B0, far below the
+    location's own uncertainty. SDO's geosynchronous orbit is within
+    0.0003 AU of Earth."""
+    jd = when.timestamp() / 86400 + 2440587.5
+    t = (jd - 2451545.0) / 36525
+    l0 = 280.46646 + 36000.76983 * t
+    m = math.radians(357.52911 + 35999.05029 * t)
+    e = 0.016708634 - 0.000042037 * t
+    c = ((1.914602 - 0.004817 * t) * math.sin(m) + (0.019993 - 0.000101 * t) * math.sin(2 * m)
+         + 0.000289 * math.sin(3 * m))
+    true_lon = l0 + c
+    nu = m + math.radians(c)
+    distance_au = 1.000001018 * (1 - e * e) / (1 + e * math.cos(nu))
+    k = 73.6667 + 1.3958333 * (jd - 2396758.0) / 36525
+    incl = math.radians(7.25)
+    b0 = math.degrees(math.asin(math.sin(math.radians(true_lon - k)) * math.sin(incl)))
+    radius = math.degrees(math.asin(696_000 / (distance_au * 149_597_870.7))) * 3600
+    return b0, radius
+
+
+def heliographic(location, when: dt.datetime | None, rsun_arcsec: float | None = None) -> tuple[float, float] | None:
+    """A location's centroid (helioprojective arcsec) -> Stonyhurst
+    heliographic (latitude, longitude) in degrees, north and west positive,
+    at `when` (B0 from the date). The line of sight is intersected with the
+    solar sphere; a centroid beyond the limb (flare-nrt's on-limb case) is
+    put on the limb. `rsun_arcsec`: the frame's own (geometry), else the
+    date's. None without a centroid or a time."""
+    centroid = _pair(location.get("centroid_arcsec")) if isinstance(location, dict) else None
+    if centroid is None or when is None:
+        return None
+    b0_deg, radius = _sun_b0_and_radius(when)
+    if rsun_arcsec and rsun_arcsec > 0:
+        radius = rsun_arcsec
+    rs = math.radians(radius / 3600)
+    d = 1 / math.sin(rs)  # observer distance, in solar radii
+    tx, ty = (math.radians(v / 3600) for v in centroid)
+    u = (math.cos(ty) * math.sin(tx), math.sin(ty), -math.cos(ty) * math.cos(tx))
+    ou = d * u[2]  # observer at (0, 0, d)
+    disc = ou * ou - (d * d - 1)
+    s = -ou - math.sqrt(disc) if disc > 0 else -ou
+    x, y, z = s * u[0], s * u[1], d + s * u[2]
+    norm = math.sqrt(x * x + y * y + z * z) or 1.0
+    x, y, z = x / norm, y / norm, z / norm
+    b0 = math.radians(b0_deg)
+    lat = math.degrees(math.asin(max(-1.0, min(1.0, y * math.cos(b0) + z * math.sin(b0)))))
+    lon = math.degrees(math.atan2(x, z * math.cos(b0) - y * math.sin(b0)))
+    return lat, lon
+
+
+def fmt_heliographic(location, when: dt.datetime | None, rsun_arcsec: float | None = None) -> str:
+    """'S12 W68': latitude and longitude, whole degrees, NOAA's order and
+    letters (D-116); '' without a centroid."""
+    hg = heliographic(location, when, rsun_arcsec)
+    if hg is None:
+        return ""
+    lat, lon = (int(round(v)) for v in hg)
+    return f"{'S' if lat < 0 else 'N'}{abs(lat):02d} {'E' if lon < 0 else 'W'}{abs(lon):02d}"
+
+
+def location_view(location, when: dt.datetime | None, lang: str, *, geometry=None, shape_geometry=None) -> dict | None:
+    """What the page shows of a location: `text` in words ("S12 W68"),
+    `arcsec` (the centroid, "−412″, 269″"), `approx` (robust method,
+    D-118) and `shape` (loc_shape over `shape_geometry`, None when there is
+    no geometry to draw it with). None without a centroid."""
+    if not isinstance(location, dict):
+        return None
+    rsun = None
+    if isinstance(geometry, dict):
+        rsun = _number(geometry.get("rsun_arcsec"))
+    text = fmt_heliographic(location, when, rsun)
+    if not text:
+        return None
+    return {"text": text, "arcsec": fmt_location(location, lang, parens=False), "approx": is_approx(location),
+            "shape": loc_shape(location, shape_geometry)}
 
 
 # --- GOES class during an event ----------------------------------------------------
@@ -372,6 +519,7 @@ def peak_url(event_id: int, name: str) -> str:
 # --- the page ---------------------------------------------------------------------
 
 WAVES = ("131", "171", "304", "1600")
+LOC_WAVES = ("131", "171")
 DEFAULT_WAVE = "171"
 DEFAULT_THRESHOLD = 0.8  # flare-nrt's own (INTEGRATION.md), when nothing better is known
 LARGE_PX = 1024
@@ -400,10 +548,11 @@ def _event_slot(event) -> str | None:
     return slot if ISO_SLOT_RE.match(slot) else None
 
 
-def header_context(event, lang: str, now: dt.datetime) -> dict:
+def header_context(event, lang: str, now: dt.datetime, reference_geometry=None) -> dict:
     """The header, from the latest stored event. Works for a version-1 event
     (no threshold, state, observation slot or provenance): those parts are
-    simply left out."""
+    simply left out. `loc`: the open event's location (location_view), its
+    box drawn with location_geometry(…, reference_geometry) (D-117)."""
     if event is None:
         return {"has_result": False}
     payload = event.payload or {}
@@ -420,9 +569,9 @@ def header_context(event, lang: str, now: dt.datetime) -> dict:
         "age": fmt_age(event.valid_from if has_slot else event.issued, now),
         "open_since": time_html(open_since, lang, date=False) if open_since else None,
         "flare_detected": bool(payload.get("flare_detected")),
-        "location": fmt_location(location, lang),
+        "loc": location_view(location, event.valid_from, lang,
+                             shape_geometry=location_geometry(location, reference_geometry)) if location else None,
         "on_limb": bool(isinstance(location, dict) and location.get("on_limb")),
-        "bbox": bbox_percent(location),
     }
 
 
@@ -443,6 +592,8 @@ def images_context(event, lang: str) -> dict:
             "img_large": image_url(wave, "img", slot, fmt="webp", size=LARGE_PX),
             "diff": image_url(wave, "diff", slot, fmt="webp"),
             "t_obs": time_html(t_obs, lang, date=False, seconds=True) if t_obs else None,
+            # The location is drawn on 131 Å (where it was found) and 171 Å (D-117).
+            "loc": wave in LOC_WAVES,
         })
     return {"slot": slot, "channels": channels}
 
@@ -521,6 +672,18 @@ def apply_cam(view: dict, cam: dict, lang: str, *, ready: bool) -> None:
     view["cam_ready"] = ready
 
 
+def apply_location(view: dict, loc: dict | None, *, shape: bool = False) -> None:
+    """An event's location into its view: the table cell and the panel read
+    `location` (words, "—" without one) and `loc`; the panel's image draws
+    `loc_shape` (only from replay.json, which has the geometry)."""
+    if loc is None:
+        return
+    view["loc"] = loc
+    view["location"] = loc["text"]
+    if shape:
+        view["loc_shape"] = loc.get("shape")
+
+
 def _cell_time(when: dt.datetime | None, lang: str, *, date: bool = True) -> str:
     """A table cell's time: UT on one line, local time on a second (D-108)."""
     return time_html(when, lang, date=date, stacked=True) if when is not None else "—"
@@ -559,7 +722,9 @@ def _event_view(e: dict, start, peak, end, goes_class, threshold: float, lang: s
         "end_full": time_html(end, lang) if end else "—",
         "p_max": fmt_prob(p_max, lang),
         "n_frames": n_frames if isinstance(n_frames, int) and not isinstance(n_frames, bool) else "—",
-        "location": fmt_location(e.get("location"), lang, parens=False) or "—",
+        "location": "—",
+        "loc": None,
+        "loc_shape": None,
         "goes_class": goes_class or "—",
         "cam_mode": cam_mode,
         "cam": None,
@@ -569,6 +734,7 @@ def _event_view(e: dict, start, peak, end, goes_class, threshold: float, lang: s
         "replay": reverse("web:flare_replay_json", args=[event_id]) if has_replay else None,
         "replay_xray": reverse("web:flare_replay_xray_json", args=[event_id]) if has_replay else None,
     }
+    apply_location(view, location_view(e.get("location"), peak or start, lang))
     if cam_mode == "map":
         # Without replay.json (read for the selected event only, page_context;
         # flare.js reads it for the others before showing them).
@@ -627,11 +793,52 @@ def select_event(rows: list[dict], wanted: int | None) -> dict | None:
 
 LOOP_DEFAULT_HOURS = 6
 REPLAY_STATES = frozenset(STATE_LABELS)
+# D-115: a replay frame's Grad-CAM map is drawn with opacity
+# slider × w(p), w = clamp((p − CAM_FADE_FLOOR) / (threshold − CAM_FADE_FLOOR), 0, 1):
+# transparent at or below this probability, full at the threshold. Each map
+# is normalised to its own maximum, so a quiet frame's would otherwise show
+# bright blobs that mean nothing. flare-player.js reads it from the replay's
+# `cam_floor`; the note under the player prints it.
+CAM_FADE_FLOOR = 0.30
 
 
 def _unix(value) -> int | None:
     when = parse_time(value)
     return int(when.timestamp()) if when is not None else None
+
+
+def reference_geometry(events_json=None) -> dict | None:
+    """The newest replay's geometry (parse_geometry), for drawing a live
+    location (/api/status has none, D-117): from the newest event in
+    /api/events (30 days) whose replay has one. None without one."""
+    events_json = events_json if events_json is not None else service_json("events", days=30)
+    events = [e for e in (events_json or {}).get("events", []) if isinstance(e, dict)]
+    events.sort(key=lambda e: _unix(e.get("t_start")) or 0, reverse=True)
+    for e in events:
+        event_id = _event_id(e)
+        if e.get("replay") is True and event_id is not None:
+            data = service_json("replay", event_id=event_id)
+            geometry = parse_geometry((data or {}).get("geometry"))
+            if geometry is not None:
+                return geometry
+            break  # only the newest: an older one is not worth another call
+    return None
+
+
+def live_location() -> dict | None:
+    """The open event's location from /api/status, for the 6-h loop's
+    newest frames: {"shape", "since"} (UNIX seconds of event_t_start;
+    frames from then on carry it). None while no event is open, or when it
+    can't be drawn (no geometry, D-117)."""
+    status = service_json("status")
+    if not status or status.get("flare_detected") is not True:
+        return None
+    location = status.get("location")
+    since = _unix(status.get("event_t_start")) or _unix(status.get("observation_time"))
+    if not isinstance(location, dict) or since is None:
+        return None
+    shape = loc_shape(location, location_geometry(location, reference_geometry()))
+    return {"shape": shape, "since": since} if shape else None
 
 
 def loop_payload(channel: str, hours: int) -> dict:
@@ -645,6 +852,7 @@ def loop_payload(channel: str, hours: int) -> dict:
     out = {"channel": channel, "hours": hours, "frames": [], "unavailable": data is None}
     if data is None:
         return out
+    live = live_location()
     seen = set()
     for f in data.get("frames", []):
         if not isinstance(f, dict):
@@ -656,29 +864,51 @@ def loop_payload(channel: str, hours: int) -> dict:
         seen.add(t)
         state = f.get("state")
         out["frames"].append({"t": t, "obs": _unix(f.get("t_obs")), "p": _number(f.get("probability")),
-                              "state": state if state in REPLAY_STATES else None, "url": url})
+                              "state": state if state in REPLAY_STATES else None, "url": url,
+                              "loc": live["shape"] if live and t >= live["since"] else None})
     out["frames"].sort(key=lambda f: f["t"])
     return out
 
 
 def replay_payload(event_id: int, threshold: float, now: dt.datetime | None = None) -> dict:
     """One event's replay (flare-nrt `replay.json`, schema flare-nrt-replay/1)
-    for the player: every frame with its 171 Å image and, at or above the
-    threshold, its Grad-CAM heat map (public nginx paths); the event's
-    start, peak and end; whether it is complete, with the service's note
-    and missing counts when it isn't; its peak set (1.2.0, `peak`: slot and
-    the public URL of each file replay.json lists) and the event panel's
-    image sources (`cam`, cam_sources())."""
+    for the player: every frame with its 171 Å image and its Grad-CAM heat
+    map (public nginx paths): since flare-nrt 1.3.0 every frame with a
+    result has one, which the player weights by probability (`cam_floor`,
+    D-115); an older replay's maps (alert frames only) are used at or above
+    the threshold, as before. Per frame also `alert` and `loc` (the event's
+    location over that frame's geometry, from t_start to t_end, D-117). The
+    event's start, peak and end; whether it is complete, with the service's
+    note and missing counts when it isn't; its peak set (1.2.0, `peak`: slot
+    and the public URL of each file replay.json lists), the event panel's
+    image sources (`cam`, cam_sources()) and the event's `location`
+    (location_view, its shape over the peak frame's geometry)."""
     data = service_json("replay", event_id=event_id)
-    out = {"event_id": event_id, "frames": [], "marks": {}, "threshold": threshold, "complete": True,
-           "note": None, "missing": {"171": 0, "gradcam-heat": 0}, "n_slots": None, "window": None,
-           "peak": None, "cam": None, "unavailable": data is None}
+    out = {"event_id": event_id, "frames": [], "marks": {}, "threshold": threshold, "cam_floor": CAM_FADE_FLOOR,
+           "complete": True, "note": None, "missing": {"171": 0, "gradcam-heat": 0}, "n_slots": None,
+           "window": None, "peak": None, "cam": None, "location": None, "geometry": None,
+           "unavailable": data is None}
     if data is None:
         return out
+    own = _number(data.get("threshold"))
+    if own is not None and 0 < own <= 1:
+        threshold = out["threshold"] = own
+    raw_frames = [f for f in data.get("frames", []) if isinstance(f, dict)]
+    # 1.3.0 marks itself: `threshold` and the frames' `cam_peak`. Before it,
+    # only alert frames had a map.
+    every_map = "threshold" in data or any("cam_peak" in f for f in raw_frames)
+    event = data.get("event") if isinstance(data.get("event"), dict) else {}
+    peak = data.get("peak") if isinstance(data.get("peak"), dict) else None
+    geometry = parse_geometry(data.get("geometry"))
+    out["geometry"] = geometry
+    event_loc = event.get("location") if isinstance(event.get("location"), dict) else None
+    if event_loc is None and peak and isinstance(peak.get("location"), dict):
+        event_loc = peak["location"]
+    t_start, t_end = _unix(event.get("t_start")), _unix(event.get("t_end"))
+    if t_start is not None and t_end is None:
+        t_end = t_start
     images_at = {}
-    for f in data.get("frames", []):
-        if not isinstance(f, dict):
-            continue
+    for f in raw_frames:
         slot = f.get("slot")
         images = f.get("images") if isinstance(f.get("images"), list) else []
         t = _unix(slot)
@@ -687,18 +917,21 @@ def replay_payload(event_id: int, threshold: float, now: dt.datetime | None = No
         if t is None or not isinstance(slot, str) or not ISO_SLOT_RE.match(slot) or "171" not in images:
             continue
         p = _number(f.get("probability"))
-        heat = p is not None and p >= threshold and "gradcam-heat" in images
+        heat = p is not None and "gradcam-heat" in images and (every_map or p >= threshold)
         state = f.get("state")
+        alert = f.get("alert") if isinstance(f.get("alert"), bool) else (p is not None and p >= threshold)
+        in_event = t_start is not None and t_start <= t <= t_end
+        frame_geometry = parse_geometry(f.get("geometry")) or geometry
         out["frames"].append({
             "t": t, "obs": _unix(f.get("t_obs")), "p": p, "state": state if state in REPLAY_STATES else None,
+            "alert": bool(alert and p is not None),
             "url": replay_frame_url(event_id, slot, "171"),
             "heat": replay_frame_url(event_id, slot, "gradcam-heat") if heat else None,
+            "loc": loc_shape(event_loc, frame_geometry) if in_event else None,
         })
     out["frames"].sort(key=lambda f: f["t"])
-    event = data.get("event") if isinstance(data.get("event"), dict) else {}
     out["marks"] = {k: _unix(event.get(src)) for k, src in (("start", "t_start"), ("peak", "t_peak"),
                                                            ("end", "t_end"))}
-    peak = data.get("peak") if isinstance(data.get("peak"), dict) else None
     peak_slot = peak.get("slot") if peak else None
     if isinstance(peak_slot, str) and ISO_SLOT_RE.match(peak_slot):
         names = [n for n in PEAK_NAMES if n in (peak.get("images") if isinstance(peak.get("images"), list) else ())]
@@ -710,6 +943,12 @@ def replay_payload(event_id: int, threshold: float, now: dt.datetime | None = No
         names = []
         t_peak = parse_time(event.get("t_peak"))
         cam_slot = iso_z(t_peak) if t_peak is not None else None
+    peak_geometry = (parse_geometry(peak.get("geometry")) if peak else None) or geometry
+    when = parse_time(event.get("t_peak")) or parse_time(event.get("t_start"))
+    loc = location_view(event_loc, when, "es", geometry=(peak or {}).get("geometry") or data.get("geometry"),
+                        shape_geometry=peak_geometry)
+    if loc is not None:
+        out["location"] = {"text": loc["text"], "approx": loc["approx"], "shape": loc["shape"]}
     if cam_slot is not None:
         out["cam"] = cam_sources(event_id, cam_slot, has_replay=True, now=now or timezone.now(),
                                  peak_images=names, frame_images=images_at.get(_unix(cam_slot), []))
@@ -908,14 +1147,19 @@ def page_context(lang: str, wanted_event: int | None = None) -> dict:
     threshold = stored_threshold(event)
     rows = history_rows(events_json, lang, threshold, now)
     selected = select_event(rows, wanted_event)
-    if selected is not None and selected["cam_mode"] == "map" and selected["replay"]:
-        # The selected event's peak set (1.2.0) needs its replay.json: one
-        # more call, cached like the player's (the same key).
+    if selected is not None and selected["replay"]:
+        # The selected event's peak set (1.2.0) and its location's geometry
+        # (1.3.0) need its replay.json: one more call, cached like the
+        # player's (the same key).
         replay = replay_payload(selected["event_id"], threshold, now=now)
-        if replay["cam"] is not None:
+        if replay["cam"] is not None and selected["cam_mode"] == "map":
             apply_cam(selected, replay["cam"], lang, ready=True)
+        if replay["location"] is not None:
+            apply_location(selected, dict(selected["loc"] or {}, **replay["location"]), shape=True)
+    header_event = (event.payload or {}) if event is not None else {}
+    reference = reference_geometry(events_json) if header_event.get("flare_detected") else None
     return {
-        "header": header_context(event, lang, now),
+        "header": header_context(event, lang, now, reference),
         "images": images_context(event, lang),
         "history": rows,
         "selected": selected,

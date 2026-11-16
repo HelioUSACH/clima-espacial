@@ -198,7 +198,8 @@ def test_table_markup_no_parentheses_short_headers_two_line_times(client, servic
     assert f'data-ut="dt" data-stack>{start:%d/%m %H:%M} UT</time>' in ev9
     peak9 = start + dt.timedelta(minutes=10)
     assert f'data-ut="dt" data-stack>{peak9:%d/%m %H:%M} UT</time>' in ev9  # next day: with its date
-    assert "120″, −30″" in ev9
+    # v0.6.3 (D-116): the location in words, superseding the arcsec of D-108.
+    assert f"<td data-ev-loc-cell>{flare.fmt_heliographic({'centroid_arcsec': [120.0, -30.4]}, peak9)}</td>" in ev9
 
 
 @pytest.mark.django_db
@@ -275,7 +276,7 @@ def test_panel_heat_over_131_with_vertical_bar_and_facts(client, service, public
     assert bar.index("máx.") < bar.index(">0<")  # "máx." at the top, 0 at the bottom
     assert "cam-bar\"" not in panel and "máximo del mapa" not in panel  # the wide horizontal bar is gone
     assert "data-cam-opacity" in panel and 'style="opacity:.6"' in panel
-    for text in ("Probabilidad máx.", "0,91", "Inicio", "Máximo", "Fin", "Ubicación", "−412″, 269″", "Clase GOES"):
+    for text in ("Probabilidad máx.", "0,91", "Inicio", "Máximo", "Fin", "Ubicación", "N18 E26", "Clase GOES"):
         assert text in panel, text
     # The replay: a button in the panel, playing in the panel's own frame.
     assert f'data-replay="{MEDIA}/datos/repeticion-3.json"' in panel

@@ -19,7 +19,13 @@
  *   moves to the next on an error; the heat map's last resort is the
  *   service's overlay, labelled as such; nothing left shows a note, never
  *   a broken image. A panel the server built without replay.json
- *   (data-cam-src) reads it first (datos/repeticion-<id>.json, `cam`).
+ *   (data-cam-src) reads it first (datos/repeticion-<id>.json, `cam`),
+ *   and from it the event's location (`location`: its box over the image,
+ *   and its words when /api/events had none, D-116..D-118).
+ * - the experimental location (D-117): drawn by the server on the 131 and
+ *   171 Å tiles, the lightbox (for those two) and the selected panel;
+ *   "Mostrar ubicación" and the box-or-circle fit are flare-player.js's
+ *   swxFlareLoc, shared with the players.
  * - home: four thumbnails in a fixed order; the selected one is shown
  *   large and highlighted, a click never reorders them. The block hides
  *   itself when its image can't be had (service down and nothing cached).
@@ -92,6 +98,8 @@
       var t = fig.querySelector("[data-tile-title]");
       var w = fig.querySelector("[data-tile-when]");
       opener = tile;
+      var lbLoc = box.querySelector("[data-lb-loc]");
+      if (lbLoc) lbLoc.hidden = !tile.querySelector(".flare-loc");
       markMissing(img, false);
       img.setAttribute("src", tile.dataset.full);
       img.alt = "SDO/AIA " + (t ? t.textContent : tile.dataset.wave + " Å");
@@ -100,6 +108,7 @@
       if (typeof box.showModal === "function") box.showModal();
       else box.setAttribute("open", "");
       box.querySelector("[data-lb-close]").focus();
+      if (window.swxFlareLoc) window.swxFlareLoc.fit(box);
     });
     box.querySelector("[data-lb-close]").addEventListener("click", close);
     // A click on the backdrop (the dialog itself, outside its content).
@@ -169,6 +178,9 @@
       var camHeat = body.querySelector(".flare-cam-heat");
       var noSlider = !camFrame || camFrame.classList.contains("is-overlay") || !camHeat || camHeat.hidden;
       body.querySelectorAll("[data-cam-opacity-row]").forEach(function (r) { r.hidden = noSlider; });
+      // The panel's "Mostrar ubicación" again, if its image has a location.
+      var hasLoc = !!body.querySelector(".flare-cam-frame .flare-loc:not(.fp-loc)");
+      body.querySelectorAll("[data-loc-row]").forEach(function (r) { r.hidden = !hasLoc; });
     }
 
     function wirePanel() {
@@ -187,6 +199,8 @@
           start.hidden = true;
           if (stop) stop.hidden = false;
           body.querySelectorAll("[data-cam-opacity-row]").forEach(function (r) { r.hidden = true; });
+          // The player has its own "Mostrar ubicación" (the same setting).
+          body.querySelectorAll("[data-loc-row]").forEach(function (r) { r.hidden = true; });
           note.hidden = true;
           note.textContent = "";
           p.onFrame = function (f) { if (window.swxCharts && stack) window.swxCharts.cursor(stack, f.t); };
@@ -261,7 +275,12 @@
           if (i.complete && i.getAttribute("src") && i.naturalWidth === 0) i.removeAttribute("src");
         });
         var done = false;
-        var go = function (c) { if (!done) { done = true; startCam(root, c && c.cam ? c.cam : null); } };
+        var go = function (c) {
+          if (done) return;
+          done = true;
+          if (c && c.location) panelLocation(root, c.location);
+          startCam(root, c && c.cam ? c.cam : null);
+        };
         setTimeout(function () { go(null); }, 4000);
         fetch(url, { headers: { Accept: "application/json" } })
           .then(function (r) { return r.ok ? r.json() : null; })
@@ -295,6 +314,37 @@
       }
     }
 
+    // The event's location from its replay data (D-116..D-118): the box over
+    // the panel's image, the toggle with its key, and the words in the
+    // panel and the table when /api/events had none.
+    function panelLocation(root, loc) {
+      var frame = root.querySelector(".flare-cam-frame");
+      if (loc.shape && frame && !frame.querySelector(".flare-loc:not(.fp-loc)")) {
+        var el = document.createElement("span");
+        el.setAttribute("data-loc", "");
+        frame.insertBefore(el, frame.querySelector(".flare-missing"));
+        window.swxFlareLoc.place(el, loc.shape, i18n);
+        var row = root.querySelector("[data-loc-row]");
+        if (row) {
+          row.hidden = !replayBox.hidden;
+          var key = row.querySelector("[data-loc-key]");
+          key.classList.toggle("is-approx", !!loc.approx);
+          key.querySelector("[data-loc-key-text]").textContent = loc.approx ? i18n.loc_approx : i18n.loc_estimated;
+        }
+      }
+      var dd = root.querySelector("[data-ev-loc]");
+      if (dd && dd.textContent.trim() === "—" && loc.text) {
+        dd.textContent = loc.text + " ";
+        var tag = document.createElement("span");
+        tag.className = "flare-exp";
+        tag.textContent = loc.approx ? i18n.loc_approx_short : i18n.experimental;
+        dd.appendChild(tag);
+        var id = root.querySelector("[data-ev-id]");
+        var cell = id && section.querySelector('tr[data-ev="' + id.getAttribute("data-ev-id") + '"] [data-ev-loc-cell]');
+        if (cell && cell.textContent.trim() === "—") cell.textContent = (loc.approx ? "≈ " : "") + loc.text;
+      }
+    }
+
     function select(id, opts) {
       opts = opts || {};
       if (id === current) return;
@@ -304,6 +354,7 @@
       body.innerHTML = "";
       body.appendChild(tpl.content.cloneNode(true));
       if (window.swxTime) window.swxTime.render(body);
+      if (window.swxFlareLoc) window.swxFlareLoc.fit(body);
       current = id;
       rows.forEach(function (r) {
         var on = r.dataset.ev === id;
@@ -413,6 +464,7 @@
   }
 
   function init() {
+    if (window.swxFlareLoc) window.swxFlareLoc.fit(document);
     var page = document.querySelector(".flare-page");
     if (page) {
       initGrid(page);

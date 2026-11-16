@@ -25,8 +25,21 @@
  *   5/10/20 fps, loop. Keyboard: every control is a native button, select,
  *   checkbox or range; Space/K plays or pauses and ←/→ step when the
  *   player has focus.
- * - prefers-reduced-motion: playback never starts by itself, not even
- *   after loading; the default speed is the slowest.
+ * - A press on the start button (or "ver repetición") shows the first
+ *   frame and plays from there (D-113), with prefers-reduced-motion too:
+ *   the press is the request. Reduced motion still means nothing starts
+ *   without a press, the slowest speed by default and no other animation.
+ * - A replay's Grad-CAM map is drawn on every frame that has one, with
+ *   opacity = slider × w(p), w = clamp((p − cam_floor) / (threshold −
+ *   cam_floor), 0, 1) (D-115; cam_floor comes with the replay's data).
+ *   An "alerta" tag on the label at or above the threshold.
+ * - The slider's start, peak and end marks never overlap (D-114): marks on
+ *   one frame, or whose labels would touch, become one mark with a
+ *   combined label ("inicio · máximo · fin"); laid out again on resize.
+ * - The experimental location (D-117): a frame's `loc` (a box in % of the
+ *   image, or a circle at the centroid when the box is under 10 px on
+ *   screen; dashed for a robust location) drawn over it, and the
+ *   "Mostrar ubicación" setting shared by the whole page (swxFlareLoc).
  *
  * No build step, no CDN (D-002): plain ES2017, loaded deferred.
  */
@@ -44,6 +57,59 @@
     (navigator.deviceMemory != null && navigator.deviceMemory <= 4);
   var WINDOW = small ? { behind: 8, ahead: 24 } : { behind: 16, ahead: 64 };
   var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var MARK_GAP = 8; // px between two marks' labels, or they merge (D-114)
+
+  // ---- the experimental location's overlay, shared with flare.js (D-117) ----
+
+  var LOC_KEY = "swx-flare-loc";
+  var LOC_MIN_PX = 10; // a box smaller than this on screen is drawn as a circle
+  var locShown = true;
+  try { locShown = window.localStorage.getItem(LOC_KEY) !== "0"; } catch (e) { /* storage blocked: on */ }
+  var locObserver = window.ResizeObserver ? new ResizeObserver(function (entries) {
+    entries.forEach(function (en) { en.target.querySelectorAll(".flare-loc").forEach(fitLoc); });
+  }) : null;
+
+  // A box under LOC_MIN_PX in either direction becomes a circle at the
+  // centroid (CSS .is-dot); measured against its frame's current size.
+  function fitLoc(el) {
+    var frame = el.closest(".flare-frame");
+    if (!frame) return;
+    if (locObserver && !frame.__swxLocObserved) { frame.__swxLocObserved = true; locObserver.observe(frame); }
+    var w = frame.clientWidth, h = frame.clientHeight;
+    if (!w || !h) return; // not laid out yet: the observer calls again
+    var bw = parseFloat(el.style.width) * w / 100, bh = parseFloat(el.style.height) * h / 100;
+    el.classList.toggle("is-dot", !(bw >= LOC_MIN_PX && bh >= LOC_MIN_PX));
+  }
+
+  function syncLoc() {
+    document.documentElement.classList.toggle("swx-loc-off", !locShown);
+    document.querySelectorAll("[data-loc-toggle]").forEach(function (cb) { cb.checked = locShown; });
+  }
+
+  window.swxFlareLoc = {
+    fit: function (root) { (root || document).querySelectorAll(".flare-loc").forEach(fitLoc); syncLoc(); },
+    shown: function () { return locShown; },
+    set: function (on) {
+      locShown = !!on;
+      try { window.localStorage.setItem(LOC_KEY, locShown ? "1" : "0"); } catch (e) { /* not remembered */ }
+      syncLoc();
+    },
+    // A shape from the page's data (flare.loc_shape) onto a .flare-loc span.
+    place: function (el, shape, i18n) {
+      el.className = "flare-loc" + (el.classList.contains("fp-loc") ? " fp-loc" : "") + (shape.approx ? " is-approx" : "");
+      el.style.left = shape.left + "%";
+      el.style.top = shape.top + "%";
+      el.style.width = shape.width + "%";
+      el.style.height = shape.height + "%";
+      el.style.setProperty("--cx", shape.cx + "%");
+      el.style.setProperty("--cy", shape.cy + "%");
+      if (i18n) el.title = shape.approx ? i18n.loc_approx : i18n.loc_estimated;
+      fitLoc(el);
+    },
+  };
+  document.addEventListener("change", function (ev) {
+    if (ev.target && ev.target.matches && ev.target.matches("[data-loc-toggle]")) window.swxFlareLoc.set(ev.target.checked);
+  });
 
   function fill(template, values) {
     return String(template).replace(/%\((\w+)\)s/g, function (_m, k) { return values[k] != null ? values[k] : ""; });
@@ -141,6 +207,8 @@
     this.speedEl = root.querySelector("[data-fp-speed]");
     this.loopEl = root.querySelector("[data-fp-loop]");
     this.opacityEl = root.querySelector("[data-fp-opacity]");
+    this.locRow = root.querySelector("[data-fp-loc-row]");
+    this.locKey = root.querySelector("[data-fp-loc-key]");
     this.msgEl = root.querySelector("[data-fp-msg]");
     this.frames = [];
     this.index = 0;
@@ -165,7 +233,7 @@
     // The page may have replaced the target frame (the flare page's event
     // panel is swapped per event): follow the id.
     var frame = document.getElementById(this.root.dataset.target);
-    if (frame !== this.frameEl) { this.frameEl = frame; this.imgEl = null; this.heatEl = null; this.painted = -1; }
+    if (frame !== this.frameEl) { this.frameEl = frame; this.imgEl = null; this.heatEl = null; this.locEl = null; this.painted = -1; }
     if (!this.frameEl) return null;
     if (!this.imgEl || !this.frameEl.contains(this.imgEl)) {
       // Two canvases, drawn only with decoded frames (never an <img> whose
@@ -177,9 +245,13 @@
       this.heatEl.className = "fp-heat";
       this.heatEl.setAttribute("aria-hidden", "true");
       this.heatEl.hidden = true;
+      this.locEl = document.createElement("span");
+      this.locEl.className = "flare-loc fp-loc";
+      this.locEl.hidden = true;
       this.painted = -1;
       this.frameEl.appendChild(this.imgEl);
       this.frameEl.appendChild(this.heatEl);
+      this.frameEl.appendChild(this.locEl);
     }
     return this.imgEl;
   };
@@ -216,8 +288,27 @@
     });
   };
 
+  // w(p) of the frame on the canvas (D-115): 0 at or below cam_floor, 1 at
+  // the threshold and above. A replay without cam_floor (or a frame
+  // without a probability, which has no map anyway): 1, as before.
+  Player.prototype.camWeight = function (f) {
+    var d = this.data || {}, floor = d.cam_floor, thr = d.threshold;
+    if (!f || f.p == null || floor == null || thr == null || !(thr > floor)) return 1;
+    return Math.max(0, Math.min(1, (f.p - floor) / (thr - floor)));
+  };
+
   Player.prototype.applyOpacity = function () {
-    if (this.heatEl && this.opacityEl) this.heatEl.style.opacity = String(+this.opacityEl.value / 100);
+    if (!this.heatEl || !this.opacityEl) return;
+    var w = this.camWeight(this.frames[this.painted]);
+    this.heatEl.style.opacity = String(+this.opacityEl.value / 100 * w);
+  };
+
+  Player.prototype.drawLoc = function (f) {
+    var el = this.locEl;
+    if (!el) return;
+    if (!f || !f.loc) { el.hidden = true; return; }
+    window.swxFlareLoc.place(el, f.loc, this.i18n);
+    el.hidden = false;
   };
 
   // Stop everything and go back to the start button (the page shows its
@@ -236,6 +327,9 @@
     this.painted = -1;
     if (this.frameEl) this.frameEl.classList.remove("is-playing", "is-missing-frame");
     if (this.imgEl) { clearCanvas(this.imgEl); clearCanvas(this.heatEl); this.heatEl.hidden = true; }
+    if (this.locEl) this.locEl.hidden = true;
+    if (this.locRow) this.locRow.hidden = true;
+    if (this.locKey) this.locKey.hidden = true;
     if (this.controls) this.controls.hidden = true;
     if (this.progressEl) this.progressEl.hidden = true;
     if (this.startBtn) this.startBtn.hidden = false;
@@ -348,12 +442,19 @@
     this.slider.max = String(frames.length - 1);
     this.drawMarks();
     this.applyOpacity();
-    var marks = (this.data && this.data.marks) || {};
-    // A replay opens on its peak; a loop on its newest frame.
-    var first = marks.peak != null ? this.nearest(marks.peak) : frames.length - 1;
-    if (!reduced) first = 0;
-    this.autoplay = !reduced;
-    this.show(first);
+    var locs = frames.filter(function (f) { return f.loc; });
+    if (this.locRow) this.locRow.hidden = !locs.length;
+    if (this.locKey) {
+      var approx = locs.some(function (f) { return f.loc.approx; });
+      this.locKey.hidden = !locs.length;
+      this.locKey.classList.toggle("is-approx", approx);
+      this.locKey.querySelector("[data-loc-key-text]").textContent = approx ? this.i18n.loc_approx : this.i18n.loc_estimated;
+    }
+    window.swxFlareLoc.fit(this.root);
+    // A press asked for it: the first frame, playing (D-113), reduced
+    // motion or not (nothing ever calls load() without a press).
+    this.autoplay = true;
+    this.show(0);
   };
 
   Player.prototype.nearest = function (ts) {
@@ -365,20 +466,78 @@
     return best;
   };
 
+  // The start, peak and end marks (D-114): a tick per distinct frame and
+  // labels that never overlap. Marks on one frame share a label; then, while
+  // two neighbouring labels would come closer than MARK_GAP (edges
+  // included: a label is kept inside the track), they merge into one,
+  // centred over the frames it names ("máximo · fin").
   Player.prototype.drawMarks = function () {
     if (!this.marksEl) return;
-    this.marksEl.innerHTML = "";
+    var el = this.marksEl, self = this;
+    el.innerHTML = "";
     var marks = (this.data && this.data.marks) || {};
-    var n = this.frames.length, self = this;
+    var n = this.frames.length;
+    if (n < 2) return;
+    var groups = [];
     ["start", "peak", "end"].forEach(function (key) {
-      if (marks[key] == null || n < 2) return;
-      var pos = 100 * self.nearest(marks[key]) / (n - 1);
-      var el = document.createElement("span");
-      el.className = "fp-mark fp-mark-" + key;
-      el.style.left = pos.toFixed(2) + "%";
-      el.innerHTML = "<i></i><b>" + escapeHtml(self.i18n.marks[key]) + "</b>";
-      self.marksEl.appendChild(el);
+      if (marks[key] == null) return;
+      var idx = self.nearest(marks[key]);
+      var g = groups.filter(function (x) { return x.lo === idx; })[0];
+      if (g) g.keys.push(key);
+      else groups.push({ lo: idx, hi: idx, keys: [key] });
     });
+    if (!groups.length) return;
+    groups.sort(function (a, b) { return a.lo - b.lo; });
+    var width = el.clientWidth;
+    var seen = {};
+    groups.forEach(function (g) {
+      [g.lo, g.hi].forEach(function (i) {
+        if (seen[i]) return;
+        seen[i] = true;
+        var t = document.createElement("i");
+        t.className = "fp-tick";
+        t.style.left = (100 * i / (n - 1)).toFixed(2) + "%";
+        el.appendChild(t);
+      });
+    });
+    function label(g) {
+      var b = document.createElement("b");
+      b.className = "fp-mark" + (g.keys.indexOf("peak") >= 0 ? " has-peak" : "");
+      b.dataset.marks = g.keys.join(" ");
+      b.innerHTML = g.keys.map(function (k) {
+        return '<span class="fp-mark-' + k + '">' + escapeHtml(self.i18n.marks[k]) + "</span>";
+      }).join(" · ");
+      el.appendChild(b);
+      g.el = b;
+      g.w = b.offsetWidth;
+      return g;
+    }
+    function place(g) {
+      var centre = width * ((g.lo + g.hi) / 2) / (n - 1);
+      g.x = Math.max(0, Math.min(width - g.w, centre - g.w / 2));
+    }
+    groups.forEach(label);
+    for (;;) {
+      groups.forEach(place);
+      var k = -1;
+      for (var j = 0; j + 1 < groups.length; j++) {
+        if (groups[j].x + groups[j].w + MARK_GAP > groups[j + 1].x) { k = j; break; }
+      }
+      if (k < 0) break;
+      var a = groups[k], b = groups[k + 1];
+      el.removeChild(a.el);
+      el.removeChild(b.el);
+      groups.splice(k, 2, label({ lo: a.lo, hi: b.hi, keys: a.keys.concat(b.keys) }));
+    }
+    groups.forEach(function (g) { g.el.style.left = g.x.toFixed(1) + "px"; });
+    // Laid out in pixels: again when the track changes width.
+    if (window.ResizeObserver && !this.marksObserver) {
+      var last = width;
+      this.marksObserver = new ResizeObserver(function () {
+        if (el.clientWidth !== last && self.frames.length) { last = el.clientWidth; self.drawMarks(); }
+      });
+      this.marksObserver.observe(el);
+    }
   };
 
   Player.prototype.markAt = function (i) {
@@ -410,9 +569,11 @@
     if (!f.settled || (f.ok && !this.isReady(i))) bits.push(this.i18n.pending_frame);
     else if (!f.ok) bits.push(this.i18n.missing_frame);
     var counter = fill(this.i18n.frame_of, { i: i + 1, n: n });
+    // At or above the threshold (D-115): a small "alerta" tag.
+    var tag = f.alert ? ' <span class="fp-alert">' + escapeHtml(this.i18n.alert) + "</span>" : "";
     this.labelEl.innerHTML = (timeParts && window.swxTime ? window.swxTime.html(when, { date: true, seconds: f.obs != null }) : escapeHtml(timeText)) +
-      " · " + escapeHtml(bits.join(" · ")) + ' <span class="t-alt">· ' + escapeHtml(counter) + "</span>";
-    this.slider.setAttribute("aria-valuetext", timeText + " · " + bits.join(" · "));
+      " · " + escapeHtml(bits.join(" · ")) + tag + ' <span class="t-alt">· ' + escapeHtml(counter) + "</span>";
+    this.slider.setAttribute("aria-valuetext", timeText + " · " + bits.join(" · ") + (f.alert ? " · " + this.i18n.alert : ""));
     if (this.onFrame) this.onFrame(f, i);
   };
 
@@ -447,14 +608,16 @@
       // Both layers in the same task: the browser never shows one without
       // the other, and never an empty canvas.
       draw(this.imgEl, d.base);
-      if (d.heat) { draw(this.heatEl, d.heat); this.heatEl.hidden = false; }
-      else this.heatEl.hidden = true;
       this.painted = i;
+      if (d.heat) { draw(this.heatEl, d.heat); this.applyOpacity(); this.heatEl.hidden = false; }
+      else this.heatEl.hidden = true;
+      this.drawLoc(f);
     }
     if (!this.frameEl.classList.contains("is-playing") && this.painted >= 0) {
       this.frameEl.classList.add("is-playing");
+      this.stats.firstPainted = i; // read by .github/scripts/screenshots.py (D-113)
       this.timing = this.timing || { first: Math.round(performance.now() - this.t0), all: null };
-      if (!reduced && this.autoplay) { this.autoplay = false; this.play(); }
+      if (this.autoplay) { this.autoplay = false; this.play(); }
     }
   };
 

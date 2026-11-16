@@ -167,14 +167,17 @@ def test_a_second_thread_never_waits(service):
 
 # --- geometry, GOES class, series -----------------------------------------------
 
-def test_bbox_percent_north_up_and_clipped():
-    # 4.8″/px on 512 px, disk centre at the middle; +x right, +y up.
-    box = flare.bbox_percent({"bbox_arcsec": [0, 0, 48, 96]})
-    assert box == {"left": "50.00", "top": "46.09", "width": "1.95", "height": "3.91"}
-    clipped = flare.bbox_percent({"bbox_arcsec": [1200, -100, 1400, 100]})
+def test_box_north_up_and_clipped():
+    # v0.6.3 (D-117): flare-nrt's geometry, never assumed; here 4.8″/px on
+    # 512 px, disk centre at the middle; +x right, +y up.
+    geometry = flare.parse_geometry({"size_px": 512, "disk_center_px": [256, 256], "arcsec_per_px": [4.8, 4.8]})
+    box = flare.loc_shape({"bbox_arcsec": [0, 0, 48, 96]}, geometry)
+    assert {k: box[k] for k in ("left", "top", "width", "height")} == {
+        "left": "50.00", "top": "46.09", "width": "1.95", "height": "3.91"}
+    clipped = flare.loc_shape({"bbox_arcsec": [1200, -100, 1400, 100]}, geometry)
     assert clipped["left"] == "98.83" and float(clipped["left"]) + float(clipped["width"]) == pytest.approx(100)
-    assert flare.bbox_percent({"bbox_arcsec": [2000, 0, 2100, 10]}) is None
-    assert flare.bbox_percent(None) is None and flare.bbox_percent({"bbox_arcsec": [1, 2]}) is None
+    assert flare.loc_shape({"bbox_arcsec": [2000, 0, 2100, 10]}, geometry) is None
+    assert flare.loc_shape(None, geometry) is None and flare.loc_shape({"bbox_arcsec": [1, 2]}, geometry) is None
 
 
 @pytest.mark.django_db
@@ -205,7 +208,10 @@ def test_history_class_window_reaches_10_min_after_end(service):
     rows = flare.history_rows(flare.service_json("events", days=30), "es")
     assert [r["goes_class"] for r in rows] == ["C1.2", "—"]  # newest first
     # v0.6.2 (D-108): no parentheses in a table cell.
-    assert rows[0]["p_max"] == "0,91" and rows[0]["n_frames"] == 5 and rows[0]["location"] == "−412″, 269″"
+    assert rows[0]["p_max"] == "0,91" and rows[0]["n_frames"] == 5
+    # v0.6.3 (D-116): in words, latitude and longitude, no longer arcsec.
+    peak = service.end - dt.timedelta(hours=5) + dt.timedelta(minutes=4)
+    assert rows[0]["location"] == flare.fmt_heliographic({"centroid_arcsec": [-412.3, 268.9]}, peak) == "N18 E26"
     heat = rows[0]["cam"]["heat"][0]["src"]
     assert heat.startswith("/productos/usach.flare.nrt/gradcam/") and "Z.png?style=heat" in heat
     # Anything but the service's own /api/gradcam/<ISO>.png is dropped (and
@@ -320,14 +326,16 @@ def test_page_es_with_open_event(client, service, public):
     _publish_v2(probability=0.9312, alert=True, state="active", flare_detected=True, event_id=7,
                 event_t_start=_iso(start),
                 location={"centroid_arcsec": [-412.3, 268.9], "bbox_arcsec": [-460.8, 230.4, -364.8, 307.2],
-                          "confidence": "experimental"})
+                          "area_px": 46, "area_arcsec2": 1059.8, "confidence": "experimental"})
     html = client.get(PAGE).content.decode()
     assert "Flare en curso" in html
     assert "0,93" in html and "umbral" in html and "0,80" in html
     assert "imagen de " in html and "hace " in html
     assert f'Alerta desde <time datetime="{_iso(start)}" data-ut="t">{start:%H:%M} UT</time>' in html
-    assert "(−412″, 269″)" in html and "experimental" in html
-    assert 'class="flare-box" style="left:' in html and "," not in html.split('class="flare-box" style="')[1][:60]
+    # v0.6.3 (D-116, D-117): in words; the box over the 131/171 tiles, its
+    # scale the location's own (no replay with a geometry here).
+    assert "ubicación N18 E26" in html and "experimental" in html
+    assert 'class="flare-loc" style="left:' in html and "," not in html.split('class="flare-loc" style="')[1][:80]
     # Images: the stored slot, through the public (nginx) paths, never the service's address.
     assert "/productos/usach.flare.nrt/img/171.png?kind=img&amp;slot=" in html
     assert "/productos/usach.flare.nrt/img/1600.png?kind=diff&amp;slot=" in html
@@ -357,7 +365,7 @@ def test_page_quiet_no_alerts(client, service, public):
     _publish_v2()
     html = client.get(PAGE).content.decode()
     assert "Calma" in html and "Sin alertas en los últimos 30 días." in html
-    assert "flare-box" not in html and "Alerta desde" not in html
+    assert 'class="flare-loc"' not in html and "Alerta desde" not in html
 
 
 @pytest.mark.django_db

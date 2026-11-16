@@ -610,7 +610,21 @@ pre.code { background: var(--band); border: 1px solid var(--line); border-radius
 .flare-frame.is-missing img { visibility: hidden; }
 .flare-missing { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-ui); font-size: 12.5px; color: #8fa0b3; }
 .flare-missing[hidden] { display: none; }
-.flare-box { position: absolute; border: 2px solid var(--sun); border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); pointer-events: none; }
+/* v0.6.3 (D-117, D-118): the experimental location, a thin box (dashed for
+ * a robust, "approximate" one); under 10 px on screen, a circle at the
+ * centroid (.is-dot, flare-player.js). "Mostrar ubicación" off hides them
+ * all (.swx-loc-off on <html>). */
+.flare-loc { position: absolute; box-sizing: border-box; border: 1.5px solid var(--sun); border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .55); pointer-events: none; }
+.flare-loc.is-approx { border-style: dashed; }
+.flare-loc.is-dot { left: var(--cx) !important; top: var(--cy) !important; width: 18px !important; height: 18px !important; transform: translate(-50%, -50%); border-radius: 50%; }
+.flare-loc[hidden], .swx-loc-off .flare-loc { display: none; }
+.flare-loc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 8px; }
+.flare-loc-row[hidden], .flare-loc-key[hidden] { display: none; }
+.flare-loc-key { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-faint); margin: 0; }
+.flare-loc-key i { width: 14px; height: 10px; border: 1.5px solid var(--sun); border-radius: 2px; box-sizing: border-box; }
+.flare-loc-key.is-approx i { border-style: dashed; }
+.swx-loc-off .flare-loc-key { opacity: .5; }
+.flare-approx { color: var(--ink-faint); }
 .flare-h3 { font-family: var(--font-ui); font-size: 15px; font-weight: 600; margin: 0; }
 
 /* v0.6.2 (D-106): the four channels' images over their differences, 4 x 2
@@ -633,7 +647,7 @@ pre.code { background: var(--band); border: 1px solid var(--line); border-radius
 .flare-loop-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .flare-loop-grid { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 20px; align-items: start; }
 .flare-loop-frame[hidden] { display: none; }
-.flare-frame.is-playing > img:not(.fp-img):not(.fp-heat), .flare-frame.is-playing .flare-box { visibility: hidden; }
+.flare-frame.is-playing > img:not(.fp-img):not(.fp-heat), .flare-frame.is-playing .flare-loc:not(.fp-loc) { visibility: hidden; }
 .flare-frame .fp-img, .flare-frame .fp-heat, .flare-cam-heat { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .flare-frame .fp-heat[hidden] { display: none; }
 .flare-frame:not(.is-playing) .fp-img { display: none; }
@@ -653,15 +667,15 @@ pre.code { background: var(--band); border: 1px solid var(--line); border-radius
 .fp-opt { font-family: var(--font-ui); font-size: 12.5px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 6px; }
 .fp-opt select { font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
 .fp-track { position: relative; }
-.fp-track:has(.fp-mark) { padding-bottom: 30px; }
+.fp-track:has(.fp-mark) { padding-bottom: 26px; }
 .fp-track input[type='range'] { width: 100%; accent-color: var(--accent); }
-.fp-marks { position: absolute; left: 8px; right: 8px; top: 26px; height: 18px; pointer-events: none; }
-.fp-mark { position: absolute; transform: translateX(-50%); display: grid; justify-items: center; font-family: var(--font-ui); font-size: 10.5px; color: var(--ink-faint); }
-.fp-mark i { width: 2px; height: 6px; background: var(--severity-strong); }
-.fp-mark-peak b { color: var(--severity-strong); }
-/* The peak's label on a second row: start, peak and end are often a few
- * frames apart, and their labels would overlap on one line. */
-.fp-mark-peak i { height: 18px; }
+/* D-114: a tick per marked frame; one row of labels that never overlap
+ * (marks that would touch share one label, flare-player.js). */
+.fp-marks { position: absolute; left: 8px; right: 8px; top: 26px; height: 22px; pointer-events: none; }
+.fp-tick { position: absolute; top: 0; width: 2px; height: 6px; margin-left: -1px; background: var(--severity-strong); }
+.fp-mark { position: absolute; top: 7px; white-space: nowrap; font-family: var(--font-ui); font-size: 10.5px; font-weight: 400; color: var(--ink-faint); }
+.fp-mark .fp-mark-peak { color: var(--severity-strong); }
+.fp-alert { display: inline-block; padding: 0 5px; border-radius: 3px; font-family: var(--font-ui); font-size: 10.5px; line-height: 15px; color: var(--severity-strong); border: 1px solid currentColor; vertical-align: 1px; }
 .fp-label { margin: 0; font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
 input[type='range']:focus-visible, .fp-opt select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
