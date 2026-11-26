@@ -128,7 +128,8 @@ def test_image_grid_eight_tiles_images_then_differences(client, service, public)
     assert "131 Å · imagen" in grid and "1600 Å · diferencia" in grid
     assert '<time datetime="' in _section(grid, 'data-wave="304" data-kind="diff"', "</figure>")
     # Only the differences are lazy (below the fold on a phone).
-    assert grid.count('loading="lazy"') == 4
+    # v0.6.4 (D-120): the differences load with the page, at low priority.
+    assert 'loading="lazy"' not in grid and grid.count('fetchpriority="low"') == 4
 
 
 @pytest.mark.django_db
@@ -276,7 +277,8 @@ def test_panel_heat_over_131_with_vertical_bar_and_facts(client, service, public
     assert bar.index("máx.") < bar.index(">0<")  # "máx." at the top, 0 at the bottom
     assert "cam-bar\"" not in panel and "máximo del mapa" not in panel  # the wide horizontal bar is gone
     assert "data-cam-opacity" in panel and 'style="opacity:.6"' in panel
-    for text in ("Probabilidad máx.", "0,91", "Inicio", "Máximo", "Fin", "Ubicación", "N18 E26", "Clase GOES"):
+    for text in ("Probabilidad máx.", "0,91", "Inicio", "Máximo", "Fin", "Ubicación",
+                 flare.fmt_heliographic({"centroid_arcsec": [-412.3, 268.9]}, peak), "Clase GOES"):
         assert text in panel, text
     # The replay: a button in the panel, playing in the panel's own frame.
     assert f'data-replay="{MEDIA}/datos/repeticion-3.json"' in panel

@@ -39,6 +39,7 @@ Events, Grad-CAM, loop and replays: flare-nrt's JSON read server-side
     </div>
   </div>
 
+  {% if stale %}<p class="flare-note flare-stale" role="status" data-flare-stale><b>{% blocktrans with when=stale.since %}Sin resultados nuevos desde {{ when }}{% endblocktrans %}</b>{% if stale.reasons %}<span class="flare-stale-why">{{ stale.reasons|join:"; "|capfirst }}.</span>{% endif %}</p>{% endif %}
   {% if not service_available %}<p class="flare-note flare-nodata" role="status">{% trans "Sin datos del detector: el servicio no responde en este momento. Se muestra el último resultado guardado por el portal." %}</p>{% endif %}
 
   <section class="flare-sec flare-images" aria-labelledby="flare-img-h">

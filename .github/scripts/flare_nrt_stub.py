@@ -1,6 +1,6 @@
 """A stand-in for flare-nrt's HTTP service (dev, CI screenshots, load tests).
 
-    python .github/scripts/flare_nrt_stub.py [--port 5050] [--scenario active|quiet] [--delay 0] [--pad-kb 0]
+    python .github/scripts/flare_nrt_stub.py [--port 5050] [--scenario active|quiet|stale] [--delay 0] [--pad-kb 0]
                                              [--frame-px 192]
 
 Serves the endpoints the portal uses, in the shape of flare-nrt v1.3.0's
@@ -31,7 +31,12 @@ replay" case. Replays carry `threshold`, `geometry`, and per frame `alert`,
 event's location.
 `--frame-px` sets the loop/replay frames' size (192 by default; 512 is a
 real frame's, for memory measurements). `GET /_stub/scenario?set=quiet`
-(or active) switches scenario while running, for CI. Standard library only;
+(or active, or stale) switches scenario while running, for CI. `stale`
+(v0.6.4, D-121): the detector quiet, its newest valid result 2 h old and
+the last hour's frames rejected for AIA's quality flag (flare-nrt 1.3.1's
+`last_ok_slot`, `rejected_streak`, `last_reject_reasons`). Only so that
+the portal stores that old result does the stub mark it `live` with a
+fresh `timestamp`; the real service would say `stale`. Standard library only;
 nothing in the portal imports it.
 """
 
@@ -183,6 +188,7 @@ class World:
         self.pad_kb = pad_kb
         self.frame_px = frame_px
         self.active = scenario == "active"
+        self.stale = scenario == "stale"
         # Helioprojective centroid and box of the open event (arcsec), and
         # the same point on the 256 px stub image (north up, 9.6″/px here).
         self.centroid = [-412.3, 268.9]
@@ -226,7 +232,9 @@ class World:
         slot = now_slot()
         # A different result time per scenario: switching scenario gives the
         # collector a new result (it de-duplicates on `timestamp`, D-096).
-        made = slot + dt.timedelta(minutes=9, seconds=47 if self.active else 48)
+        made = slot + dt.timedelta(minutes=9, seconds=47 if self.active else 48 if not self.stale else 49)
+        if self.stale:
+            slot -= dt.timedelta(hours=2)
         inputs = {w: iso(slot - dt.timedelta(seconds=4 + i)).replace("Z", ".070Z") for i, w in enumerate(WAVES)}
         p = 0.9312 if self.active else 0.0612
         return {
@@ -245,6 +253,13 @@ class World:
             "live_status": "live", "stale_reason": None, "seconds_since_update": 20.0, "input_age_s": 610.0,
             "stale_after_sec": 600, "max_input_age_sec": 900, "last_frame": None,
             "server_time": iso(dt.datetime.now(dt.UTC)),
+            # 1.3.1
+            "last_ok_slot": iso(slot), "rejected_streak": 60 if self.stale else 0,
+            "rejected_since": iso(slot + dt.timedelta(minutes=2)) if self.stale else None,
+            "rejected_streak_reasons": ({"quality:131=1073741828": 60, "quality:1600=1073741828": 58}
+                                        if self.stale else {}),
+            "last_reject_reasons": (["quality:131=1073741828", "quality:1600=1073741828"]
+                                    if self.stale else []),
         }
 
     def _probability(self, t, end):
@@ -407,7 +422,7 @@ def make_handler(state, delay):
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             iso_re = r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)"
             try:
-                if url.path == "/_stub/scenario" and q.get("set") in ("active", "quiet"):
+                if url.path == "/_stub/scenario" and q.get("set") in ("active", "quiet", "stale"):
                     state["world"] = World(q["set"], world.pad_kb, world.frame_px)
                     data = {"scenario": q["set"]}
                 elif url.path == "/api/status":
@@ -473,7 +488,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=5050)
-    ap.add_argument("--scenario", choices=("active", "quiet"), default="active")
+    ap.add_argument("--scenario", choices=("active", "quiet", "stale"), default="active")
     ap.add_argument("--delay", type=float, default=0.0, help="seconds to wait before every answer")
     ap.add_argument("--pad-kb", type=int, default=0, help="pad loop/replay frames to about this many kB")
     ap.add_argument("--frame-px", type=int, default=192, help="loop/replay frame size (512 = a real frame's)")

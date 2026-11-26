@@ -1269,3 +1269,25 @@ msgstr "171 Å with the Grad-CAM map over it (colours relative to each map's max
 #, python-format
 msgid "El mapa aparece a medida que sube la probabilidad: transparente bajo %(floor)s, completo en el umbral."
 msgstr "The map appears as the probability rises: transparent below %(floor)s, full at the threshold."
+
+#, python-format
+msgid "Sin resultados nuevos desde %(when)s"
+msgstr "No new results since %(when)s"
+
+msgid "las imágenes de SDO/AIA llegan marcadas con problemas de calidad"
+msgstr "the SDO/AIA images arrive flagged with quality problems"
+
+msgid "las imágenes de SDO/AIA no pasan el control de calidad del detector"
+msgstr "the SDO/AIA images do not pass the detector's quality checks"
+
+msgid "no han llegado imágenes de SDO/AIA"
+msgstr "no SDO/AIA images have arrived"
+
+msgid "faltan las imágenes de 8 a 12 minutos antes, con las que se compara cada una"
+msgstr "the images from 8 to 12 minutes earlier, which each one is compared with, are missing"
+
+msgid "las imágenes de SDO/AIA llegan con retraso"
+msgstr "the SDO/AIA images are arriving late"
+
+msgid "el detector no ha podido procesar las imágenes recientes"
+msgstr "the detector has not been able to process the recent images"

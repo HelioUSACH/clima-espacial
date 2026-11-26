@@ -6,6 +6,7 @@ and with a version-1 event in the store."""
 
 import datetime as dt
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -211,7 +212,10 @@ def test_history_class_window_reaches_10_min_after_end(service):
     assert rows[0]["p_max"] == "0,91" and rows[0]["n_frames"] == 5
     # v0.6.3 (D-116): in words, latitude and longitude, no longer arcsec.
     peak = service.end - dt.timedelta(hours=5) + dt.timedelta(minutes=4)
-    assert rows[0]["location"] == flare.fmt_heliographic({"centroid_arcsec": [-412.3, 268.9]}, peak) == "N18 E26"
+    # The latitude moves with B0 over the year (N18 in mid-November, N17 a
+    # week later): the expected text is computed for the test's own date.
+    expected = flare.fmt_heliographic({"centroid_arcsec": [-412.3, 268.9]}, peak)
+    assert rows[0]["location"] == expected and re.fullmatch(r"N(1[0-9]|2[0-6]) E2[5-7]", expected)
     heat = rows[0]["cam"]["heat"][0]["src"]
     assert heat.startswith("/productos/usach.flare.nrt/gradcam/") and "Z.png?style=heat" in heat
     # Anything but the service's own /api/gradcam/<ISO>.png is dropped (and
@@ -334,7 +338,9 @@ def test_page_es_with_open_event(client, service, public):
     assert f'Alerta desde <time datetime="{_iso(start)}" data-ut="t">{start:%H:%M} UT</time>' in html
     # v0.6.3 (D-116, D-117): in words; the box over the 131/171 tiles, its
     # scale the location's own (no replay with a geometry here).
-    assert "ubicación N18 E26" in html and "experimental" in html
+    observed = _slot_now() - dt.timedelta(minutes=10)
+    words = flare.fmt_heliographic({"centroid_arcsec": [-412.3, 268.9]}, observed)
+    assert f"ubicación {words}" in html and "experimental" in html
     assert 'class="flare-loc" style="left:' in html and "," not in html.split('class="flare-loc" style="')[1][:80]
     # Images: the stored slot, through the public (nginx) paths, never the service's address.
     assert "/productos/usach.flare.nrt/img/171.png?kind=img&amp;slot=" in html

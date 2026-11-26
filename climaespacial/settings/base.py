@@ -117,6 +117,12 @@ if SWX_EMAIL_ENABLED:
     EMAIL_USE_TLS = os.environ.get("SWX_EMAIL_USE_TLS", "1") == "1"
 DEFAULT_FROM_EMAIL = os.environ.get("SWX_EMAIL_FROM", "") or "noreply@localhost"
 EMAIL_TIMEOUT = 10
+# v0.6.4 (D-119): who `manage.py check_freshness` e-mails when a product
+# goes stale or recovers. Comma-separated; empty (or no SMTP) sends nothing.
+SWX_ALERT_EMAILS = env_list("SWX_ALERT_EMAILS")
+# The site's public address for the link in those e-mails (scheme + host,
+# no path); empty → the first CSRF_TRUSTED_ORIGINS entry.
+SWX_SITE_ORIGIN = os.environ.get("SWX_SITE_ORIGIN", "").rstrip("/")
 
 
 # --- Django --------------------------------------------------------------------
