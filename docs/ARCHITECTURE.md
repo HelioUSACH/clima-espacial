@@ -254,7 +254,8 @@ nginx
 /opt/swx/            code (root-owned, read-only to the service user)
 /srv/swx/data/       rolling product files (images, downloads) with retention
 /etc/swx/swx.env     secrets
-systemd: swx-web, swx-collect@<product>.timer, swx-dump.timer, swx-verify.timer
+systemd: swx-web, swx-collect@<product>.timer, swx-dump.timer, swx-verify.timer,
+         swx-freshness.timer (stale-product e-mail, D-119)
           (+ the flare repo's own units, flare-nrt-loop and flare-nrt-api, started independently)
 ```
 

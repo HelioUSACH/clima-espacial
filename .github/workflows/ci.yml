@@ -167,6 +167,17 @@ jobs:
           sleep 31
           python .github/scripts/screenshots.py http://127.0.0.1:8000 screenshots --quiet-flare
 
+      # v0.6.4: the flare page when its newest valid result is 2 h old and
+      # flare-nrt rejects every frame for AIA's quality flag (D-121): the
+      # notice above the images.
+      - name: Screenshots, flare detector without new results
+        run: |
+          curl --silent --fail -o /dev/null "http://127.0.0.1:5050/_stub/scenario?set=stale"
+          python manage.py collect usach.flare.nrt
+          sleep 31
+          python .github/scripts/screenshots.py http://127.0.0.1:8000 screenshots --stale-flare
+          python manage.py check_freshness --dry-run
+
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4

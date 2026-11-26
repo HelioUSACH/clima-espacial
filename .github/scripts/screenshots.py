@@ -1,7 +1,7 @@
 """Release screenshots + browser smoke checks (18-HANDOFF-v0.2.0.md §3;
 supersedes the uPlot-era version, D-058).
 
-    python .github/scripts/screenshots.py http://127.0.0.1:8000 shots/ [--quiet-flare]
+    python .github/scripts/screenshots.py http://127.0.0.1:8000 shots/ [--quiet-flare | --stale-flare]
 
 Against a running portal with seeded data (`manage.py seed_dev_data`), for
 home, a few product pages and the forecast baseline's page x 1440/390 px x
@@ -177,8 +177,38 @@ def check_flare(page, failures, label, lang, interactive, quiet=False):
         failures.append(f"{label}: location drawn on tiles {boxed!r}, expected {'none' if quiet else '131 and 171'}")
     if not page.evaluate("!!document.querySelector('#flare-ev .cam-vbar')"):
         failures.append(f"{label}: no event panel with its colour bar (the stub has alerts in the last 30 days)")
+    # D-120: every tile loads with the page; the differences at low priority.
+    lazy = page.evaluate("[...document.querySelectorAll('[data-tile] img')].filter(i => i.loading === 'lazy').length")
+    if lazy:
+        failures.append(f"{label}: {lazy} image tile(s) still loading=lazy")
+    if page.evaluate("!!document.querySelector('[data-flare-stale]')"):
+        failures.append(f"{label}: the stale notice shows with a fresh result")
     if interactive:
         check_lightbox(page, failures, label)
+
+
+STALE_TEXT = {"es": ("Sin resultados nuevos desde", "marcadas con problemas de calidad"),
+              "en": ("No new results since", "flagged with quality problems")}
+
+
+def check_stale(page, failures, label, lang):
+    """D-121: the notice above the images, its time with the local time
+    on its own line, and flare-nrt's reason in words."""
+    note = page.locator("[data-flare-stale]")
+    if not note.count() or not note.is_visible():
+        failures.append(f"{label}: no stale notice (the stub's newest result is 2 h old)")
+        return
+    text = note.inner_text()
+    for want in STALE_TEXT[lang]:
+        if want not in text:
+            failures.append(f"{label}: stale notice {text!r} lacks {want!r}")
+    if not page.evaluate("!!document.querySelector('[data-flare-stale] time[data-stack]')"):
+        failures.append(f"{label}: the stale notice's time is not a stacked <time>")
+    above = page.evaluate("(() => { const n = document.querySelector('[data-flare-stale]'),"
+                          " g = document.querySelector('.flare-images');"
+                          " return !!g && !!(n.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING); })()")
+    if not above:
+        failures.append(f"{label}: the stale notice is not above the images")
 
 
 def check_lightbox(page, failures, label):
@@ -717,10 +747,18 @@ QUIET_PAGES = {
 }
 
 
+STALE_PAGES = {
+    # v0.6.4: the stub's stale scenario (D-121), its newest result 2 h old.
+    "usach.flare.nrt-stale": ("/productos/usach.flare.nrt/", 1, "flare-stale"),
+}
+
+
 def main(base_url, out_dir, mode=None):
     global PAGES
     if mode == "--quiet-flare":
         PAGES = QUIET_PAGES
+    elif mode == "--stale-flare":
+        PAGES = STALE_PAGES
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     failures = []
@@ -777,6 +815,8 @@ def main(base_url, out_dir, mode=None):
                             check_code_blocks(page, failures, label)
                         if checks == "daily":
                             check_daily(page, failures, label, lang)
+                        if checks == "flare-stale":
+                            check_stale(page, failures, label, lang)
                         if checks in ("flare", "flare-quiet"):
                             first = lang == "es" and theme == "day" and size == "desktop"
                             check_flare(page, failures, label, lang, interactive=first, quiet=checks == "flare-quiet")
@@ -798,7 +838,7 @@ def main(base_url, out_dir, mode=None):
                                 if first:
                                     check_loc_toggle(page, failures, label, base_url.rstrip("/") + prefix + path)
                         context.close()
-        if mode != "--quiet-flare" and "usach.flare.nrt" in PAGES:
+        if mode is None and "usach.flare.nrt" in PAGES:
             check_reduced_motion(browser, failures, base_url)
         browser.close()
     for f in failures:

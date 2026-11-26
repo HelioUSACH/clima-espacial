@@ -263,6 +263,57 @@ run it from, not the server): `python .github/scripts/loop_timing.py
 390 --passes 3` also reports the player's decoded-frame memory at a
 phone's width).
 
+### v0.6.4: e-mail when a product goes stale; faster difference tiles (D-119..D-121)
+
+`deploy.sh` installs and enables the new **`swx-freshness.timer`** (every 5
+min, `manage.py check_freshness`) like every other timer, and applies the
+migration (`web.FreshnessAlert`). **nginx: unchanged.** The flare part reads
+**flare-nrt 1.3.1**'s `last_ok_slot`, `rejected_streak` and
+`last_reject_reasons`; with an older flare-nrt it falls back to the stored
+result and the mail has no reasons.
+
+**The e-mail needs SMTP and recipients in `/etc/swx/swx.env`**, typed by
+you on the server, never in the repository. The same Google Workspace
+setup as the department platform: the sending mailbox, and an **app
+password** of that mailbox (Google account → Security → 2-Step
+Verification → App passwords). Google shows the app password in four
+groups of four: type the 16 characters **without the spaces**.
+
+```bash
+sudo nano /etc/swx/swx.env      # add or complete these lines:
+# SWX_EMAIL_HOST=smtp.gmail.com
+# SWX_EMAIL_PORT=587
+# SWX_EMAIL_USE_TLS=1
+# SWX_EMAIL_HOST_USER=<the sending mailbox>
+# SWX_EMAIL_HOST_PASSWORD=<its app password, no spaces>
+# SWX_EMAIL_FROM=<the same mailbox, or an alias it may send as>
+# SWX_ALERT_EMAILS=<you>,<anyone else>       # comma-separated
+# SWX_SITE_ORIGIN=https://helio.fisica.usach.cl   # the link to /estado/
+sudo bash /opt/swx/deploy/deploy.sh v0.6.4
+```
+
+(`SWX_EMAIL_*` also turns on e-mailing new API keys, D-086; it was
+already optional and still is.) Then check it, as the service user with
+the production environment ("One-off steps after a deploy"):
+
+```bash
+cd /opt/swx && sudo -u swx bash -c 'set -a; . /etc/swx/swx.env; set +a; venv/bin/python manage.py check_freshness --test-email'
+cd /opt/swx && sudo -u swx bash -c 'set -a; . /etc/swx/swx.env; set +a; venv/bin/python manage.py check_freshness --dry-run'
+systemctl list-timers swx-freshness.timer --no-pager
+journalctl -u swx-freshness -n 20 --no-pager           # a failed send is logged here
+```
+
+What it sends: one mail when a product turns stale ("desactualizado" or
+"con errores" on `/estado/`), one when it is back; never more than one per
+product per hour; nothing on the first run after the deploy (it records
+each product's state). The flare product is stale when its newest valid
+result is over 30 min old, and its mail lists flare-nrt's reason codes and
+what they mean.
+
+On the flare page: the difference tiles now load with the page, and when
+the newest result is over 30 min old a notice above the images reads "Sin
+resultados nuevos desde …" with the reason when flare-nrt gives one.
+
 ## Caching and compression (D-055, D-057)
 
 - `/clima-espacial/static/`: hashed filenames from `collectstatic`

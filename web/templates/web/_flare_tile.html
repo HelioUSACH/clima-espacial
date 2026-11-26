@@ -4,12 +4,14 @@ One tile of the flare page's image grid (D-106): channel c (images_context)
 as kind "img" or "diff", 512 px WebP, with its channel, kind and T_OBS. A
 button: flare.js opens it in the lightbox (the image at 1024 px, a
 difference at 512). While an event is open, its location on the 131 and
-171 Å tiles (D-117).
+171 Å tiles (D-117). Every tile loads with the page (D-120): the
+differences are on the first screen on a desktop, so they are not lazy,
+only fetched at low priority.
 {% endcomment %}
 <figure class="flare-tile">
   <button type="button" class="flare-tile-btn" data-tile data-wave="{{ c.wave }}" data-kind="{{ kind }}" data-full="{% if kind == 'img' %}{{ c.img_large }}{% else %}{{ c.diff }}{% endif %}" aria-label="{% if kind == 'img' %}{% blocktrans with wave=c.wave %}Ver {{ wave }} Å en grande{% endblocktrans %}{% else %}{% blocktrans with wave=c.wave %}Ver la diferencia de {{ wave }} Å en grande{% endblocktrans %}{% endif %}" aria-haspopup="dialog" aria-controls="flare-lightbox">
     <span class="flare-frame">
-      <img src="{% if kind == 'img' %}{{ c.img }}{% else %}{{ c.diff }}{% endif %}" width="512" height="512" decoding="async"{% if kind == 'diff' %} loading="lazy"{% endif %} alt="">
+      <img src="{% if kind == 'img' %}{{ c.img }}{% else %}{{ c.diff }}{% endif %}" width="512" height="512" decoding="async"{% if kind == 'diff' %} fetchpriority="low"{% endif %} alt="">
       {% if c.loc and header.loc.shape %}{% include "web/_flare_loc.html" with shape=header.loc.shape %}{% endif %}
       <span class="flare-missing" hidden>{% trans "Imagen no disponible" %}</span>
     </span>

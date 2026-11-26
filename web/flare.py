@@ -1016,6 +1016,94 @@ def sun_now_context(lang: str, now: dt.datetime | None = None) -> dict | None:
     }
 
 
+# --- freshness of the newest valid result (v0.6.4, D-119..D-121) -----------------------
+
+# The flare product counts as stale when its newest valid result (a slot the
+# model produced a probability for) is older than this: the stale-product
+# e-mail (web/freshness.py) and the page's notice use the same rule. The
+# manifest's own `stale_after` (10 min) is about the collector's last run,
+# which goes on succeeding while flare-nrt rejects every frame (2026-11-24).
+RESULT_STALE_AFTER = dt.timedelta(minutes=30)
+
+
+def newest_result(event=None, status_json=None) -> dt.datetime | None:
+    """The newest valid result's AIA slot: the newer of the stored result's
+    and flare-nrt's own `last_ok_slot` (1.3.1; absent before). A version-1
+    event has no slot: its `valid_from` is its result time."""
+    times = [t for t in (event.valid_from if event is not None else None,
+                         parse_time((status_json or {}).get("last_ok_slot"))) if t is not None]
+    return max(times) if times else None
+
+
+# flare-nrt's reason codes (INTEGRATION.md 1.3.1, `last_reject_reasons`;
+# flare_nrt/streak.py and qc.py), by prefix, to one short phrase each. A
+# code not listed reads as the generic phrase.
+QUALITY_FLAG_CODES = ("quality",)
+QC_CODES = ("exptime", "wavelength", "nonfinite", "empty", "median_jump", "channel_spread",
+            "time_offset", "unreadable")
+MISSING_CODES = ("missing",)
+BASELINE_CODES = ("baseline_missing", "no_baseline")
+LATE_CODES = ("inputs_old",)
+
+
+def _reason_key(code) -> str:
+    prefix = str(code).split(":", 1)[0].strip()
+    for key, codes in (("quality", QUALITY_FLAG_CODES), ("qc", QC_CODES), ("missing", MISSING_CODES),
+                       ("baseline", BASELINE_CODES), ("late", LATE_CODES)):
+        if prefix in codes:
+            return key
+    return "other"
+
+
+def _reason_text(key: str) -> str:
+    return {
+        "quality": gettext("las imágenes de SDO/AIA llegan marcadas con problemas de calidad"),
+        "qc": gettext("las imágenes de SDO/AIA no pasan el control de calidad del detector"),
+        "missing": gettext("no han llegado imágenes de SDO/AIA"),
+        "baseline": gettext("faltan las imágenes de 8 a 12 minutos antes, con las que se compara cada una"),
+        "late": gettext("las imágenes de SDO/AIA llegan con retraso"),
+        "other": gettext("el detector no ha podido procesar las imágenes recientes"),
+    }[key]
+
+
+def reject_reasons(codes) -> list[str]:
+    """flare-nrt's reason codes as short phrases (current language), each
+    phrase once, in the order first seen."""
+    if not isinstance(codes, (list, tuple)):
+        return []
+    keys = []
+    for code in codes:
+        key = _reason_key(code)
+        if key not in keys:
+            keys.append(key)
+    return [_reason_text(k) for k in keys]
+
+
+def status_reasons(status_json) -> list[str]:
+    """The phrases for flare-nrt's newest rejected slot, only while it says
+    results are being rejected (`rejected_streak` > 0, 1.3.1)."""
+    status_json = status_json or {}
+    streak = status_json.get("rejected_streak")
+    if not isinstance(streak, int) or isinstance(streak, bool) or streak <= 0:
+        return []
+    return reject_reasons(status_json.get("last_reject_reasons"))
+
+
+def stale_notice(event, lang: str, now: dt.datetime, *, service_up: bool = True) -> dict | None:
+    """The flare page's notice above the images (D-121): None while the
+    stored result is newer than RESULT_STALE_AFTER (no extra call to the
+    service), or when there has never been a result; else the newest valid
+    result's time (stored, or flare-nrt's `last_ok_slot`) and why, when
+    flare-nrt says so."""
+    if event is None or now - event.valid_from <= RESULT_STALE_AFTER:
+        return None
+    status_json = service_json("status") if service_up else None
+    newest = newest_result(event, status_json)
+    if newest is None or now - newest <= RESULT_STALE_AFTER:
+        return None
+    return {"since": time_html(newest, lang, stacked=True), "reasons": status_reasons(status_json)}
+
+
 # --- the probability series for the timeline (datos/probabilidad.json) --------------
 
 SERIES_RANGES = {"6h": (1, 6 * 3600), "1d": (1, 86400), "3d": (3, 3 * 86400), "7d": (7, 7 * 86400)}
@@ -1165,5 +1253,6 @@ def page_context(lang: str, wanted_event: int | None = None) -> dict:
         "selected": selected,
         "history_available": events_json is not None,
         "service_available": events_json is not None,
+        "stale": stale_notice(event, lang, now, service_up=events_json is not None),
         "loop_url": None,  # filled by the view (reverse)
     }

@@ -45,3 +45,25 @@ class RegistrationRequest(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.institution})"
+
+
+class FreshnessAlert(models.Model):
+    """The stale-product e-mail's memory (v0.6.4, D-119), one row per
+    product, written only by `manage.py check_freshness`
+    (web/freshness.py). `state` is what the last check saw ("ok", "stale",
+    "no_data"); `notified` is the state the recipients were last told
+    about (set without a mail on a product's first check, so a deploy never
+    mails); `since` is when the current stale spell began."""
+
+    product_id = models.CharField(max_length=128, primary_key=True)
+    state = models.CharField(max_length=16)
+    notified = models.CharField(max_length=16)
+    since = models.DateTimeField(null=True, blank=True)
+    last_mail_at = models.DateTimeField(null=True, blank=True)
+    checked_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["product_id"]
+
+    def __str__(self):
+        return f"{self.product_id}: {self.state} (notified {self.notified})"
